@@ -1,4 +1,6 @@
 import type {
+  AtlasIndexDocument,
+  AtlasIndexStats,
   CloudBackgroundJob,
   CloudBookmarkRecord,
   CloudConsentSettings,
@@ -7,6 +9,7 @@ import type {
   CloudProfile,
   CloudSearchHistoryRecord,
   CloudUser,
+  CrawlCheckpoint,
   HybridIndexDocument,
   HybridSearchHit,
   MemoryItem,
@@ -93,6 +96,7 @@ export interface CloudRepository {
     profileId: string,
     limit?: number
   ): Promise<CloudSearchHistoryRecord[]>;
+  clearSearchHistory(userId: string, profileId: string): Promise<void>;
 
   saveResearchReport(userId: string, profileId: string, report: ResearchReport): Promise<void>;
   listResearchReports(userId: string, profileId: string, limit?: number): Promise<ResearchReport[]>;
@@ -131,6 +135,22 @@ export interface CloudRepository {
     failed: number;
     deadLetter: number;
   }>;
+
+  // First-Party Atlas Web Index & Incremental Crawler
+  upsertAtlasIndexDocument(doc: AtlasIndexDocument): Promise<{ inserted: boolean; updated: boolean }>;
+  removeAtlasIndexDocument(canonicalUrl: string): Promise<boolean>;
+  getAtlasIndexDocument(canonicalUrl: string): Promise<AtlasIndexDocument | null>;
+  findAtlasDocumentByContentHash(contentHash: string): Promise<AtlasIndexDocument | null>;
+  searchAtlasIndex(params: {
+    query: string;
+    queryEmbedding: number[];
+    domains?: string[];
+    limit?: number;
+  }): Promise<Array<{ document: AtlasIndexDocument; lexicalScore: number; semanticScore: number }>>;
+  getAtlasIndexStats(): Promise<AtlasIndexStats>;
+  saveCrawlCheckpoint(cp: CrawlCheckpoint): Promise<void>;
+  getCrawlCheckpoint(id: string): Promise<CrawlCheckpoint | null>;
+  listCrawlCheckpoints(limit?: number): Promise<CrawlCheckpoint[]>;
 
   // Audit & Full GDPR Export/Delete
   logAudit(event: CloudAuditEventRecord): Promise<void>;

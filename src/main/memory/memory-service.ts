@@ -40,9 +40,10 @@ export function computeLocalEmbedding(text: string): number[] {
       h = Math.imul(h, 16777619);
     }
     const idx = Math.abs(h) % EMBEDDING_DIM;
-    vec[idx] += 1.5;
+    const wSign = ((h >>> 16) & 1) === 0 ? 1 : -1;
+    vec[idx] += wSign * 1.5;
 
-    // Character trigrams capture morphological similarity (e.g., "auth" ~ "authentication")
+    // Signed character trigrams capture morphological similarity while keeping unrelated vectors near zero
     for (let i = 0; i <= w.length - 3; i++) {
       const tri = w.slice(i, i + 3);
       let th = 2166136261;
@@ -50,7 +51,8 @@ export function computeLocalEmbedding(text: string): number[] {
         th ^= tri.charCodeAt(j);
         th = Math.imul(th, 16777619);
       }
-      vec[Math.abs(th) % EMBEDDING_DIM] += 0.6;
+      const tSign = ((th >>> 16) & 1) === 0 ? 1 : -1;
+      vec[Math.abs(th) % EMBEDDING_DIM] += tSign * 0.6;
     }
   }
 

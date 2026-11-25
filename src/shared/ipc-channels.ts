@@ -151,6 +151,11 @@ export const IPC_CHANNELS = {
   SEARCH_SUGGEST: 'atlas:search:suggest',
   SEARCH_OPEN_GROUP: 'atlas:search:open-group',
   SEARCH_SAVE_TO_RESEARCH: 'atlas:search:save-to-research',
+  SEARCH_HISTORY_LIST: 'atlas:search:history-list',
+  SEARCH_HISTORY_CLEAR: 'atlas:search:history-clear',
+  INDEX_CRAWL: 'atlas:index:crawl',
+  INDEX_STATS: 'atlas:index:stats',
+  SETTINGS_DISCOVER_MODELS: 'atlas:settings:discover-models',
   CLOUD_STATUS: 'atlas:cloud:status',
   CLOUD_REGISTER: 'atlas:cloud:register',
   CLOUD_LOGIN: 'atlas:cloud:login',
@@ -222,7 +227,7 @@ export const DomainRuleSetSchema = z.object({
 });
 
 export const SettingsSetApiKeySchema = z.object({
-  provider: z.enum(['gemini', 'custom_openai_compatible']),
+  provider: z.enum(['gemini', 'self_hosted', 'custom_openai_compatible']),
   apiKey: z.string().min(4).max(512)
 });
 
@@ -242,7 +247,10 @@ export const SearchExecuteSchema = z.object({
       domains: z.array(z.string().max(255)).max(20).optional(),
       excludeDomains: z.array(z.string().max(255)).max(20).optional(),
       timeRange: z.enum(['any', 'day', 'week', 'month', 'year']).optional(),
+      safeSearch: z.enum(['off', 'moderate', 'strict']).optional(),
       language: z.string().max(16).optional(),
+      region: z.string().max(16).optional(),
+      page: z.number().int().min(1).max(20).optional(),
       includeOpenTabs: z.boolean().optional(),
       includePersonalKnowledge: z.boolean().optional(),
       includeAiAnswer: z.boolean().optional(),

@@ -173,6 +173,10 @@ export class UserDataService {
     return this.repo.listSearchHistory(userId, profileId);
   }
 
+  public async clearSearchHistory(userId: string, profileId: string): Promise<void> {
+    await this.repo.clearSearchHistory(userId, profileId);
+  }
+
   public async saveResearchReport(params: {
     userId: string;
     profileId: string;

@@ -6,6 +6,7 @@ import type {
   CloudConsentSettings,
   ProviderTestResult,
   SearchEngineId,
+  SelfHostedRuntimeStatus,
   ThemeMode
 } from '@shared/types';
 import { useAtlasStore } from '../../store/useAtlasStore';
@@ -14,8 +15,10 @@ export const SettingsView: React.FC = () => {
   const { settings, setSettings, setOverlayView, setProviderStatus, pushToast } = useAtlasStore();
   const [local, setLocal] = useState<AppSettings | null>(settings);
   const [apiKeyInput, setApiKeyInput] = useState('');
+  const [selfHostedKeyInput, setSelfHostedKeyInput] = useState('');
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<ProviderTestResult | null>(null);
+  const [runtimeStatus, setRuntimeStatus] = useState<SelfHostedRuntimeStatus | null>(null);
   const [cloudStatus, setCloudStatus] = useState<CloudConnectionStatus | null>(null);
   const [cloudEmail, setCloudEmail] = useState('');
   const [cloudPassword, setCloudPassword] = useState('');
@@ -74,24 +77,133 @@ export const SettingsView: React.FC = () => {
                   }
                   className="w-full rounded-lg border border-atlas-border bg-atlas-bg px-3 py-2"
                 >
-                  <option value="gemini">Google Gemini API (Default)</option>
-                  <option value="mock">Deterministic Mock (Offline/Test)</option>
+                  <option value="gemini">Google Gemini API</option>
+                  <option value="self_hosted">Self-Hosted Runtime (Ollama / vLLM / llama.cpp)</option>
+                  <option value="mock">Deterministic Mock (Offline/Test Only)</option>
                 </select>
               </div>
               <div>
-                <label className="block text-atlas-muted mb-1">Default Model</label>
-                <select
-                  value={local.defaultModel}
-                  onChange={(e) => void update({ defaultModel: e.target.value })}
-                  className="w-full rounded-lg border border-atlas-border bg-atlas-bg px-3 py-2"
-                >
-                  <option value="gemini-2.5-flash">gemini-2.5-flash</option>
-                  <option value="gemini-2.5-pro">gemini-2.5-pro</option>
-                  <option value="gemini-2.0-flash">gemini-2.0-flash</option>
-                  <option value="gemini-1.5-pro">gemini-1.5-pro</option>
-                </select>
+                <label className="block text-atlas-muted mb-1">
+                  {local.defaultProvider === 'self_hosted' ? 'Self-Hosted Model ID' : 'Default Model'}
+                </label>
+                {local.defaultProvider === 'self_hosted' ? (
+                  <input
+                    defaultValue={local.selfHostedModel || 'qwen2.5:7b-instruct'}
+                    onBlur={(e) => void update({ selfHostedModel: e.target.value.trim() })}
+                    placeholder="e.g. qwen2.5:7b-instruct, llama3.2:3b"
+                    className="w-full rounded-lg border border-atlas-border bg-atlas-bg px-3 py-2 outline-none"
+                  />
+                ) : (
+                  <select
+                    value={local.defaultModel}
+                    onChange={(e) => void update({ defaultModel: e.target.value })}
+                    className="w-full rounded-lg border border-atlas-border bg-atlas-bg px-3 py-2"
+                  >
+                    <option value="gemini-2.5-flash">gemini-2.5-flash</option>
+                    <option value="gemini-2.5-pro">gemini-2.5-pro</option>
+                    <option value="gemini-2.0-flash">gemini-2.0-flash</option>
+                    <option value="gemini-1.5-pro">gemini-1.5-pro</option>
+                  </select>
+                )}
               </div>
             </div>
+
+            {local.defaultProvider === 'self_hosted' && (
+              <div className="rounded-xl border border-atlas-border bg-atlas-bg/60 p-3.5 space-y-3">
+                <div className="font-semibold text-atlas-text">
+                  Self-Hosted Model Runtime Configuration (OpenAI-Compatible API)
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-atlas-muted mb-1">Inference Server Base URL</label>
+                    <input
+                      defaultValue={local.selfHostedEndpointUrl || 'http://127.0.0.1:11434/v1'}
+                      onBlur={(e) => void update({ selfHostedEndpointUrl: e.target.value.trim() })}
+                      placeholder="http://127.0.0.1:11434/v1 or http://127.0.0.1:8080/v1"
+                      className="w-full rounded-lg border border-atlas-border bg-atlas-bg px-3 py-1.5 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-atlas-muted mb-1">Optional Server Bearer Key (Encrypted)</label>
+                    <div className="flex gap-1.5">
+                      <input
+                        type="password"
+                        value={selfHostedKeyInput}
+                        onChange={(e) => setSelfHostedKeyInput(e.target.value)}
+                        placeholder={local.hasSelfHostedApiKey ? 'Configured (enter to rotate)' : 'Leave blank for local Ollama'}
+                        className="flex-1 rounded-lg border border-atlas-border bg-atlas-bg px-3 py-1.5 outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (!selfHostedKeyInput.trim()) return;
+                          const next = await window.atlas.setApiKey('self_hosted', selfHostedKeyInput.trim());
+                          setSettings(next);
+                          setLocal(next);
+                          setSelfHostedKeyInput('');
+                          pushToast('Self-hosted runtime key saved cleanly', 'success');
+                        }}
+                        className="rounded-lg bg-atlas-accent px-3 py-1.5 font-semibold text-white"
+                      >
+                        Save
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const st = await window.atlas.discoverSelfHostedModels();
+                      setRuntimeStatus(st);
+                    }}
+                    className="rounded-lg border border-atlas-border bg-atlas-elevated px-3 py-1.5 font-semibold hover:bg-atlas-border"
+                  >
+                    Discover Installed Models & Check Health
+                  </button>
+                  <button
+                    type="button"
+                    disabled={testing}
+                    onClick={async () => {
+                      setTesting(true);
+                      try {
+                        setTestResult(await window.atlas.testProvider(local.selfHostedModel));
+                      } finally {
+                        setTesting(false);
+                      }
+                    }}
+                    className="rounded-lg bg-atlas-accent px-3 py-1.5 font-semibold text-white disabled:opacity-50"
+                  >
+                    {testing ? 'Testing...' : 'Verify Model Readiness'}
+                  </button>
+                </div>
+                {runtimeStatus && (
+                  <div
+                    className={`rounded-lg border p-2.5 text-[11px] space-y-1.5 ${
+                      runtimeStatus.reachable && runtimeStatus.modelAvailable
+                        ? 'border-atlas-success/40 bg-atlas-success/10 text-atlas-success'
+                        : 'border-atlas-warning/40 bg-atlas-warning/10 text-atlas-warning'
+                    }`}
+                  >
+                    <div className="font-semibold">{runtimeStatus.statusMessage}</div>
+                    {runtimeStatus.availableModels.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 pt-1">
+                        {runtimeStatus.availableModels.map((m) => (
+                          <button
+                            key={m}
+                            type="button"
+                            onClick={() => void update({ selfHostedModel: m })}
+                            className="rounded bg-atlas-surface px-2 py-0.5 text-atlas-text border border-atlas-border hover:border-atlas-accent"
+                          >
+                            Use {m}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="space-y-2">
               <div className="flex items-center justify-between">

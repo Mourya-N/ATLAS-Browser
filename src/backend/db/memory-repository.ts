@@ -1,4 +1,6 @@
 import type {
+  AtlasIndexDocument,
+  AtlasIndexStats,
   CloudBackgroundJob,
   CloudBookmarkRecord,
   CloudConsentSettings,
@@ -6,6 +8,7 @@ import type {
   CloudNoteRecord,
   CloudProfile,
   CloudSearchHistoryRecord,
+  CrawlCheckpoint,
   HybridIndexDocument,
   HybridSearchHit,
   MemoryItem,
@@ -43,6 +46,8 @@ export class InMemoryCloudRepository implements CloudRepository {
   private readonly savedSources: SavedSourceRecord[] = [];
   private readonly memoryItems = new Map<string, { userId: string; profileId: string; item: MemoryItem }>();
   private readonly hybridDocs = new Map<string, HybridIndexDocument>();
+  private readonly atlasIndexDocs = new Map<string, AtlasIndexDocument>();
+  private readonly crawlCheckpoints = new Map<string, CrawlCheckpoint>();
   private readonly jobs = new Map<string, CloudBackgroundJob>();
   private readonly audits: CloudAuditEventRecord[] = [];
 
@@ -175,6 +180,14 @@ export class InMemoryCloudRepository implements CloudRepository {
       .filter((h) => h.userId === userId && h.profileId === profileId)
       .sort((a, b) => b.createdAt - a.createdAt)
       .slice(0, limit);
+  }
+
+  public async clearSearchHistory(userId: string, profileId: string): Promise<void> {
+    for (let i = this.searchHistory.length - 1; i >= 0; i--) {
+      if (this.searchHistory[i].userId === userId && this.searchHistory[i].profileId === profileId) {
+        this.searchHistory.splice(i, 1);
+      }
+    }
   }
 
   public async saveResearchReport(userId: string, profileId: string, report: ResearchReport): Promise<void> {
@@ -329,6 +342,114 @@ export class InMemoryCloudRepository implements CloudRepository {
 
   public async logAudit(event: CloudAuditEventRecord): Promise<void> {
     this.audits.push(event);
+  }
+
+  public async upsertAtlasIndexDocument(
+    doc: AtlasIndexDocument
+  ): Promise<{ inserted: boolean; updated: boolean }> {
+    const existing = this.atlasIndexDocs.get(doc.canonicalUrl);
+    if (!existing) {
+      this.atlasIndexDocs.set(doc.canonicalUrl, doc);
+      return { inserted: true, updated: false };
+    }
+    const changed = existing.contentHash !== doc.contentHash || existing.title !== doc.title;
+    this.atlasIndexDocs.set(doc.canonicalUrl, doc);
+    return { inserted: false, updated: changed };
+  }
+
+  public async removeAtlasIndexDocument(canonicalUrl: string): Promise<boolean> {
+    return this.atlasIndexDocs.delete(canonicalUrl);
+  }
+
+  public async getAtlasIndexDocument(canonicalUrl: string): Promise<AtlasIndexDocument | null> {
+    return this.atlasIndexDocs.get(canonicalUrl) ?? null;
+  }
+
+  public async findAtlasDocumentByContentHash(contentHash: string): Promise<AtlasIndexDocument | null> {
+    for (const d of this.atlasIndexDocs.values()) {
+      if (d.contentHash === contentHash) return d;
+    }
+    return null;
+  }
+
+  public async searchAtlasIndex(params: {
+    query: string;
+    queryEmbedding: number[];
+    domains?: string[];
+    limit?: number;
+  }): Promise<Array<{ document: AtlasIndexDocument; lexicalScore: number; semanticScore: number }>> {
+    const queryTokens = Array.from(new Set(tokenize(params.query)));
+    const domainFilters = params.domains?.map((d) => d.toLowerCase()) ?? [];
+    const results: Array<{ document: AtlasIndexDocument; lexicalScore: number; semanticScore: number }> = [];
+
+    for (const doc of this.atlasIndexDocs.values()) {
+      if (
+        domainFilters.length > 0 &&
+        !domainFilters.some((d) => doc.sourceDomain === d || doc.sourceDomain.endsWith(`.${d}`))
+      ) {
+        continue;
+      }
+
+      const hayTokens = tokenize(`${doc.title} ${doc.headings.join(' ')} ${doc.mainContent}`);
+      const titleLower = doc.title.toLowerCase();
+      let matched = 0;
+      let titleMatches = 0;
+      for (const qt of queryTokens) {
+        if (titleLower.includes(qt)) titleMatches += 1;
+        if (hayTokens.includes(qt)) matched += 1;
+      }
+      // BM25-like saturation on matched terms vs query length
+      const lexicalScore =
+        queryTokens.length > 0
+          ? Math.min(1, (matched / queryTokens.length) * 0.65 + (titleMatches / queryTokens.length) * 0.35)
+          : 0;
+      const semanticScore = cosineSimilarity(params.queryEmbedding, doc.embedding);
+
+      if (lexicalScore > 0.05 || semanticScore > 0.45) {
+        results.push({ document: doc, lexicalScore, semanticScore });
+      }
+    }
+
+    return results
+      .sort(
+        (a, b) =>
+          b.lexicalScore * 0.6 + b.semanticScore * 0.4 - (a.lexicalScore * 0.6 + a.semanticScore * 0.4)
+      )
+      .slice(0, params.limit ?? 20);
+  }
+
+  public async getAtlasIndexStats(): Promise<AtlasIndexStats> {
+    const docs = Array.from(this.atlasIndexDocs.values());
+    const domains = new Set(docs.map((d) => d.sourceDomain));
+    const latestCrawlAt = docs.reduce<number | null>(
+      (max, d) => (max === null || d.crawledAt > max ? d.crawledAt : max),
+      null
+    );
+    const limitedCoverage = docs.length < 50;
+    return {
+      totalDocuments: docs.length,
+      uniqueDomains: domains.size,
+      latestCrawlAt,
+      indexVersion: 'v1',
+      limitedCoverage,
+      notice: limitedCoverage
+        ? `Atlas Index currently contains ${docs.length} crawled document(s) across ${domains.size} domain(s) (controlled seed scope). External providers remain helpful for broad web queries.`
+        : `Atlas Index serving ${docs.length} documents across ${domains.size} domains.`
+    };
+  }
+
+  public async saveCrawlCheckpoint(cp: CrawlCheckpoint): Promise<void> {
+    this.crawlCheckpoints.set(cp.id, cp);
+  }
+
+  public async getCrawlCheckpoint(id: string): Promise<CrawlCheckpoint | null> {
+    return this.crawlCheckpoints.get(id) ?? null;
+  }
+
+  public async listCrawlCheckpoints(limit = 20): Promise<CrawlCheckpoint[]> {
+    return Array.from(this.crawlCheckpoints.values())
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+      .slice(0, limit);
   }
 
   public async exportAllUserData(userId: string): Promise<Record<string, unknown>> {

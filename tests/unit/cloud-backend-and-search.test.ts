@@ -356,33 +356,33 @@ describe('Atlas Cloud Backend, Security, Hybrid Search & Local-First Desktop Cli
     expect(attempt2?.status).toBe('dead_letter');
   });
 
-  it('supports prototype FirstPartyIndexProvider with robots.txt policy enforcement', async () => {
-    const provider = new FirstPartyIndexProvider(
-      runtime.services.hybridIndex,
-      new SsrfGuard()
-    );
-    const robots = 'User-agent: *\nDisallow: /private/\n';
-    expect(provider.parseRobotsAllows(robots, '/private/secret')).toBe(false);
-    expect(provider.parseRobotsAllows(robots, '/docs/search')).toBe(true);
+  it('supports FirstPartyIndexProvider with AtlasCrawler robots.txt policy enforcement', async () => {
+    const provider = new FirstPartyIndexProvider(runtime.services.repo);
+    const parsedRobots = runtime.services.crawler.parseRobotsTxt('User-agent: *\nDisallow: /private/\n');
+    expect(runtime.services.crawler.isPathAllowed(parsedRobots, '/private/secret')).toBe(false);
+    expect(runtime.services.crawler.isPathAllowed(parsedRobots, '/docs/search')).toBe(true);
 
-    const blocked = await provider.indexApprovedPublicPage({
-      url: 'https://docs.example.org/private/secret',
-      title: 'Private',
-      content: 'Should not index',
-      robotsTxt: robots
-    });
-    expect(blocked).toBe(false);
-
-    const allowed = await provider.indexApprovedPublicPage({
+    await provider.upsertDocument({
+      id: 'fp-doc-1',
       url: 'https://docs.example.org/docs/search',
-      title: 'Atlas Web Index Prototype',
-      content: 'Policy-compliant prototype crawler adapter respecting robots.txt and rate limits.',
-      robotsTxt: robots
+      canonicalUrl: 'https://docs.example.org/docs/search',
+      title: 'Atlas Web Index Document',
+      mainContent: 'Policy-compliant crawler indexing respecting robots.txt and rate limits.',
+      snippet: 'Policy-compliant crawler indexing respecting robots.txt and rate limits.',
+      headings: ['Atlas Web Index'],
+      language: 'en',
+      sourceDomain: 'docs.example.org',
+      contentType: 'docs',
+      contentHash: 'hash-fp-1',
+      authorityScore: 0.75,
+      authorityMethod: 'domain_tier_v1',
+      crawledAt: Date.now(),
+      indexVersion: 'v1',
+      embedding: []
     });
-    expect(allowed).toBe(true);
 
     const hits = await provider.search({
-      query: 'robots.txt prototype crawler',
+      query: 'robots.txt crawler indexing',
       mode: 'web',
       limit: 5
     });

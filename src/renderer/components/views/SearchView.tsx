@@ -4,16 +4,27 @@ import {
   BookOpenCheck,
   CheckCircle2,
   Cloud,
+  Cpu,
+  Database,
   ExternalLink,
   FolderPlus,
   GitCompare,
   Globe,
   HardDrive,
+  History,
+  RefreshCw,
   Search,
   Sparkles,
+  Trash2,
   X
 } from 'lucide-react';
-import type { SearchMode, SearchResponse } from '@shared/types';
+import type {
+  AtlasIndexStats,
+  CloudSearchHistoryRecord,
+  SafeSearchLevel,
+  SearchMode,
+  SearchResponse
+} from '@shared/types';
 import { useAtlasStore } from '../../store/useAtlasStore';
 
 const MODES: Array<{ id: SearchMode; label: string }> = [
@@ -26,30 +37,58 @@ const MODES: Array<{ id: SearchMode; label: string }> = [
   { id: 'personal_knowledge', label: 'Personal Knowledge' }
 ];
 
+const ORIGIN_STYLES: Record<string, { label: string; cls: string }> = {
+  atlas_index: { label: 'Atlas Index', cls: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' },
+  external_provider: { label: 'External Web', cls: 'bg-sky-500/15 text-sky-400 border-sky-500/30' },
+  open_tab: { label: 'Open Tab', cls: 'bg-purple-500/15 text-purple-400 border-purple-500/30' },
+  personal_knowledge: { label: 'Personal Knowledge', cls: 'bg-amber-500/15 text-amber-400 border-amber-500/30' }
+};
+
 export const SearchView: React.FC = () => {
-  const {
-    activeTabId,
-    searchInitialQuery,
-    setOverlayView,
-    pushToast
-  } = useAtlasStore();
+  const { activeTabId, searchInitialQuery, setOverlayView, pushToast } = useAtlasStore();
 
   const [query, setQuery] = useState(searchInitialQuery || '');
   const [mode, setMode] = useState<SearchMode>('research');
+  const [page, setPage] = useState(1);
   const [timeRange, setTimeRange] = useState<'any' | 'day' | 'week' | 'month' | 'year'>('any');
+  const [safeSearch, setSafeSearch] = useState<SafeSearchLevel>('moderate');
   const [domainFilter, setDomainFilter] = useState('');
   const [includeOpenTabs, setIncludeOpenTabs] = useState(true);
   const [includePersonalKnowledge, setIncludePersonalKnowledge] = useState(true);
   const [includeAiAnswer, setIncludeAiAnswer] = useState(true);
   const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [response, setResponse] = useState<SearchResponse | null>(null);
   const [selectedUrls, setSelectedUrls] = useState<string[]>([]);
   const [showPassages, setShowPassages] = useState(false);
 
-  const runSearch = async (overrideQuery?: string, overrideMode?: SearchMode) => {
+  // Local Index + Crawler + Search History controls
+  const [indexStats, setIndexStats] = useState<AtlasIndexStats | null>(null);
+  const [searchHistory, setSearchHistory] = useState<CloudSearchHistoryRecord[]>([]);
+  const [showCrawlerPanel, setShowCrawlerPanel] = useState(false);
+  const [seedUrlInput, setSeedUrlInput] = useState('https://www.postgresql.org/docs/current/textsearch.html');
+  const [allowedDomainInput, setAllowedDomainInput] = useState('postgresql.org');
+  const [crawling, setCrawling] = useState(false);
+
+  const refreshMetadata = async () => {
+    const [st, hist] = await Promise.all([
+      window.atlas.getIndexStats().catch(() => null),
+      window.atlas.listSearchHistory().catch(() => [])
+    ]);
+    if (st) setIndexStats(st);
+    setSearchHistory(hist);
+  };
+
+  useEffect(() => {
+    void refreshMetadata();
+  }, []);
+
+  const runSearch = async (overrideQuery?: string, overrideMode?: SearchMode, targetPage = 1) => {
     const q = (overrideQuery ?? query).trim();
     if (!q) return;
     setLoading(true);
+    setErrorMsg(null);
+    setPage(targetPage);
     try {
       const domains = domainFilter
         .split(',')
@@ -61,16 +100,21 @@ export const SearchView: React.FC = () => {
         filters: {
           domains: domains.length > 0 ? domains : undefined,
           timeRange,
+          safeSearch,
+          page: targetPage,
           includeOpenTabs,
           includePersonalKnowledge,
           includeAiAnswer,
-          limit: 15
+          limit: 10
         }
       });
       setResponse(res);
       setSelectedUrls([]);
+      void refreshMetadata();
     } catch (err) {
-      pushToast(err instanceof Error ? err.message : 'Search failed', 'danger');
+      const msg = err instanceof Error ? err.message : 'Search failed';
+      setErrorMsg(msg);
+      pushToast(msg, 'danger');
     } finally {
       setLoading(false);
     }
@@ -125,11 +169,13 @@ export const SearchView: React.FC = () => {
       `Compare selected search results for: ${query}`,
       tabs.map((t) => t.id)
     );
-    await window.atlas.saveCloudNote({
-      title: `Comparison: ${query}`,
-      content: md,
-      tags: ['comparison', 'atlas-search']
-    }).catch(() => undefined);
+    await window.atlas
+      .saveCloudNote({
+        title: `Comparison: ${query}`,
+        content: md,
+        tags: ['comparison', 'atlas-search']
+      })
+      .catch(() => undefined);
     setOverlayView('intelligence');
     pushToast('Opened selected results and generated cross-tab comparison', 'success');
   };
@@ -149,22 +195,84 @@ export const SearchView: React.FC = () => {
     pushToast('Saved search results to Research & Evidence collection', 'success');
   };
 
+  const runCrawler = async () => {
+    const seeds = seedUrlInput
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const domains = allowedDomainInput
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (seeds.length === 0 || domains.length === 0) {
+      pushToast('Provide at least one seed URL and allowed domain', 'warning');
+      return;
+    }
+    setCrawling(true);
+    try {
+      const cp = await window.atlas.crawlIndexSeeds({
+        seedUrls: seeds,
+        allowedDomains: domains,
+        maxDepth: 1,
+        maxPages: 10
+      });
+      await refreshMetadata();
+      pushToast(
+        `Crawl finished: ${cp.indexedCount} indexed, ${cp.updatedCount} updated, ${cp.failedCount} failed`,
+        cp.failedCount > 0 ? 'warning' : 'success'
+      );
+    } catch (err) {
+      pushToast(err instanceof Error ? err.message : 'Crawl failed', 'danger');
+    } finally {
+      setCrawling(false);
+    }
+  };
+
   return (
     <div className="flex h-full flex-col bg-atlas-bg text-atlas-text select-text">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-atlas-border bg-atlas-surface px-6 py-3.5">
-        <div className="flex items-center gap-2.5">
+      <div className="flex items-center justify-between border-b border-atlas-border bg-atlas-surface px-6 py-3">
+        <div className="flex flex-wrap items-center gap-2.5">
           <Search className="h-5 w-5 text-atlas-accent" />
           <h1 className="text-base font-bold">Atlas Intelligent Search</h1>
+
+          {indexStats && (
+            <button
+              type="button"
+              onClick={() => setShowCrawlerPanel((v) => !v)}
+              className="flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-0.5 text-[10px] font-medium text-emerald-400 hover:bg-emerald-500/20"
+            >
+              <Database className="h-3 w-3" />
+              Atlas Index: {indexStats.totalDocuments} doc(s)
+            </button>
+          )}
+
+          {response?.aiRuntimeStatus && (
+            <button
+              type="button"
+              onClick={() => setOverlayView('settings')}
+              className={`flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[10px] font-medium ${
+                response.aiRuntimeStatus.reachable && response.aiRuntimeStatus.modelAvailable
+                  ? 'border-atlas-success/30 bg-atlas-success/10 text-atlas-success'
+                  : 'border-atlas-warning/30 bg-atlas-warning/10 text-atlas-warning'
+              }`}
+              title={response.aiRuntimeStatus.statusMessage}
+            >
+              <Cpu className="h-3 w-3" />
+              AI: {response.aiRuntimeStatus.backendKind}
+              {response.aiRuntimeStatus.configuredModel ? ` (${response.aiRuntimeStatus.configuredModel})` : ''}
+            </button>
+          )}
+
           {response && (
             <span className="flex items-center gap-1 rounded-full bg-atlas-elevated px-2.5 py-0.5 text-[10px] font-medium text-atlas-muted">
               {response.sourceMode === 'local_fallback' ? (
                 <>
-                  <HardDrive className="h-3 w-3" /> Local-First Mode
+                  <HardDrive className="h-3 w-3" /> Local-First
                 </>
               ) : (
                 <>
-                  <Cloud className="h-3 w-3 text-atlas-accent" /> {response.sourceMode === 'hybrid' ? 'Hybrid Cloud + Local' : 'Atlas Cloud'}
+                  <Cloud className="h-3 w-3 text-atlas-accent" /> {response.sourceMode}
                 </>
               )}
               {response.cacheHit && ' • Cached'}
@@ -181,19 +289,54 @@ export const SearchView: React.FC = () => {
         </button>
       </div>
 
+      {/* Optional First-Party Index Crawler Panel */}
+      {showCrawlerPanel && (
+        <div className="border-b border-atlas-border bg-atlas-surface/90 px-6 py-3 text-xs space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="font-semibold">
+              First-Party Atlas Index & Seed Crawler (Respects robots.txt & SSRF protections)
+            </div>
+            <span className="text-[11px] text-atlas-muted">{indexStats?.notice}</span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <input
+              value={seedUrlInput}
+              onChange={(e) => setSeedUrlInput(e.target.value)}
+              placeholder="Seed URLs (comma separated)..."
+              className="flex-1 min-w-[240px] rounded-lg border border-atlas-border bg-atlas-bg px-3 py-1.5 outline-none"
+            />
+            <input
+              value={allowedDomainInput}
+              onChange={(e) => setAllowedDomainInput(e.target.value)}
+              placeholder="Allowed domains (comma separated)..."
+              className="w-64 rounded-lg border border-atlas-border bg-atlas-bg px-3 py-1.5 outline-none"
+            />
+            <button
+              type="button"
+              disabled={crawling}
+              onClick={() => void runCrawler()}
+              className="flex items-center gap-1 rounded-lg bg-atlas-accent px-3 py-1.5 font-semibold text-white disabled:opacity-50"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${crawling ? 'animate-spin' : ''}`} />
+              {crawling ? 'Crawling...' : 'Crawl & Index Seeds'}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Search Bar & Modes */}
       <div className="border-b border-atlas-border bg-atlas-surface/60 px-6 py-4 space-y-3">
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            void runSearch();
+            void runSearch(undefined, undefined, 1);
           }}
           className="flex gap-2 max-w-5xl"
         >
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Ask a research question or search across the web, open tabs, and personal knowledge..."
+            placeholder="Search Atlas Index, external web providers, non-private tabs, and personal knowledge..."
             className="flex-1 rounded-xl border border-atlas-border bg-atlas-bg px-4 py-2.5 text-sm outline-none focus:border-atlas-accent"
           />
           <button
@@ -212,7 +355,7 @@ export const SearchView: React.FC = () => {
               type="button"
               onClick={() => {
                 setMode(m.id);
-                if (query.trim()) void runSearch(query, m.id);
+                if (query.trim()) void runSearch(query, m.id, 1);
               }}
               className={`rounded-lg px-2.5 py-1 font-medium transition-colors ${
                 mode === m.id
@@ -238,11 +381,21 @@ export const SearchView: React.FC = () => {
             <option value="year">Past year</option>
           </select>
 
+          <select
+            value={safeSearch}
+            onChange={(e) => setSafeSearch(e.target.value as SafeSearchLevel)}
+            className="rounded-lg border border-atlas-border bg-atlas-bg px-2.5 py-1 text-atlas-text"
+          >
+            <option value="moderate">Safe Search: Moderate</option>
+            <option value="strict">Safe Search: Strict</option>
+            <option value="off">Safe Search: Off</option>
+          </select>
+
           <input
             value={domainFilter}
             onChange={(e) => setDomainFilter(e.target.value)}
-            placeholder="Filter domains (e.g. postgresql.org, owasp.org)"
-            className="w-64 rounded-lg border border-atlas-border bg-atlas-bg px-2.5 py-1 text-atlas-text outline-none"
+            placeholder="Filter domains (e.g. postgresql.org)"
+            className="w-56 rounded-lg border border-atlas-border bg-atlas-bg px-2.5 py-1 text-atlas-text outline-none"
           />
 
           <label className="flex items-center gap-1.5 cursor-pointer">
@@ -251,7 +404,7 @@ export const SearchView: React.FC = () => {
               checked={includeOpenTabs}
               onChange={(e) => setIncludeOpenTabs(e.target.checked)}
             />
-            Include non-private open tabs
+            Open tabs
           </label>
 
           <label className="flex items-center gap-1.5 cursor-pointer">
@@ -260,7 +413,7 @@ export const SearchView: React.FC = () => {
               checked={includePersonalKnowledge}
               onChange={(e) => setIncludePersonalKnowledge(e.target.checked)}
             />
-            Include bookmarks & memory
+            Bookmarks & memory
           </label>
 
           <label className="flex items-center gap-1.5 cursor-pointer">
@@ -269,28 +422,72 @@ export const SearchView: React.FC = () => {
               checked={includeAiAnswer}
               onChange={(e) => setIncludeAiAnswer(e.target.checked)}
             />
-            AI answer with citations
+            Cited AI answer
           </label>
         </div>
+
+        {searchHistory.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5 text-[11px] max-w-5xl pt-1">
+            <span className="flex items-center gap-1 text-atlas-muted">
+              <History className="h-3 w-3" /> Recent:
+            </span>
+            {searchHistory.slice(0, 6).map((h) => (
+              <button
+                key={h.id}
+                type="button"
+                onClick={() => {
+                  setQuery(h.query);
+                  void runSearch(h.query, h.mode, 1);
+                }}
+                className="rounded-md bg-atlas-elevated px-2 py-0.5 text-atlas-text hover:bg-atlas-border"
+              >
+                {h.query}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={async () => {
+                await window.atlas.clearSearchHistory();
+                setSearchHistory([]);
+                pushToast('Search history cleared', 'info');
+              }}
+              className="flex items-center gap-1 text-atlas-danger hover:underline ml-2"
+            >
+              <Trash2 className="h-3 w-3" /> Clear History
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Results Area */}
       <div className="flex-1 overflow-y-auto p-6">
+        {errorMsg && (
+          <div className="mx-auto max-w-5xl mb-4 rounded-xl border border-atlas-danger/40 bg-atlas-danger/10 p-3 text-xs text-atlas-danger">
+            {errorMsg}
+          </div>
+        )}
+
         {!response ? (
           <div className="mx-auto max-w-3xl rounded-xl border border-atlas-border bg-atlas-surface p-6 text-xs text-atlas-muted space-y-2">
-            <div className="font-semibold text-atlas-text">Atlas Hybrid Search Engine</div>
+            <div className="font-semibold text-atlas-text">Atlas Hybrid Search + Grounded AI</div>
             <p>
-              Combines configured search APIs, authorized non-private tabs, local bookmarks, approved memory, and cited AI synthesis. Private tabs are always excluded from cloud requests, and conventional results remain available even if AI generation is disabled or fails.
+              Searches Atlas's own first-party crawled index, external search APIs (when configured), non-private open tabs, and personal knowledge. External results and Atlas-indexed documents are always labeled separately, and private tabs are strictly excluded.
             </p>
+            {indexStats?.notice && <p className="text-[11px] text-amber-400">{indexStats.notice}</p>}
           </div>
         ) : (
           <div className="mx-auto max-w-6xl grid grid-cols-1 lg:grid-cols-3 gap-6 text-xs">
-            {/* Left / Main Column: Ranked Results */}
+            {/* Left / Main Column */}
             <div className="lg:col-span-2 space-y-4">
-              {/* Selection Actions & Query Info */}
+              {response.indexStatus?.limitedCoverage && (
+                <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 px-3.5 py-2 text-[11px] text-amber-300">
+                  {response.indexStatus.notice}
+                </div>
+              )}
+
               <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-atlas-border bg-atlas-surface p-3">
                 <div className="text-[11px] text-atlas-muted">
-                  <strong>{response.results.length}</strong> result(s)
+                  <strong>{response.pagination.totalResults}</strong> result(s)
                   {response.duplicatesRemoved > 0 && ` • ${response.duplicatesRemoved} duplicate(s) merged`}
                   {response.reranked && ' • Reranked'}
                   {' • Intent: '}
@@ -302,28 +499,28 @@ export const SearchView: React.FC = () => {
                     onClick={() => void openSelectedInGroup()}
                     className="flex items-center gap-1 rounded-lg bg-atlas-elevated px-2.5 py-1 font-medium hover:bg-atlas-border"
                   >
-                    <FolderPlus className="h-3.5 w-3.5" /> Open in Group ({selectedUrls.length})
+                    <FolderPlus className="h-3.5 w-3.5" /> Group ({selectedUrls.length})
                   </button>
                   <button
                     type="button"
                     onClick={() => void compareSelected()}
                     className="flex items-center gap-1 rounded-lg bg-atlas-elevated px-2.5 py-1 font-medium hover:bg-atlas-border"
                   >
-                    <GitCompare className="h-3.5 w-3.5" /> Compare Selected
+                    <GitCompare className="h-3.5 w-3.5" /> Compare
                   </button>
                   <button
                     type="button"
                     onClick={() => void saveSelectedToResearch()}
                     className="flex items-center gap-1 rounded-lg bg-atlas-accent/15 text-atlas-accent px-2.5 py-1 font-medium hover:bg-atlas-accent/25"
                   >
-                    <BookOpenCheck className="h-3.5 w-3.5" /> Save to Research
+                    <BookOpenCheck className="h-3.5 w-3.5" /> Save Research
                   </button>
                 </div>
               </div>
 
               {response.providerErrors.length > 0 && (
                 <div className="rounded-xl border border-atlas-warning/40 bg-atlas-warning/10 p-3 text-[11px] text-atlas-warning">
-                  Partial provider notice:{' '}
+                  Provider notice:{' '}
                   {response.providerErrors.map((e) => `${e.providerId} (${e.error})`).join('; ')}
                 </div>
               )}
@@ -348,13 +545,17 @@ export const SearchView: React.FC = () => {
               )}
 
               {response.results.length === 0 ? (
-                <div className="rounded-xl border border-atlas-border bg-atlas-surface p-6 text-center text-atlas-muted">
-                  No results matched your query and filters. Enable external search providers in Settings or add local bookmarks/memory/tabs.
+                <div className="rounded-xl border border-atlas-border bg-atlas-surface p-6 text-center text-atlas-muted space-y-2">
+                  <div>No results matched your query and filters.</div>
+                  <div className="text-[11px]">
+                    Click "Atlas Index" above to crawl public documentation seeds or configure Brave/Google/Bing APIs in the backend `.env`.
+                  </div>
                 </div>
               ) : (
                 <div className="space-y-3">
                   {response.results.map((r) => {
                     const checked = selectedUrls.includes(r.url);
+                    const originBadge = ORIGIN_STYLES[r.sourceOrigin] ?? ORIGIN_STYLES.external_provider;
                     return (
                       <div
                         key={r.id}
@@ -369,15 +570,20 @@ export const SearchView: React.FC = () => {
                             aria-label={`Select ${r.title}`}
                           />
                           <div className="min-w-0 flex-1 space-y-1">
-                            <div className="flex items-center justify-between gap-2 text-[11px] text-atlas-muted">
+                            <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-atlas-muted">
                               <span className="flex items-center gap-1.5 truncate">
                                 <Globe className="h-3 w-3 shrink-0" />
                                 <span className="font-medium text-atlas-text">{r.domain}</span>
                                 <span>• {r.displayUrl}</span>
                               </span>
-                              <span className="shrink-0 rounded bg-atlas-elevated px-1.5 py-0.5 text-[10px]">
-                                {r.sourceProvider} • {r.contentType} • {Math.round(r.relevanceScore * 100)}%
-                              </span>
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                <span className={`rounded border px-1.5 py-0.5 text-[10px] font-medium ${originBadge.cls}`}>
+                                  {originBadge.label}
+                                </span>
+                                <span className="rounded bg-atlas-elevated px-1.5 py-0.5 text-[10px]">
+                                  {r.sourceProvider} • {Math.round(r.relevanceScore * 100)}%
+                                </span>
+                              </div>
                             </div>
 
                             <button
@@ -392,7 +598,7 @@ export const SearchView: React.FC = () => {
 
                             <div className="flex flex-wrap items-center gap-3 pt-1 text-[11px]">
                               {r.publishedAt && (
-                                <span className="text-atlas-muted">Published: {r.publishedAt}</span>
+                                <span className="text-atlas-muted">Date: {r.publishedAt}</span>
                               )}
                               <button
                                 type="button"
@@ -417,36 +623,40 @@ export const SearchView: React.FC = () => {
                 </div>
               )}
 
-              {response.relatedQueries.length > 0 && (
-                <div className="rounded-xl border border-atlas-border bg-atlas-surface p-4 space-y-2">
-                  <div className="font-semibold">Related Queries</div>
-                  <div className="flex flex-wrap gap-2">
-                    {response.relatedQueries.map((rq) => (
-                      <button
-                        key={rq}
-                        type="button"
-                        onClick={() => {
-                          setQuery(rq);
-                          void runSearch(rq);
-                        }}
-                        className="rounded-lg border border-atlas-border bg-atlas-bg px-3 py-1.5 hover:border-atlas-accent"
-                      >
-                        {rq}
-                      </button>
-                    ))}
-                  </div>
+              {/* Pagination */}
+              {response.pagination.totalPages > 1 && (
+                <div className="flex items-center justify-between pt-2">
+                  <button
+                    type="button"
+                    disabled={page <= 1}
+                    onClick={() => void runSearch(query, mode, page - 1)}
+                    className="rounded-lg border border-atlas-border px-3 py-1 disabled:opacity-40"
+                  >
+                    Previous
+                  </button>
+                  <span className="text-[11px] text-atlas-muted">
+                    Page {response.pagination.page} of {response.pagination.totalPages}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={!response.pagination.hasMore}
+                    onClick={() => void runSearch(query, mode, page + 1)}
+                    className="rounded-lg border border-atlas-border px-3 py-1 disabled:opacity-40"
+                  >
+                    Next
+                  </button>
                 </div>
               )}
             </div>
 
-            {/* Right Column: AI Cited Answer */}
+            {/* Right Column: Grounded AI Answer */}
             <div className="space-y-4">
               {response.aiAnswer && (
                 <div className="rounded-xl border border-atlas-border bg-atlas-surface p-4 space-y-3">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2 font-bold">
                       <Sparkles className="h-4 w-4 text-atlas-accent" />
-                      AI Cited Answer
+                      AI Grounded Answer
                     </div>
                     <span
                       className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
@@ -516,7 +726,7 @@ export const SearchView: React.FC = () => {
 
                   {response.aiAnswer.citations.length > 0 && (
                     <div className="space-y-1 pt-1 border-t border-atlas-border text-[11px]">
-                      <div className="font-semibold text-atlas-muted">Sources Cited</div>
+                      <div className="font-semibold text-atlas-muted">Verified Citations</div>
                       {response.aiAnswer.citations.map((cit) => (
                         <button
                           key={cit.url}

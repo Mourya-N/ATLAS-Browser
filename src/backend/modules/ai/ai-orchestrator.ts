@@ -1,6 +1,8 @@
 import Ajv from 'ajv';
 import { calculateTokenCost } from '@shared/pricing';
+import type { SelfHostedRuntimeStatus } from '@shared/types';
 import { GeminiApiError, GeminiProvider } from '@main/agent/providers/gemini-provider';
+import { SelfHostedOpenAiProvider } from '@main/agent/providers/self-hosted-provider';
 import type {
   ModelGenerateRequest,
   ModelGenerateResponse,
@@ -21,6 +23,7 @@ export class AiUnavailableError extends Error {
 export class AiOrchestrator {
   private readonly ajv = new Ajv({ allErrors: true, strict: false });
   private readonly geminiProvider: GeminiProvider;
+  private readonly selfHostedProvider: SelfHostedOpenAiProvider;
 
   constructor(
     private readonly config: BackendConfig,
@@ -31,30 +34,103 @@ export class AiOrchestrator {
       timeoutMs: 25_000,
       maxRetries: 2
     });
+    this.selfHostedProvider = new SelfHostedOpenAiProvider({
+      getEndpointUrl: () => this.config.selfHostedUrl || '',
+      getApiKey: () => this.config.selfHostedApiKey || undefined,
+      timeoutMs: 45_000,
+      maxRetries: 1
+    });
   }
 
   public isConfigured(): boolean {
     if (this.overrideProvider) return true;
+    if (this.config.aiProvider === 'self_hosted') {
+      return Boolean(this.config.selfHostedUrl);
+    }
     if (this.config.geminiApiKey) return true;
     return this.config.allowMockAi && this.config.nodeEnv !== 'production';
   }
 
   public selectModel(tier: ModelTaskTier): string {
+    if (this.config.aiProvider === 'self_hosted' || (this.config.selfHostedUrl && !this.config.geminiApiKey)) {
+      return this.config.selfHostedModel;
+    }
     if (tier === 'deep') return 'gemini-2.5-pro';
     if (tier === 'fast') return 'gemini-2.0-flash';
     return this.config.defaultAiModel || 'gemini-2.5-flash';
+  }
+
+  public async getRuntimeStatus(): Promise<SelfHostedRuntimeStatus> {
+    if (this.overrideProvider) {
+      return {
+        backendKind: 'custom_openai_compatible',
+        endpointUrl: 'injected://provider',
+        configuredModel: this.selectModel('balanced'),
+        reachable: true,
+        modelAvailable: true,
+        availableModels: [this.selectModel('balanced')],
+        latencyMs: 0,
+        supportsStreaming: true,
+        supportsTools: true,
+        supportsStructuredOutput: true,
+        statusMessage: `Test/override provider active (${this.overrideProvider.id})`
+      };
+    }
+
+    if (this.config.aiProvider === 'self_hosted' || (this.config.selfHostedUrl && !this.config.geminiApiKey)) {
+      return this.selfHostedProvider.getRuntimeStatus(this.config.selfHostedModel);
+    }
+
+    if (this.config.geminiApiKey) {
+      return {
+        backendKind: 'gemini',
+        endpointUrl: 'https://generativelanguage.googleapis.com/v1beta',
+        configuredModel: this.config.defaultAiModel,
+        reachable: true,
+        modelAvailable: true,
+        availableModels: [this.config.defaultAiModel],
+        latencyMs: 0,
+        supportsStreaming: true,
+        supportsTools: true,
+        supportsStructuredOutput: true,
+        statusMessage: 'Gemini API key configured'
+      };
+    }
+
+    return {
+      backendKind: 'unconfigured',
+      endpointUrl: '',
+      configuredModel: '',
+      reachable: false,
+      modelAvailable: false,
+      availableModels: [],
+      latencyMs: 0,
+      supportsStreaming: false,
+      supportsTools: false,
+      supportsStructuredOutput: false,
+      statusMessage: 'No AI model configured. Set ATLAS_SELF_HOSTED_URL (Ollama/vLLM/llama.cpp) or GEMINI_API_KEY.'
+    };
   }
 
   public async health(): Promise<{ configured: boolean; provider: string; healthy: boolean; error?: string }> {
     if (this.overrideProvider) {
       return { configured: true, provider: this.overrideProvider.id, healthy: true };
     }
+    if (this.config.aiProvider === 'self_hosted' || (this.config.selfHostedUrl && !this.config.geminiApiKey)) {
+      const test = await this.selfHostedProvider.testConnection(this.config.selfHostedModel);
+      return {
+        configured: Boolean(this.config.selfHostedUrl),
+        provider: 'self_hosted',
+        healthy: test.ok,
+        error: test.error
+      };
+    }
     if (!this.config.geminiApiKey) {
       return {
         configured: false,
         provider: 'unconfigured',
         healthy: false,
-        error: 'GEMINI_API_KEY is not configured'
+        error: 'Neither ATLAS_SELF_HOSTED_URL nor GEMINI_API_KEY is configured'
       };
     }
     const test = await this.geminiProvider.testConnection(this.config.defaultAiModel);
@@ -92,12 +168,15 @@ export class AiOrchestrator {
         }
       }
 
-      const cost = calculateTokenCost(
-        model,
-        resp.usage.inputTokens,
-        resp.usage.outputTokens,
-        resp.usage.fromProvider
-      );
+      const cost =
+        activeProvider.id === 'self_hosted'
+          ? { costUsd: 0, isEstimated: false }
+          : calculateTokenCost(
+              model,
+              resp.usage.inputTokens,
+              resp.usage.outputTokens,
+              resp.usage.fromProvider
+            );
 
       this.metrics.recordAiUsage({
         inputTokens: resp.usage.inputTokens,
@@ -122,8 +201,14 @@ export class AiOrchestrator {
     if (this.overrideProvider) {
       return this.overrideProvider;
     }
+    if (this.config.aiProvider === 'self_hosted' && this.config.selfHostedUrl) {
+      return this.selfHostedProvider;
+    }
     if (this.config.geminiApiKey) {
       return this.geminiProvider;
+    }
+    if (this.config.selfHostedUrl) {
+      return this.selfHostedProvider;
     }
     // Never silently fall back to mock models in production
     if (this.config.nodeEnv !== 'production' && this.config.allowMockAi) {

@@ -1,16 +1,19 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type {
+  AtlasIndexStats,
   SearchFilterOptions,
   SearchMode,
   SearchProviderHealth,
   SearchResponse,
-  SearchSuggestion
+  SearchSuggestion,
+  SelfHostedRuntimeStatus
 } from '@shared/types';
 import type { MetricsRegistry } from '../../observability/metrics';
 import type { UserDataService } from '../userdata/user-data-service';
 import type { AtlasKnowledgeSearchAdapter } from './adapters';
 import { SearchCache } from './cache';
 import { CitationAnswerPipeline, type ApprovedPageContextInput } from './citation-pipeline';
+import type { FirstPartyIndexProvider } from './first-party-index-provider';
 import type { RawSearchCandidate, SearchProvider } from './provider';
 import { QueryUnderstandingEngine } from './query-understanding';
 import { SearchRankingPipeline } from './ranking';
@@ -45,13 +48,16 @@ export class SearchOrchestrator {
     private readonly cache: SearchCache,
     private readonly userData: UserDataService,
     private readonly metrics: MetricsRegistry,
-    private readonly cacheTtlSeconds = 180
+    private readonly cacheTtlSeconds = 180,
+    private readonly firstPartyIndex?: FirstPartyIndexProvider | null,
+    private readonly getAiStatus?: () => Promise<SelfHostedRuntimeStatus>
   ) {}
 
   public async executeSearch(input: SearchExecuteInput): Promise<SearchResponse> {
     const requestId = randomUUID();
     const started = Date.now();
     const limit = Math.min(30, Math.max(1, input.filters?.limit ?? 10));
+    const page = Math.max(1, input.filters?.page ?? 1);
 
     // 1. Understand query (deterministic always available; optional LLM only if enabled)
     const understanding = await this.queryUnderstanding.understand(input.query, input.mode, false);
@@ -69,6 +75,7 @@ export class SearchOrchestrator {
         JSON.stringify({
           q: understanding.normalizedQuery,
           mode: activeMode,
+          page,
           filters: input.filters || {},
           ai: Boolean(input.filters?.includeAiAnswer)
         })
@@ -174,7 +181,8 @@ export class SearchOrchestrator {
     const ranked = this.ranking.normalizeAndRank({
       candidates: allCandidates,
       understanding,
-      filters: input.filters
+      filters: input.filters,
+      allowLocalTestUrls: Boolean(input.allowLocalhostForTest)
     });
 
     // 5. Optional reranking over retrieved candidates (strictly bounded)
@@ -186,7 +194,11 @@ export class SearchOrchestrator {
       reranked = rr.reranked;
     }
 
-    const boundedResults = finalResults.slice(0, limit);
+    const totalResults = finalResults.length;
+    const totalPages = Math.max(1, Math.ceil(totalResults / limit));
+    const safePage = Math.min(page, totalPages);
+    const offset = (safePage - 1) * limit;
+    const boundedResults = finalResults.slice(offset, offset + limit);
 
     // 6. Optional AI Answer with Verified Citations (degrades gracefully if unavailable/fails)
     const shouldGenerateAi =
@@ -230,6 +242,18 @@ export class SearchOrchestrator {
       });
     }
 
+    const indexStats: AtlasIndexStats = this.firstPartyIndex
+      ? await this.firstPartyIndex.getStats()
+      : {
+          totalDocuments: 0,
+          uniqueDomains: 0,
+          latestCrawlAt: null,
+          indexVersion: 'v1',
+          limitedCoverage: true,
+          notice: 'First-party Atlas index not attached to this search instance.'
+        };
+    const aiRuntimeStatus = this.getAiStatus ? await this.getAiStatus() : undefined;
+
     const latencyMs = Date.now() - started;
     this.metrics.recordSearch(latencyMs, false);
 
@@ -239,6 +263,13 @@ export class SearchOrchestrator {
       mode: activeMode,
       understanding,
       results: boundedResults,
+      pagination: {
+        page: safePage,
+        limit,
+        totalResults,
+        totalPages,
+        hasMore: safePage < totalPages
+      },
       totalBeforeDedup: ranked.totalBeforeDedup,
       duplicatesRemoved: ranked.duplicatesRemoved,
       suggestions,
@@ -246,6 +277,12 @@ export class SearchOrchestrator {
       aiAnswer,
       providersQueried,
       providerErrors,
+      indexStatus: {
+        indexedDocuments: indexStats.totalDocuments,
+        limitedCoverage: indexStats.limitedCoverage,
+        notice: indexStats.notice
+      },
+      aiRuntimeStatus,
       cacheHit: false,
       reranked,
       latencyMs,

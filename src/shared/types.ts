@@ -545,10 +545,13 @@ export interface AppSettings {
   voiceSpokenResponsesEnabled: boolean;
   telemetryEnabled: boolean;
   activeProfileId: string;
-  defaultProvider: 'gemini' | 'custom_openai_compatible' | 'mock';
+  defaultProvider: 'gemini' | 'self_hosted' | 'custom_openai_compatible' | 'mock';
   defaultModel: string;
   customEndpointUrl: string;
+  selfHostedEndpointUrl?: string;
+  selfHostedModel?: string;
   hasGeminiApiKey: boolean;
+  hasSelfHostedApiKey?: boolean;
   cloudModeEnabled?: boolean;
   cloudEndpointUrl?: string;
   cloudConsent?: CloudConsentSettings;
@@ -557,10 +560,12 @@ export interface AppSettings {
 }
 
 export interface ProviderStatusInfo {
-  activeProvider: 'gemini' | 'custom_openai_compatible' | 'mock';
+  activeProvider: 'gemini' | 'self_hosted' | 'custom_openai_compatible' | 'mock';
   model: string;
+  endpointUrl?: string;
   isLive: boolean;
   hasGeminiKey: boolean;
+  hasSelfHostedKey?: boolean;
   supportsVision: boolean;
   supportsTools: boolean;
   supportsStructuredOutput: boolean;

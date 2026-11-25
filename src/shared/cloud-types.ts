@@ -15,11 +15,16 @@ export type SearchIntent =
   | 'technical_docs'
   | 'personal_knowledge';
 
+export type SafeSearchLevel = 'off' | 'moderate' | 'strict';
+
 export interface SearchFilterOptions {
   domains?: string[];
   excludeDomains?: string[];
   timeRange?: 'any' | 'day' | 'week' | 'month' | 'year';
+  safeSearch?: SafeSearchLevel;
   language?: string;
+  region?: string;
+  page?: number;
   contentTypes?: Array<'web' | 'news' | 'docs' | 'knowledge' | 'tab' | 'bookmark' | 'research'>;
   includeOpenTabs?: boolean;
   includePersonalKnowledge?: boolean;
@@ -44,6 +49,12 @@ export interface SearchQueryUnderstanding {
   usedLlm: boolean;
 }
 
+export type SearchResultOrigin =
+  | 'atlas_index'
+  | 'external_provider'
+  | 'open_tab'
+  | 'personal_knowledge';
+
 export interface NormalizedSearchResult {
   id: string;
   title: string;
@@ -53,7 +64,9 @@ export interface NormalizedSearchResult {
   domain: string;
   snippet: string;
   sourceProvider: string;
+  sourceOrigin: SearchResultOrigin;
   publishedAt?: string | null;
+  crawledAt?: number | null;
   retrievedAt: number;
   contentType: 'web' | 'news' | 'docs' | 'knowledge' | 'tab' | 'bookmark' | 'research';
   language: string;
@@ -129,12 +142,35 @@ export interface SearchProviderHealth {
   rateLimitRemaining?: number | null;
 }
 
+export interface SelfHostedRuntimeStatus {
+  backendKind: 'gemini' | 'self_hosted' | 'custom_openai_compatible' | 'mock' | 'unconfigured';
+  endpointUrl: string;
+  configuredModel: string;
+  reachable: boolean;
+  modelAvailable: boolean;
+  availableModels: string[];
+  latencyMs: number;
+  supportsStreaming: boolean;
+  supportsTools: boolean;
+  supportsStructuredOutput: boolean;
+  statusMessage: string;
+}
+
+export interface SearchPaginationInfo {
+  page: number;
+  limit: number;
+  totalResults: number;
+  totalPages: number;
+  hasMore: boolean;
+}
+
 export interface SearchResponse {
   requestId: string;
   query: string;
   mode: SearchMode;
   understanding: SearchQueryUnderstanding;
   results: NormalizedSearchResult[];
+  pagination: SearchPaginationInfo;
   totalBeforeDedup: number;
   duplicatesRemoved: number;
   suggestions: SearchSuggestion[];
@@ -142,10 +178,82 @@ export interface SearchResponse {
   aiAnswer: AiCitedAnswer | null;
   providersQueried: string[];
   providerErrors: Array<{ providerId: string; error: string }>;
+  indexStatus: {
+    indexedDocuments: number;
+    limitedCoverage: boolean;
+    notice: string;
+  };
+  aiRuntimeStatus?: SelfHostedRuntimeStatus;
   cacheHit: boolean;
   reranked: boolean;
   latencyMs: number;
   sourceMode: 'cloud' | 'local_fallback' | 'hybrid';
+}
+
+export interface AtlasIndexDocument {
+  id: string;
+  url: string;
+  canonicalUrl: string;
+  title: string;
+  mainContent: string;
+  snippet: string;
+  headings: string[];
+  language: string;
+  sourceDomain: string;
+  contentType: 'web' | 'news' | 'docs';
+  contentHash: string;
+  authorityScore: number;
+  authorityMethod: string;
+  publishedAt?: string | null;
+  crawledAt: number;
+  indexVersion: string;
+  embedding: number[];
+}
+
+export interface CrawlSeedConfig {
+  seedUrls: string[];
+  allowedDomains: string[];
+  maxDepth?: number;
+  maxPages?: number;
+  perDomainDelayMs?: number;
+  respectRobotsTxt?: boolean;
+  allowLocalhostForTest?: boolean;
+}
+
+export interface CrawlQueueEntry {
+  url: string;
+  depth: number;
+}
+
+export interface CrawlCheckpoint {
+  id: string;
+  status: 'running' | 'paused' | 'completed' | 'failed';
+  seedUrls: string[];
+  allowedDomains: string[];
+  maxDepth: number;
+  maxPages: number;
+  perDomainDelayMs: number;
+  visitedUrls: string[];
+  queue: CrawlQueueEntry[];
+  discoveredCount: number;
+  indexedCount: number;
+  updatedCount: number;
+  skippedCount: number;
+  duplicateCount: number;
+  failedCount: number;
+  errorSamples: Array<{ url: string; error: string }>;
+  startedAt: number;
+  updatedAt: number;
+  completedAt?: number | null;
+}
+
+export interface AtlasIndexStats {
+  totalDocuments: number;
+  uniqueDomains: number;
+  latestCrawlAt: number | null;
+  indexVersion: string;
+  limitedCoverage: boolean;
+  notice: string;
 }
 
 export interface HybridIndexDocument {
@@ -341,6 +449,12 @@ export interface ObservabilitySnapshot {
     postgresConnected: boolean;
     redisConnected: boolean;
     mode: 'postgres' | 'in_memory';
+  };
+  crawler?: {
+    indexedDocuments: number;
+    crawlErrors: number;
+    duplicateRate: number;
+    crawlThroughputPerMin: number;
   };
 }
 

@@ -32,6 +32,8 @@ import { SkillRecorder } from '@main/skills/skill-recorder';
 import { SkillRunner } from '@main/skills/skill-runner';
 import { JobScheduler } from '@main/scheduler/job-scheduler';
 import { LocalMcpServer } from '@main/mcp/mcp-server';
+import { LocalSearchIndexService } from '@main/cloud/local-search-index';
+import { CloudClientService } from '@main/cloud/cloud-client';
 import { registerAllIpcHandlers } from '@main/ipc/register-handlers';
 import { ResearchEngine } from '@main/agent/research-engine';
 import { PageUnderstandingEngine } from '@main/agent/page-understanding';
@@ -84,6 +86,15 @@ async function waitForRunDone(orchestrator: AgentOrchestrator, agentRepo: AgentR
     await new Promise((r) => setTimeout(r, 60));
   }
   throw new Error(`Timed out waiting for run ${runId}`);
+}
+
+async function waitForCondition(predicate: () => Promise<boolean>, timeoutMs = 5000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await predicate()) return;
+    await new Promise((r) => setTimeout(r, 80));
+  }
+  throw new Error('Timed out waiting for UI condition');
 }
 
 app.enableSandbox();
@@ -185,6 +196,19 @@ app.whenReady().then(async () => {
     perception,
     orchestrator
   );
+  const localSearchIndex = new LocalSearchIndexService(db.db);
+  const cloudClient = new CloudClientService(
+    platformRepo,
+    browserRepo,
+    agentRepo,
+    tabManager,
+    perception,
+    memoryService,
+    vault,
+    auditLogger,
+    () => mockProvider,
+    localSearchIndex
+  );
 
   registerAllIpcHandlers({
     windowManager,
@@ -202,6 +226,7 @@ app.whenReady().then(async () => {
     skillRunner,
     memoryService,
     extractionEngine,
+    cloudClient,
     scheduler,
     mcpServer,
     vault,
@@ -796,6 +821,61 @@ app.whenReady().then(async () => {
     });
     assert.equal(unauth.status, 401);
     await mcpServer.stop();
+  });
+
+  await runCase('UI-SEARCH-1', 'Atlas Search UI executes local index search, displays source badges & AI answer, and opens result in Chromium tab', async () => {
+    process.env.ATLAS_ALLOW_LOCALHOST_SEARCH_TEST = 'true';
+    localSearchIndex.indexRawPageForLocalCache(
+      `${server.baseUrl}/form`,
+      'Atlas Chromium Search Target Form',
+      'Local test page indexed in SQLite FTS5 for Chromium SearchView verification.'
+    );
+    mockProvider.enqueue([
+      {
+        text: 'Found the Atlas Chromium Search Target Form in the local SQLite FTS5 index.',
+        functionCalls: [],
+        usage: { inputTokens: 40, outputTokens: 20, fromProvider: false }
+      }
+    ]);
+
+    // Open SearchView via toolbar button & submit query inside real React UI
+    await win.webContents.executeJavaScript(`
+      (() => {
+        const btn = document.querySelector('button[title="Atlas Intelligent Search"]');
+        if (!btn) throw new Error('Atlas Search button not found');
+        btn.click();
+      })()
+    `);
+    await new Promise((r) => setTimeout(r, 250));
+
+    await win.webContents.executeJavaScript(`
+      (() => {
+        const input = document.querySelector('input[placeholder*="Search Atlas Index"]');
+        if (!input) throw new Error('SearchView input not found');
+        const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+        setter.call(input, 'Chromium Search Target Form');
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        const form = input.closest('form');
+        form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      })()
+    `);
+
+    await waitForCondition(async () => {
+      const txt = await win.webContents.executeJavaScript(`document.body.innerText`);
+      return txt.includes('Atlas Chromium Search Target Form') && txt.includes('AI Grounded Answer');
+    }, 6000);
+
+    // Click "Open here" on the result and verify WebContentsView navigates cleanly
+    await win.webContents.executeJavaScript(`
+      (() => {
+        const btns = Array.from(document.querySelectorAll('button'));
+        const openBtn = btns.find((b) => b.textContent === 'Open here');
+        if (!openBtn) throw new Error('Open here button not found');
+        openBtn.click();
+      })()
+    `);
+    await waitForCondition(async () => tabManager.getTab(mainTabId)!.info.url.includes('/form'), 5000);
+    delete process.env.ATLAS_ALLOW_LOCALHOST_SEARCH_TEST;
   });
 
   const passedCount = results.filter((r) => r.passed).length;

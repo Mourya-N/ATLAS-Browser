@@ -9,7 +9,11 @@ export interface BackendConfig {
   jwtSecret: string;
   jwtAccessTtlSeconds: number;
   jwtRefreshTtlSeconds: number;
+  aiProvider: 'gemini' | 'self_hosted';
   geminiApiKey: string | null;
+  selfHostedUrl: string | null;
+  selfHostedModel: string;
+  selfHostedApiKey: string | null;
   defaultAiModel: string;
   braveSearchApiKey: string | null;
   googleCseApiKey: string | null;
@@ -59,7 +63,11 @@ export function loadBackendConfig(env: NodeJS.ProcessEnv = process.env): Backend
     jwtSecret,
     jwtAccessTtlSeconds: Number(env.ATLAS_JWT_ACCESS_TTL || 900),
     jwtRefreshTtlSeconds: Number(env.ATLAS_JWT_REFRESH_TTL || 60 * 60 * 24 * 14),
+    aiProvider: env.ATLAS_AI_PROVIDER === 'self_hosted' ? 'self_hosted' : 'gemini',
     geminiApiKey: env.GEMINI_API_KEY?.trim() || null,
+    selfHostedUrl: env.ATLAS_SELF_HOSTED_URL?.trim() || null,
+    selfHostedModel: env.ATLAS_SELF_HOSTED_MODEL?.trim() || 'qwen2.5:7b-instruct',
+    selfHostedApiKey: env.ATLAS_SELF_HOSTED_API_KEY?.trim() || null,
     defaultAiModel: env.ATLAS_AI_MODEL || 'gemini-2.5-flash',
     braveSearchApiKey: env.BRAVE_SEARCH_API_KEY?.trim() || null,
     googleCseApiKey: env.GOOGLE_CSE_API_KEY?.trim() || null,

@@ -25,9 +25,11 @@ import {
 } from '../modules/search/adapters';
 import type { SearchProvider } from '../modules/search/provider';
 import { SearchCache } from '../modules/search/cache';
-import { QueryUnderstandingEngine } from '../modules/search/query-understanding';
 import { CitationAnswerPipeline } from '../modules/search/citation-pipeline';
+import { FirstPartyIndexProvider } from '../modules/search/first-party-index-provider';
+import { QueryUnderstandingEngine } from '../modules/search/query-understanding';
 import { SearchOrchestrator } from '../modules/search/search-orchestrator';
+import { AtlasCrawler } from '../modules/crawler/atlas-crawler';
 import { WorkerService } from '../modules/worker/worker-service';
 import { createCloudApiRouter, type BackendServicesContainer } from './router';
 
@@ -85,13 +87,18 @@ export async function createBackendContainer(opts?: {
   const hybridIndex = new HybridIndexService(repo);
   const userData = new UserDataService(repo, hybridIndex);
   const knowledgeAdapter = new AtlasKnowledgeSearchAdapter(hybridIndex);
+  const firstPartyIndex = new FirstPartyIndexProvider(repo);
+  const crawler = new AtlasCrawler(repo, ssrfGuard, extractor);
 
-  const searchProviders: SearchProvider[] = opts?.searchProviders ?? [
-    new BraveSearchAdapter(config.braveSearchApiKey),
-    new GoogleCseSearchAdapter(config.googleCseApiKey, config.googleCseCx),
-    new BingSearchAdapter(config.bingSearchApiKey),
-    ...(config.allowMockSearch ? [new MockSearchProvider()] : [])
-  ];
+  const searchProviders: SearchProvider[] = opts?.searchProviders
+    ? [firstPartyIndex, ...opts.searchProviders]
+    : [
+        firstPartyIndex,
+        new BraveSearchAdapter(config.braveSearchApiKey),
+        new GoogleCseSearchAdapter(config.googleCseApiKey, config.googleCseCx),
+        new BingSearchAdapter(config.bingSearchApiKey),
+        ...(config.allowMockSearch ? [new MockSearchProvider()] : [])
+      ];
 
   const cache = new SearchCache(redis);
   const queryUnderstanding = new QueryUnderstandingEngine(ai);
@@ -104,7 +111,9 @@ export async function createBackendContainer(opts?: {
     cache,
     userData,
     metrics,
-    config.searchCacheTtlSeconds
+    config.searchCacheTtlSeconds,
+    firstPartyIndex,
+    () => ai.getRuntimeStatus()
   );
   const worker = new WorkerService(repo, extractor, hybridIndex, logger);
 
@@ -117,6 +126,8 @@ export async function createBackendContainer(opts?: {
     identity,
     ai,
     search,
+    firstPartyIndex,
+    crawler,
     extractor,
     hybridIndex,
     userData,

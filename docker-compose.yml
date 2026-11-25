@@ -51,6 +51,10 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-atlas}:${POSTGRES_PASSWORD:-atlas_dev_password}@postgres:5432/${POSTGRES_DB:-atlas_cloud}
       REDIS_URL: redis://redis:6379
       ATLAS_JWT_SECRET: ${ATLAS_JWT_SECRET:-dev-local-jwt-secret-replace-for-prod-32b}
+      ATLAS_AI_PROVIDER: ${ATLAS_AI_PROVIDER:-gemini}
+      ATLAS_SELF_HOSTED_URL: ${ATLAS_SELF_HOSTED_URL:-}
+      ATLAS_SELF_HOSTED_MODEL: ${ATLAS_SELF_HOSTED_MODEL:-qwen2.5:7b-instruct}
+      ATLAS_SELF_HOSTED_API_KEY: ${ATLAS_SELF_HOSTED_API_KEY:-}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       BRAVE_SEARCH_API_KEY: ${BRAVE_SEARCH_API_KEY:-}
       GOOGLE_CSE_API_KEY: ${GOOGLE_CSE_API_KEY:-}
@@ -85,14 +89,32 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-atlas}:${POSTGRES_PASSWORD:-atlas_dev_password}@postgres:5432/${POSTGRES_DB:-atlas_cloud}
       REDIS_URL: redis://redis:6379
       ATLAS_JWT_SECRET: ${ATLAS_JWT_SECRET:-dev-local-jwt-secret-replace-for-prod-32b}
+      ATLAS_AI_PROVIDER: ${ATLAS_AI_PROVIDER:-gemini}
+      ATLAS_SELF_HOSTED_URL: ${ATLAS_SELF_HOSTED_URL:-}
+      ATLAS_SELF_HOSTED_MODEL: ${ATLAS_SELF_HOSTED_MODEL:-qwen2.5:7b-instruct}
+      ATLAS_SELF_HOSTED_API_KEY: ${ATLAS_SELF_HOSTED_API_KEY:-}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       ATLAS_WORKER_POLL_MS: ${ATLAS_WORKER_POLL_MS:-2000}
+    networks:
+      - atlas_internal
+
+  # Optional self-hosted LLM runtime container (opt-in via: docker compose --profile local-ai up)
+  atlas-ollama:
+    image: ollama/ollama:0.5.7
+    container_name: atlas-local-llm
+    profiles: ["local-ai"]
+    restart: unless-stopped
+    volumes:
+      - atlas_ollama_models:/root/.ollama
+    ports:
+      - "127.0.0.1:11434:11434"
     networks:
       - atlas_internal
 
 volumes:
   atlas_postgres_data:
   atlas_redis_data:
+  atlas_ollama_models:
 
 networks:
   atlas_internal:

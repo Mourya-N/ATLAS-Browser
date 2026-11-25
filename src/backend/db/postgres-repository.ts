@@ -2,6 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Pool } from 'pg';
 import type {
+  AtlasIndexDocument,
+  AtlasIndexStats,
   CloudBackgroundJob,
   CloudBookmarkRecord,
   CloudConsentSettings,
@@ -9,6 +11,7 @@ import type {
   CloudNoteRecord,
   CloudProfile,
   CloudSearchHistoryRecord,
+  CrawlCheckpoint,
   HybridIndexDocument,
   HybridSearchHit,
   MemoryItem,
@@ -410,6 +413,13 @@ export class PostgresCloudRepository implements CloudRepository {
     }));
   }
 
+  public async clearSearchHistory(userId: string, profileId: string): Promise<void> {
+    await this.pool.query('DELETE FROM search_history WHERE user_id = $1 AND profile_id = $2', [
+      userId,
+      profileId
+    ]);
+  }
+
   public async saveResearchReport(userId: string, profileId: string, report: ResearchReport): Promise<void> {
     await this.pool.query(
       `INSERT INTO research_reports (id, user_id, profile_id, query, summary, report_json, created_at)
@@ -773,5 +783,163 @@ export class PostgresCloudRepository implements CloudRepository {
 
   public async deleteUserAccount(userId: string): Promise<void> {
     await this.pool.query('DELETE FROM users WHERE id = $1', [userId]);
+  }
+
+  private mapAtlasDocRow(r: Record<string, any>): AtlasIndexDocument {
+    return {
+      id: r.id,
+      url: r.url,
+      canonicalUrl: r.canonical_url,
+      title: r.title,
+      mainContent: r.main_content,
+      snippet: r.snippet,
+      headings: Array.isArray(r.headings_json) ? r.headings_json : [],
+      language: r.language,
+      sourceDomain: r.source_domain,
+      contentType: r.content_type,
+      contentHash: r.content_hash,
+      authorityScore: Number(r.authority_score),
+      authorityMethod: r.authority_method,
+      publishedAt: r.published_at ?? null,
+      crawledAt: Number(r.crawled_at),
+      indexVersion: r.index_version,
+      embedding: Array.isArray(r.embedding_json) ? r.embedding_json : []
+    };
+  }
+
+  public async upsertAtlasIndexDocument(
+    doc: AtlasIndexDocument
+  ): Promise<{ inserted: boolean; updated: boolean }> {
+    const existing = await this.getAtlasIndexDocument(doc.canonicalUrl);
+    await this.pool.query(
+      `INSERT INTO atlas_index_documents
+        (id, url, canonical_url, title, main_content, snippet, headings_json, language, source_domain, content_type, content_hash, authority_score, authority_method, published_at, crawled_at, index_version, embedding_json)
+       VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17::jsonb)
+       ON CONFLICT (canonical_url) DO UPDATE SET
+         url = EXCLUDED.url, title = EXCLUDED.title, main_content = EXCLUDED.main_content, snippet = EXCLUDED.snippet,
+         headings_json = EXCLUDED.headings_json, language = EXCLUDED.language, content_type = EXCLUDED.content_type,
+         content_hash = EXCLUDED.content_hash, authority_score = EXCLUDED.authority_score, authority_method = EXCLUDED.authority_method,
+         published_at = EXCLUDED.published_at, crawled_at = EXCLUDED.crawled_at, index_version = EXCLUDED.index_version,
+         embedding_json = EXCLUDED.embedding_json`,
+      [
+        doc.id,
+        doc.url,
+        doc.canonicalUrl,
+        doc.title,
+        doc.mainContent,
+        doc.snippet,
+        JSON.stringify(doc.headings),
+        doc.language,
+        doc.sourceDomain,
+        doc.contentType,
+        doc.contentHash,
+        doc.authorityScore,
+        doc.authorityMethod,
+        doc.publishedAt ?? null,
+        doc.crawledAt,
+        doc.indexVersion,
+        JSON.stringify(doc.embedding)
+      ]
+    );
+    if (!existing) return { inserted: true, updated: false };
+    return { inserted: false, updated: existing.contentHash !== doc.contentHash };
+  }
+
+  public async removeAtlasIndexDocument(canonicalUrl: string): Promise<boolean> {
+    const res = await this.pool.query('DELETE FROM atlas_index_documents WHERE canonical_url = $1', [
+      canonicalUrl
+    ]);
+    return (res.rowCount ?? 0) > 0;
+  }
+
+  public async getAtlasIndexDocument(canonicalUrl: string): Promise<AtlasIndexDocument | null> {
+    const res = await this.pool.query(
+      'SELECT * FROM atlas_index_documents WHERE canonical_url = $1 LIMIT 1',
+      [canonicalUrl]
+    );
+    return res.rows[0] ? this.mapAtlasDocRow(res.rows[0]) : null;
+  }
+
+  public async findAtlasDocumentByContentHash(contentHash: string): Promise<AtlasIndexDocument | null> {
+    const res = await this.pool.query(
+      'SELECT * FROM atlas_index_documents WHERE content_hash = $1 LIMIT 1',
+      [contentHash]
+    );
+    return res.rows[0] ? this.mapAtlasDocRow(res.rows[0]) : null;
+  }
+
+  public async searchAtlasIndex(params: {
+    query: string;
+    queryEmbedding: number[];
+    domains?: string[];
+    limit?: number;
+  }): Promise<Array<{ document: AtlasIndexDocument; lexicalScore: number; semanticScore: number }>> {
+    const domains = params.domains && params.domains.length > 0 ? params.domains.map((d) => d.toLowerCase()) : null;
+    const res = await this.pool.query(
+      `SELECT *, ts_rank_cd(tsv, plainto_tsquery('english', $1)) AS ts_rank
+       FROM atlas_index_documents
+       WHERE ($2::text[] IS NULL OR source_domain = ANY($2::text[]))
+       ORDER BY ts_rank DESC, crawled_at DESC
+       LIMIT 100`,
+      [params.query, domains]
+    );
+
+    return res.rows
+      .map((r) => {
+        const doc = this.mapAtlasDocRow(r);
+        const lexicalScore = Math.min(1, Number(r.ts_rank || 0));
+        const semanticScore = cosineSimilarity(params.queryEmbedding, doc.embedding);
+        return { document: doc, lexicalScore, semanticScore };
+      })
+      .filter((x) => x.lexicalScore > 0.05 || x.semanticScore > 0.45)
+      .sort((a, b) => b.lexicalScore * 0.6 + b.semanticScore * 0.4 - (a.lexicalScore * 0.6 + a.semanticScore * 0.4))
+      .slice(0, params.limit ?? 20);
+  }
+
+  public async getAtlasIndexStats(): Promise<AtlasIndexStats> {
+    const res = await this.pool.query<{
+      total: string;
+      domains: string;
+      latest: string | null;
+    }>('SELECT COUNT(*)::text AS total, COUNT(DISTINCT source_domain)::text AS domains, MAX(crawled_at)::text AS latest FROM atlas_index_documents');
+    const row = res.rows[0];
+    const total = Number(row?.total ?? 0);
+    const uniqueDomains = Number(row?.domains ?? 0);
+    const latestCrawlAt = row?.latest ? Number(row.latest) : null;
+    const limitedCoverage = total < 50;
+    return {
+      totalDocuments: total,
+      uniqueDomains,
+      latestCrawlAt,
+      indexVersion: 'v1',
+      limitedCoverage,
+      notice: limitedCoverage
+        ? `Atlas Index currently contains ${total} crawled document(s) across ${uniqueDomains} domain(s) (controlled seed scope).`
+        : `Atlas Index serving ${total} documents across ${uniqueDomains} domains.`
+    };
+  }
+
+  public async saveCrawlCheckpoint(cp: CrawlCheckpoint): Promise<void> {
+    await this.pool.query(
+      `INSERT INTO crawl_checkpoints (id, status, state_json, started_at, updated_at, completed_at)
+       VALUES ($1,$2,$3::jsonb,$4,$5,$6)
+       ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status, state_json = EXCLUDED.state_json, updated_at = EXCLUDED.updated_at, completed_at = EXCLUDED.completed_at`,
+      [cp.id, cp.status, JSON.stringify(cp), cp.startedAt, cp.updatedAt, cp.completedAt ?? null]
+    );
+  }
+
+  public async getCrawlCheckpoint(id: string): Promise<CrawlCheckpoint | null> {
+    const res = await this.pool.query('SELECT state_json FROM crawl_checkpoints WHERE id = $1 LIMIT 1', [
+      id
+    ]);
+    return res.rows[0] ? (res.rows[0].state_json as CrawlCheckpoint) : null;
+  }
+
+  public async listCrawlCheckpoints(limit = 20): Promise<CrawlCheckpoint[]> {
+    const res = await this.pool.query(
+      'SELECT state_json FROM crawl_checkpoints ORDER BY updated_at DESC LIMIT $1',
+      [limit]
+    );
+    return res.rows.map((r) => r.state_json as CrawlCheckpoint);
   }
 }

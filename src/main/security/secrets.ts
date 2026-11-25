@@ -159,7 +159,13 @@ export class SecretVault {
   }
 
   public getCustomApiKey(): string | undefined {
-    return this.load().customApiKey;
+    return this.load().customApiKey || process.env.ATLAS_SELF_HOSTED_API_KEY || undefined;
+  }
+
+  public clearCustomApiKey(): void {
+    const data = this.load();
+    delete data.customApiKey;
+    this.save(data);
   }
 
   public getOrCreateMcpToken(): string {

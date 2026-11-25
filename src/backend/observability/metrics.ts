@@ -68,6 +68,7 @@ export class MetricsRegistry {
     providers: SearchProviderHealth[];
     worker: ObservabilitySnapshot['worker'];
     storage: ObservabilitySnapshot['storage'];
+    crawler?: ObservabilitySnapshot['crawler'];
   }): ObservabilitySnapshot {
     const providerErrorsObj: Record<string, number> = {};
     for (const [k, v] of this.providerErrors.entries()) {
@@ -99,7 +100,8 @@ export class MetricsRegistry {
         failedCalls: this.aiFailedCalls
       },
       worker: extras.worker,
-      storage: extras.storage
+      storage: extras.storage,
+      crawler: extras.crawler
     };
   }
 

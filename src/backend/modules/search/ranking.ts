@@ -3,7 +3,8 @@ import net from 'node:net';
 import type {
   NormalizedSearchResult,
   SearchFilterOptions,
-  SearchQueryUnderstanding
+  SearchQueryUnderstanding,
+  SearchResultOrigin
 } from '@shared/types';
 import { computeLocalEmbedding, cosineSimilarity } from '@main/memory/memory-service';
 import { isPrivateOrReservedIp } from '../../security/ssrf-guard';
@@ -44,7 +45,21 @@ function tokenize(text: string): string[] {
     .filter((w) => w.length >= 2);
 }
 
-export function sanitizeAndCanonicalizeUrl(rawUrl: string): {
+export function classifyResultOrigin(sourceProvider: string): SearchResultOrigin {
+  if (sourceProvider === 'atlas_first_party_index') return 'atlas_index';
+  if (sourceProvider === 'open_tabs') return 'open_tab';
+  if (
+    sourceProvider === 'atlas_knowledge' ||
+    sourceProvider === 'local_bookmarks' ||
+    sourceProvider === 'local_memory' ||
+    sourceProvider === 'local_research'
+  ) {
+    return 'personal_knowledge';
+  }
+  return 'external_provider';
+}
+
+export function sanitizeAndCanonicalizeUrl(rawUrl: string, allowLocalTestUrls = false): {
   valid: boolean;
   url: string;
   canonicalUrl: string;
@@ -66,13 +81,15 @@ export function sanitizeAndCanonicalizeUrl(rawUrl: string): {
       return { valid: false, url: rawUrl, canonicalUrl: '', displayUrl: '', domain: '' };
     }
     const host = parsed.hostname.toLowerCase();
+    const isLocalTestHost = allowLocalTestUrls && (host === '127.0.0.1' || host === 'localhost');
     if (
       !host ||
-      host === 'localhost' ||
-      host.endsWith('.localhost') ||
-      host.endsWith('.internal') ||
-      host === 'metadata.goog' ||
-      (net.isIP(host) !== 0 && isPrivateOrReservedIp(host))
+      (!isLocalTestHost &&
+        (host === 'localhost' ||
+          host.endsWith('.localhost') ||
+          host.endsWith('.internal') ||
+          host === 'metadata.goog' ||
+          (net.isIP(host) !== 0 && isPrivateOrReservedIp(host))))
     ) {
       return { valid: false, url: rawUrl, canonicalUrl: '', displayUrl: '', domain: '' };
     }
@@ -114,6 +131,7 @@ export class SearchRankingPipeline {
     candidates: RawSearchCandidate[];
     understanding: SearchQueryUnderstanding;
     filters?: SearchFilterOptions;
+    allowLocalTestUrls?: boolean;
   }): {
     results: NormalizedSearchResult[];
     totalBeforeDedup: number;
@@ -129,7 +147,7 @@ export class SearchRankingPipeline {
     // 1. Validate URLs & apply user filters
     const validCandidates: NormalizedSearchResult[] = [];
     for (const raw of params.candidates) {
-      const check = sanitizeAndCanonicalizeUrl(raw.url);
+      const check = sanitizeAndCanonicalizeUrl(raw.url, Boolean(params.allowLocalTestUrls));
       if (!check.valid) continue;
 
       if (params.filters?.domains && params.filters.domains.length > 0) {
@@ -219,6 +237,7 @@ export class SearchRankingPipeline {
         domain: check.domain,
         snippet,
         sourceProvider: raw.sourceProvider,
+        sourceOrigin: classifyResultOrigin(raw.sourceProvider),
         publishedAt: raw.publishedAt ?? null,
         retrievedAt: now,
         contentType: ct,

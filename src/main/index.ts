@@ -25,8 +25,10 @@ import { CDPManager } from './cdp/cdp-manager';
 import { ElementResolver } from './cdp/element-resolver';
 import { PerceptionEngine } from './cdp/perception';
 import { GeminiProvider } from './agent/providers/gemini-provider';
+import { SelfHostedOpenAiProvider } from './agent/providers/self-hosted-provider';
 import { MockModelProvider } from './agent/providers/mock-provider';
 import type { ModelProvider } from './agent/providers/model-provider';
+import { LocalSearchIndexService } from './cloud/local-search-index';
 import { ToolRegistry } from './agent/tool-registry';
 import { registerAllBrowserTools } from './agent/tools/browser-tools';
 import { CostTracker } from './agent/cost-tracker';
@@ -162,11 +164,20 @@ app.whenReady().then(async () => {
   registerAllBrowserTools(toolRegistry);
 
   const geminiProvider = new GeminiProvider(() => vault.getGeminiApiKey());
+  const selfHostedProvider = new SelfHostedOpenAiProvider({
+    getEndpointUrl: () => platformRepo.getSetting<string>('agent.selfHostedEndpointUrl', 'http://127.0.0.1:11434/v1'),
+    getApiKey: () => vault.getCustomApiKey()
+  });
   const mockProvider = new MockModelProvider();
   const getProvider = (): ModelProvider => {
-    // Never silently fall back from Gemini to Mock when Gemini is selected
-    const selected = platformRepo.getSetting<'gemini' | 'mock'>('agent.defaultProvider', 'gemini');
-    return selected === 'mock' ? mockProvider : geminiProvider;
+    // Never silently fall back from Gemini/Self-Hosted to Mock when selected
+    const selected = platformRepo.getSetting<'gemini' | 'self_hosted' | 'custom_openai_compatible' | 'mock'>(
+      'agent.defaultProvider',
+      'gemini'
+    );
+    if (selected === 'mock') return mockProvider;
+    if (selected === 'self_hosted' || selected === 'custom_openai_compatible') return selfHostedProvider;
+    return geminiProvider;
   };
 
   const costTracker = new CostTracker(agentRepo);
@@ -237,6 +248,7 @@ app.whenReady().then(async () => {
     await mcpServer.start().catch((err) => console.error('[MCP] Failed to auto-start:', err));
   }
 
+  const localSearchIndex = new LocalSearchIndexService(db.db);
   const cloudClient = new CloudClientService(
     platformRepo,
     browserRepo,
@@ -246,7 +258,9 @@ app.whenReady().then(async () => {
     memoryService,
     vault,
     auditLogger,
-    getProvider
+    getProvider,
+    localSearchIndex,
+    selfHostedProvider
   );
 
   registerAllIpcHandlers({
@@ -270,6 +284,7 @@ app.whenReady().then(async () => {
     crossTab,
     proactiveAssistant,
     geminiProvider,
+    selfHostedProvider,
     cloudClient,
     scheduler,
     mcpServer,

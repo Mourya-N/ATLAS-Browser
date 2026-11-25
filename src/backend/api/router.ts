@@ -13,6 +13,8 @@ import type { AiOrchestrator } from '../modules/ai/ai-orchestrator';
 import type { HybridIndexService } from '../modules/knowledge/hybrid-index-service';
 import type { ResearchExtractorService } from '../modules/research/research-extractor';
 import type { SearchOrchestrator } from '../modules/search/search-orchestrator';
+import type { FirstPartyIndexProvider } from '../modules/search/first-party-index-provider';
+import type { AtlasCrawler } from '../modules/crawler/atlas-crawler';
 import { ConsentRequiredError, type UserDataService } from '../modules/userdata/user-data-service';
 import type { WorkerService } from '../modules/worker/worker-service';
 
@@ -25,6 +27,8 @@ export interface BackendServicesContainer {
   identity: IdentityService;
   ai: AiOrchestrator;
   search: SearchOrchestrator;
+  firstPartyIndex: FirstPartyIndexProvider;
+  crawler: AtlasCrawler;
   extractor: ResearchExtractorService;
   hybridIndex: HybridIndexService;
   userData: UserDataService;
@@ -71,8 +75,22 @@ const JobEnqueueSchema = z.object({
 });
 
 export function createCloudApiRouter(services: BackendServicesContainer) {
-  const { config, repo, logger, metrics, rateLimiter, identity, ai, search, extractor, hybridIndex, userData, worker } =
-    services;
+  const {
+    config,
+    repo,
+    logger,
+    metrics,
+    rateLimiter,
+    identity,
+    ai,
+    search,
+    firstPartyIndex,
+    crawler,
+    extractor,
+    hybridIndex,
+    userData,
+    worker
+  } = services;
 
   async function readJsonBody(req: http.IncomingMessage, maxBytes = 1024 * 1024): Promise<unknown> {
     const chunks: Buffer[] = [];
@@ -160,10 +178,12 @@ export function createCloudApiRouter(services: BackendServicesContainer) {
         return;
       }
 
-      // Health & Observability
+      // Health, AI Runtime Status & Observability
       if (method === 'GET' && (pathname === '/health' || pathname === '/api/v1/health')) {
         const dbOk = await repo.ping();
         const providers = await search.getProviderHealth();
+        const aiRuntime = await ai.getRuntimeStatus();
+        const indexStats = await firstPartyIndex.getStats();
         sendJson(
           res,
           dbOk ? 200 : 503,
@@ -173,10 +193,55 @@ export function createCloudApiRouter(services: BackendServicesContainer) {
             version: 'v1',
             storageMode: repo.mode,
             aiConfigured: ai.isConfigured(),
+            aiRuntime,
+            indexStats,
             providers
           },
           requestId
         );
+        return;
+      }
+
+      if (method === 'GET' && pathname === '/api/v1/ai/status') {
+        const runtime = await ai.getRuntimeStatus();
+        sendJson(res, 200, runtime, requestId);
+        return;
+      }
+
+      if (method === 'GET' && pathname === '/api/v1/index/stats') {
+        const stats = await firstPartyIndex.getStats();
+        const checkpoints = await repo.listCrawlCheckpoints(5);
+        sendJson(res, 200, { stats, recentCrawls: checkpoints }, requestId);
+        return;
+      }
+
+      if (method === 'POST' && pathname === '/api/v1/index/crawl') {
+        requireAuth(req);
+        const body = z
+          .object({
+            seedUrls: z.array(z.string().url().max(4096)).min(1).max(20),
+            allowedDomains: z.array(z.string().min(1).max(255)).min(1).max(20),
+            maxDepth: z.number().int().min(0).max(4).optional(),
+            maxPages: z.number().int().min(1).max(200).optional(),
+            perDomainDelayMs: z.number().int().min(0).max(5000).optional(),
+            respectRobotsTxt: z.boolean().optional(),
+            allowLocalhostForTest: z.boolean().optional()
+          })
+          .parse(await readJsonBody(req));
+
+        const cp = await crawler.startCrawl({
+          ...body,
+          allowLocalhostForTest: config.nodeEnv !== 'production' ? body.allowLocalhostForTest : false
+        });
+        sendJson(res, 200, { checkpoint: cp }, requestId);
+        return;
+      }
+
+      if (method === 'DELETE' && pathname === '/api/v1/index/documents') {
+        requireAuth(req);
+        const body = z.object({ canonicalUrl: z.string().min(1).max(4096) }).parse(await readJsonBody(req));
+        const removed = await firstPartyIndex.removeDocument(body.canonicalUrl);
+        sendJson(res, 200, { removed }, requestId);
         return;
       }
 
@@ -283,7 +348,49 @@ export function createCloudApiRouter(services: BackendServicesContainer) {
         return;
       }
 
-      // Search Orchestration Routes (public search allowed; personal knowledge requires JWT)
+      // Search Orchestration Routes: GET /api/v1/search?q=... & POST /api/v1/search
+      if (method === 'GET' && pathname === '/api/v1/search') {
+        const q = (url.searchParams.get('q') || '').trim();
+        if (!q) {
+          sendJson(res, 400, { error: 'Query parameter "q" is required', requestId }, requestId);
+          return;
+        }
+        const category = url.searchParams.get('category') || url.searchParams.get('mode') || undefined;
+        const page = Number(url.searchParams.get('page') || 1);
+        const limit = Number(url.searchParams.get('limit') || 10);
+        const safeSearchRaw = url.searchParams.get('safeSearch') || 'moderate';
+        const freshnessRaw = url.searchParams.get('freshness') || 'any';
+        const lang = url.searchParams.get('lang') || undefined;
+        const region = url.searchParams.get('region') || undefined;
+        const includeAiAnswer = url.searchParams.get('ai') !== 'false';
+
+        const validated = SearchExecuteSchema.parse({
+          query: q,
+          mode: category,
+          filters: {
+            page: Number.isFinite(page) ? page : 1,
+            limit: Number.isFinite(limit) ? limit : 10,
+            safeSearch: safeSearchRaw,
+            timeRange: freshnessRaw,
+            language: lang,
+            region,
+            includeAiAnswer
+          }
+        });
+        const claims = identity.verifyAccessToken(req.headers.authorization);
+        const result = await search.executeSearch({
+          query: validated.query,
+          mode: validated.mode,
+          filters: validated.filters,
+          userId: claims?.sub ?? null,
+          profileId: claims?.profileId ?? null,
+          allowLocalhostForTest:
+            config.nodeEnv !== 'production' && url.searchParams.get('allowLocalhost') === 'true'
+        });
+        sendJson(res, 200, result, requestId);
+        return;
+      }
+
       if (method === 'POST' && pathname === '/api/v1/search') {
         const raw = await readJsonBody(req);
         const parsed = SearchExecuteSchema.extend({
@@ -385,6 +492,13 @@ export function createCloudApiRouter(services: BackendServicesContainer) {
         const claims = requireAuth(req);
         const history = await userData.listSearchHistory(claims.sub, claims.profileId);
         sendJson(res, 200, { history }, requestId);
+        return;
+      }
+
+      if (method === 'DELETE' && pathname === '/api/v1/userdata/search-history') {
+        const claims = requireAuth(req);
+        await userData.clearSearchHistory(claims.sub, claims.profileId);
+        sendJson(res, 200, { cleared: true }, requestId);
         return;
       }
 

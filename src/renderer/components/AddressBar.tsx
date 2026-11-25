@@ -79,6 +79,18 @@ export const AddressBar: React.FC = () => {
     if (!activeTab) return;
     setSuggestions([]);
     setFocused(false);
+    const trimmed = target.trim();
+    if (trimmed.toLowerCase().startsWith('atlas://search')) {
+      try {
+        const parsed = new URL(trimmed);
+        const q = parsed.searchParams.get('q') || '';
+        openAtlasSearch(q);
+        return;
+      } catch {
+        openAtlasSearch('');
+        return;
+      }
+    }
     setOverlayView(null);
     await window.atlas.navigate(activeTab.id, target);
   };

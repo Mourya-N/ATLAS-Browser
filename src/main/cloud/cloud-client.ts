@@ -1,14 +1,19 @@
 import { randomUUID } from 'node:crypto';
 import type {
   AiCitedAnswer,
+  AtlasIndexStats,
   CloudAuthSession,
   CloudConnectionStatus,
   CloudConsentSettings,
   CloudNoteRecord,
+  CloudSearchHistoryRecord,
+  CrawlCheckpoint,
+  CrawlSeedConfig,
   SearchFilterOptions,
   SearchMode,
   SearchResponse,
-  SearchSuggestion
+  SearchSuggestion,
+  SelfHostedRuntimeStatus
 } from '@shared/types';
 import { DEFAULT_CLOUD_CONSENT } from '@shared/types';
 import type { AgentRepository } from '@main/db/repositories/agent-repo';
@@ -20,6 +25,8 @@ import type { MemoryService } from '@main/memory/memory-service';
 import type { SecretVault } from '@main/security/secrets';
 import type { AuditLogger } from '@main/security/audit-logger';
 import type { ModelProvider } from '@main/agent/providers/model-provider';
+import type { SelfHostedOpenAiProvider } from '@main/agent/providers/self-hosted-provider';
+import type { LocalSearchIndexService } from './local-search-index';
 import { QueryUnderstandingEngine } from '../../backend/modules/search/query-understanding';
 import { SearchRankingPipeline } from '../../backend/modules/search/ranking';
 import type { RawSearchCandidate } from '../../backend/modules/search/provider';
@@ -43,7 +50,9 @@ export class CloudClientService {
     private readonly memoryService: MemoryService,
     private readonly vault: SecretVault,
     private readonly auditLogger: AuditLogger,
-    private readonly getLocalModelProvider: () => ModelProvider
+    private readonly getLocalModelProvider: () => ModelProvider,
+    private readonly localIndex?: LocalSearchIndexService,
+    private readonly selfHostedProvider?: SelfHostedOpenAiProvider
   ) {}
 
   public isCloudEnabled(): boolean {
@@ -330,8 +339,12 @@ export class CloudClientService {
       }
     }
 
-    // Collect local desktop knowledge (bookmarks, memory, research)
+    // Collect local desktop knowledge (first-party FTS5 index, bookmarks, memory, research)
     const localCandidates: RawSearchCandidate[] = [];
+    if (this.localIndex && !['current_page', 'cross_tab'].includes(params.mode || '')) {
+      const ftsHits = this.localIndex.searchLocalIndex(params.query, 10);
+      localCandidates.push(...ftsHits);
+    }
     const queryTokens = params.query
       .toLowerCase()
       .replace(/[^a-z0-9\s]/g, ' ')
@@ -425,7 +438,12 @@ export class CloudClientService {
             ...cloudResp,
             results: merged.results.slice(0, params.filters?.limit ?? 15),
             providersQueried: Array.from(
-              new Set([...cloudResp.providersQueried, 'local_bookmarks', 'local_memory'])
+              new Set([
+                ...cloudResp.providersQueried,
+                ...(this.localIndex ? ['atlas_first_party_index'] : []),
+                'local_bookmarks',
+                'local_memory'
+              ])
             ),
             sourceMode: 'hybrid',
             latencyMs: Date.now() - started
@@ -451,13 +469,19 @@ export class CloudClientService {
       });
     }
 
+    const limit = Math.min(30, Math.max(1, params.filters?.limit ?? 15));
+    const page = Math.max(1, params.filters?.page ?? 1);
     const ranked = this.ranking.normalizeAndRank({
       candidates: localCandidates,
       understanding,
-      filters: params.filters
+      filters: params.filters,
+      allowLocalTestUrls: process.env.ATLAS_ALLOW_LOCALHOST_SEARCH_TEST === 'true'
     });
     const reranked = await this.ranking.rerankCandidates(understanding.originalQuery, ranked.results);
-    const results = reranked.results.slice(0, params.filters?.limit ?? 15);
+    const totalResults = reranked.results.length;
+    const totalPages = Math.max(1, Math.ceil(totalResults / limit));
+    const safePage = Math.min(page, totalPages);
+    const results = reranked.results.slice((safePage - 1) * limit, safePage * limit);
 
     let aiAnswer: AiCitedAnswer | null = null;
     if (params.filters?.includeAiAnswer !== false && results.length > 0) {
@@ -468,12 +492,38 @@ export class CloudClientService {
       .filter((q) => q !== params.query)
       .map((q) => ({ text: q, kind: 'refinement' }));
 
+    const indexStats: AtlasIndexStats = this.localIndex
+      ? this.localIndex.getStats()
+      : {
+          totalDocuments: 0,
+          uniqueDomains: 0,
+          latestCrawlAt: null,
+          indexVersion: 'v1',
+          limitedCoverage: true,
+          notice: 'Local Atlas Index empty.'
+        };
+
+    // Record local search history only if no active window is exclusively private
+    const anyActivePrivate = this.tabManager.getAllTabs().every((t) => t.isPrivate) && this.tabManager.getAllTabs().length > 0;
+    if (this.localIndex && !anyActivePrivate) {
+      this.localIndex.recordSearchHistory(params.query, activeMode, results.length, false);
+    }
+
+    const aiRuntimeStatus = await this.getLocalRuntimeStatus();
+
     return {
       requestId: randomUUID(),
       query: params.query,
       mode: activeMode,
       understanding,
       results,
+      pagination: {
+        page: safePage,
+        limit,
+        totalResults,
+        totalPages,
+        hasMore: safePage < totalPages
+      },
       totalBeforeDedup: ranked.totalBeforeDedup,
       duplicatesRemoved: ranked.duplicatesRemoved,
       suggestions,
@@ -482,13 +532,113 @@ export class CloudClientService {
         `${understanding.normalizedQuery} comparison`
       ],
       aiAnswer,
-      providersQueried: ['local_bookmarks', 'local_memory', 'local_research', 'open_tabs'],
+      providersQueried: [
+        ...(this.localIndex ? ['atlas_first_party_index'] : []),
+        'local_bookmarks',
+        'local_memory',
+        'local_research',
+        'open_tabs'
+      ],
       providerErrors: [],
+      indexStatus: {
+        indexedDocuments: indexStats.totalDocuments,
+        limitedCoverage: indexStats.limitedCoverage,
+        notice: indexStats.notice
+      },
+      aiRuntimeStatus,
       cacheHit: false,
       reranked: reranked.reranked,
       latencyMs: Date.now() - started,
       sourceMode: 'local_fallback'
     };
+  }
+
+  public async getLocalRuntimeStatus(): Promise<SelfHostedRuntimeStatus> {
+    const provider = this.platformRepo.getSetting<'gemini' | 'self_hosted' | 'custom_openai_compatible' | 'mock'>(
+      'agent.defaultProvider',
+      'gemini'
+    );
+    const model =
+      provider === 'self_hosted' || provider === 'custom_openai_compatible'
+        ? this.platformRepo.getSetting<string>('agent.selfHostedModel', 'qwen2.5:7b-instruct')
+        : this.platformRepo.getSetting<string>('agent.defaultModel', 'gemini-2.5-flash');
+
+    if ((provider === 'self_hosted' || provider === 'custom_openai_compatible') && this.selfHostedProvider) {
+      return this.selfHostedProvider.getRuntimeStatus(model);
+    }
+
+    if (provider === 'gemini') {
+      const hasKey = Boolean(this.vault.getGeminiApiKey());
+      return {
+        backendKind: 'gemini',
+        endpointUrl: 'https://generativelanguage.googleapis.com/v1beta',
+        configuredModel: model,
+        reachable: hasKey,
+        modelAvailable: hasKey,
+        availableModels: hasKey ? [model] : [],
+        latencyMs: 0,
+        supportsStreaming: true,
+        supportsTools: true,
+        supportsStructuredOutput: true,
+        statusMessage: hasKey ? 'Gemini API configured' : 'Gemini selected but GEMINI_API_KEY is not set'
+      };
+    }
+
+    return {
+      backendKind: 'mock',
+      endpointUrl: '',
+      configuredModel: 'mock-deterministic',
+      reachable: true,
+      modelAvailable: true,
+      availableModels: ['mock-deterministic'],
+      latencyMs: 0,
+      supportsStreaming: true,
+      supportsTools: true,
+      supportsStructuredOutput: true,
+      statusMessage: 'Deterministic Mock provider active (dev/test only)'
+    };
+  }
+
+  public async listSearchHistory(): Promise<CloudSearchHistoryRecord[]> {
+    return this.localIndex ? this.localIndex.listSearchHistory(30) : [];
+  }
+
+  public async clearSearchHistory(): Promise<void> {
+    this.localIndex?.clearSearchHistory();
+    if (this.isCloudEnabled() && this.vault.getCloudTokens().accessToken) {
+      await this.authorizedFetch('/api/v1/userdata/search-history', { method: 'DELETE' }).catch(() => undefined);
+    }
+  }
+
+  public async getIndexStats(): Promise<AtlasIndexStats> {
+    if (this.isCloudEnabled() && this.getConsent().allowCloudSearch) {
+      try {
+        const res = await fetch(`${this.getEndpointUrl()}/api/v1/index/stats`);
+        if (res.ok) {
+          const data = (await res.json()) as { stats?: AtlasIndexStats };
+          if (data.stats) return data.stats;
+        }
+      } catch {
+        // Fallback to local index stats
+      }
+    }
+    return this.localIndex
+      ? this.localIndex.getStats()
+      : {
+          totalDocuments: 0,
+          uniqueDomains: 0,
+          latestCrawlAt: null,
+          indexVersion: 'v1',
+          limitedCoverage: true,
+          notice: 'Local Atlas Index empty.'
+        };
+  }
+
+  public async crawlIndexSeeds(config: CrawlSeedConfig): Promise<CrawlCheckpoint> {
+    if (!this.localIndex) {
+      throw new Error('Local search index unavailable');
+    }
+    return this.localIndex.crawlSeeds(config);
   }
 
   private async buildLocalAiSummary(
@@ -537,7 +687,11 @@ export class CloudClientService {
       .join('\n\n');
 
     try {
-      const model = this.platformRepo.getSetting<string>('agent.defaultModel', 'gemini-2.5-flash');
+      const configuredProvider = this.platformRepo.getSetting<string>('agent.defaultProvider', 'gemini');
+      const model =
+        configuredProvider === 'self_hosted' || configuredProvider === 'custom_openai_compatible'
+          ? this.platformRepo.getSetting<string>('agent.selfHostedModel', 'qwen2.5:7b-instruct')
+          : this.platformRepo.getSetting<string>('agent.defaultModel', 'gemini-2.5-flash');
       const resp = await provider.generate({
         model,
         systemInstruction:

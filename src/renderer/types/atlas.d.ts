@@ -5,15 +5,19 @@ import type {
   AgentMode,
   AgentRun,
   AppSettings,
+  AtlasIndexStats,
   AuditEvent,
   BookmarkEntry,
   BookmarkFolder,
   CloudConnectionStatus,
   CloudConsentSettings,
   CloudNoteRecord,
+  CloudSearchHistoryRecord,
   ConfirmationRequest,
   ConfirmationResponse,
   CostSummary,
+  CrawlCheckpoint,
+  CrawlSeedConfig,
   CrossTabAnalysis,
   DomainPermissionMode,
   DomainRule,
@@ -37,6 +41,7 @@ import type {
   SearchFilterOptions,
   SearchMode,
   SearchResponse,
+  SelfHostedRuntimeStatus,
   Skill,
   SkillExecution,
   TabGroup,
@@ -181,10 +186,11 @@ export interface AtlasBridge {
 
   getSettings: () => Promise<AppSettings>;
   updateSettings: (patch: Partial<AppSettings>) => Promise<AppSettings>;
-  setApiKey: (provider: 'gemini' | 'custom_openai_compatible', apiKey: string) => Promise<AppSettings>;
+  setApiKey: (provider: 'gemini' | 'self_hosted' | 'custom_openai_compatible', apiKey: string) => Promise<AppSettings>;
   clearApiKey: () => Promise<AppSettings>;
   getProviderStatus: () => Promise<ProviderStatusInfo>;
   testProvider: (model?: string) => Promise<ProviderTestResult>;
+  discoverSelfHostedModels: () => Promise<SelfHostedRuntimeStatus>;
 
   listInterruptedRuns: () => Promise<Array<{ run: AgentRun; checkpoint: TaskCheckpoint }>>;
   resumeCheckpoint: (runId: string) => Promise<AgentRun | null>;
@@ -223,6 +229,10 @@ export interface AtlasBridge {
     query: string,
     sources: Array<{ url: string; title: string; snippet?: string }>
   ) => Promise<ResearchReport>;
+  listSearchHistory: () => Promise<CloudSearchHistoryRecord[]>;
+  clearSearchHistory: () => Promise<boolean>;
+  getIndexStats: () => Promise<AtlasIndexStats>;
+  crawlIndexSeeds: (config: CrawlSeedConfig) => Promise<CrawlCheckpoint>;
   getCloudStatus: () => Promise<CloudConnectionStatus>;
   cloudRegister: (payload: {
     email: string;

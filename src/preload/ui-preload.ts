@@ -185,11 +185,12 @@ const atlasApi = {
 
   getSettings: () => invoke<AppSettings>(IPC_CHANNELS.SETTINGS_GET),
   updateSettings: (patch: Partial<AppSettings>) => invoke<AppSettings>(IPC_CHANNELS.SETTINGS_UPDATE, patch),
-  setApiKey: (provider: 'gemini' | 'custom_openai_compatible', apiKey: string) =>
+  setApiKey: (provider: 'gemini' | 'self_hosted' | 'custom_openai_compatible', apiKey: string) =>
     invoke(IPC_CHANNELS.SETTINGS_SET_API_KEY, { provider, apiKey }),
   clearApiKey: () => invoke(IPC_CHANNELS.SETTINGS_CLEAR_API_KEY),
   getProviderStatus: () => invoke(IPC_CHANNELS.SETTINGS_PROVIDER_STATUS),
   testProvider: (model?: string) => invoke(IPC_CHANNELS.SETTINGS_TEST_PROVIDER, { model }),
+  discoverSelfHostedModels: () => invoke(IPC_CHANNELS.SETTINGS_DISCOVER_MODELS),
 
   // Advanced Intelligence
   listInterruptedRuns: () => invoke(IPC_CHANNELS.AGENT_LIST_INTERRUPTED),
@@ -221,6 +222,15 @@ const atlasApi = {
     query: string,
     sources: Array<{ url: string; title: string; snippet?: string }>
   ) => invoke(IPC_CHANNELS.SEARCH_SAVE_TO_RESEARCH, { query, sources }),
+  listSearchHistory: () => invoke(IPC_CHANNELS.SEARCH_HISTORY_LIST),
+  clearSearchHistory: () => invoke(IPC_CHANNELS.SEARCH_HISTORY_CLEAR),
+  getIndexStats: () => invoke(IPC_CHANNELS.INDEX_STATS),
+  crawlIndexSeeds: (config: {
+    seedUrls: string[];
+    allowedDomains: string[];
+    maxDepth?: number;
+    maxPages?: number;
+  }) => invoke(IPC_CHANNELS.INDEX_CRAWL, config),
   getCloudStatus: () => invoke(IPC_CHANNELS.CLOUD_STATUS),
   cloudRegister: (payload: { email: string; password: string; displayName?: string }) =>
     invoke(IPC_CHANNELS.CLOUD_REGISTER, payload),

@@ -28,6 +28,7 @@ import {
 } from '@shared/types';
 import { DEFAULT_MODEL_PRICING } from '@shared/pricing';
 import type { GeminiProvider } from '@main/agent/providers/gemini-provider';
+import type { SelfHostedOpenAiProvider } from '@main/agent/providers/self-hosted-provider';
 import type { ResearchEngine } from '@main/agent/research-engine';
 import type { PageUnderstandingEngine } from '@main/agent/page-understanding';
 import type { CrossTabIntelligence } from '@main/agent/cross-tab';
@@ -78,6 +79,7 @@ export interface MainServices {
   crossTab?: CrossTabIntelligence;
   proactiveAssistant?: ProactiveAssistant;
   geminiProvider?: GeminiProvider;
+  selfHostedProvider?: SelfHostedOpenAiProvider;
   cloudClient?: CloudClientService;
   scheduler: JobScheduler;
   mcpServer: LocalMcpServer;
@@ -110,6 +112,7 @@ export function registerAllIpcHandlers(services: MainServices): void {
     crossTab,
     proactiveAssistant,
     geminiProvider,
+    selfHostedProvider,
     cloudClient,
     scheduler,
     mcpServer,
@@ -608,7 +611,10 @@ export function registerAllIpcHandlers(services: MainServices): void {
     defaultProvider: platformRepo.getSetting('agent.defaultProvider', 'gemini'),
     defaultModel: platformRepo.getSetting('agent.defaultModel', 'gemini-2.5-flash'),
     customEndpointUrl: platformRepo.getSetting('agent.customEndpointUrl', ''),
+    selfHostedEndpointUrl: platformRepo.getSetting('agent.selfHostedEndpointUrl', 'http://127.0.0.1:11434/v1'),
+    selfHostedModel: platformRepo.getSetting('agent.selfHostedModel', 'qwen2.5:7b-instruct'),
     hasGeminiApiKey: Boolean(vault.getGeminiApiKey()),
+    hasSelfHostedApiKey: Boolean(vault.getCustomApiKey()),
     cloudModeEnabled: platformRepo.getSetting('cloud.enabled', false),
     cloudEndpointUrl: platformRepo.getSetting('cloud.endpointUrl', 'http://127.0.0.1:48080'),
     cloudConsent: {
@@ -648,6 +654,10 @@ export function registerAllIpcHandlers(services: MainServices): void {
     if (patch.defaultModel !== undefined) platformRepo.setSetting('agent.defaultModel', patch.defaultModel);
     if (patch.customEndpointUrl !== undefined)
       platformRepo.setSetting('agent.customEndpointUrl', patch.customEndpointUrl);
+    if (patch.selfHostedEndpointUrl !== undefined)
+      platformRepo.setSetting('agent.selfHostedEndpointUrl', patch.selfHostedEndpointUrl);
+    if (patch.selfHostedModel !== undefined)
+      platformRepo.setSetting('agent.selfHostedModel', patch.selfHostedModel);
     if (patch.cloudModeEnabled !== undefined)
       platformRepo.setSetting('cloud.enabled', patch.cloudModeEnabled);
     if (patch.cloudEndpointUrl !== undefined)
@@ -680,19 +690,26 @@ export function registerAllIpcHandlers(services: MainServices): void {
   handleTrusted(IPC_CHANNELS.SETTINGS_PROVIDER_STATUS, (): ProviderStatusInfo => {
     const s = getSettings();
     const pricing = DEFAULT_MODEL_PRICING.find((m) => m.model === s.defaultModel);
-    const isLive = s.defaultProvider === 'gemini';
+    const isSelfHosted =
+      s.defaultProvider === 'self_hosted' || s.defaultProvider === 'custom_openai_compatible';
+    const isLive = s.defaultProvider === 'gemini' || isSelfHosted;
+    const activeModel = isSelfHosted ? s.selfHostedModel || s.defaultModel : s.defaultModel;
     return {
       activeProvider: s.defaultProvider,
-      model: s.defaultModel,
+      model: activeModel,
+      endpointUrl: isSelfHosted ? s.selfHostedEndpointUrl || s.customEndpointUrl : undefined,
       isLive,
       hasGeminiKey: s.hasGeminiApiKey,
-      supportsVision: pricing?.supportsVision ?? true,
+      hasSelfHostedKey: s.hasSelfHostedApiKey,
+      supportsVision: isSelfHosted ? false : pricing?.supportsVision ?? true,
       supportsTools: pricing?.supportsTools ?? true,
       supportsStructuredOutput: pricing?.supportsStructuredOutput ?? true,
       warning:
-        isLive && !s.hasGeminiApiKey
+        s.defaultProvider === 'gemini' && !s.hasGeminiApiKey
           ? 'Gemini is selected but no GEMINI_API_KEY is configured.'
-          : !isLive
+          : isSelfHosted && !(s.selfHostedEndpointUrl || s.customEndpointUrl)
+          ? 'Self-hosted provider selected but endpoint URL is empty.'
+          : s.defaultProvider === 'mock'
           ? 'Deterministic Mock provider is active (offline/testing only).'
           : undefined
     };
@@ -700,7 +717,6 @@ export function registerAllIpcHandlers(services: MainServices): void {
 
   handleTrusted(IPC_CHANNELS.SETTINGS_TEST_PROVIDER, async (_e, p?: { model?: string }) => {
     const s = getSettings();
-    const model = p?.model || s.defaultModel;
     if (s.defaultProvider === 'mock') {
       return {
         ok: true,
@@ -710,10 +726,34 @@ export function registerAllIpcHandlers(services: MainServices): void {
         capabilities: { tools: true, structuredOutput: true, vision: true }
       };
     }
+    if (s.defaultProvider === 'self_hosted' || s.defaultProvider === 'custom_openai_compatible') {
+      if (!selfHostedProvider) throw new Error('Self-hosted provider not initialized');
+      return selfHostedProvider.testConnection(p?.model || s.selfHostedModel || s.defaultModel);
+    }
     if (!geminiProvider) {
       throw new Error('Gemini provider not initialized');
     }
-    return geminiProvider.testConnection(model);
+    return geminiProvider.testConnection(p?.model || s.defaultModel);
+  });
+
+  handleTrusted(IPC_CHANNELS.SETTINGS_DISCOVER_MODELS, async () => {
+    const s = getSettings();
+    if (!selfHostedProvider) {
+      return {
+        backendKind: 'unconfigured',
+        endpointUrl: s.selfHostedEndpointUrl || '',
+        configuredModel: s.selfHostedModel || '',
+        reachable: false,
+        modelAvailable: false,
+        availableModels: [],
+        latencyMs: 0,
+        supportsStreaming: true,
+        supportsTools: true,
+        supportsStructuredOutput: true,
+        statusMessage: 'Self-hosted provider unavailable'
+      };
+    }
+    return selfHostedProvider.getRuntimeStatus(s.selfHostedModel || s.defaultModel);
   });
 
   // --- Checkpoints, Research, Page Understanding, Cross-Tab, Proactive, Skill Test ---
@@ -889,6 +929,27 @@ export function registerAllIpcHandlers(services: MainServices): void {
     if (!cloudClient) throw new Error('Search service unavailable');
     const data = SearchExecuteSchema.parse(raw);
     return cloudClient.executeSearch(data);
+  });
+
+  handleTrusted(IPC_CHANNELS.SEARCH_HISTORY_LIST, async () => {
+    if (!cloudClient) return [];
+    return cloudClient.listSearchHistory();
+  });
+
+  handleTrusted(IPC_CHANNELS.SEARCH_HISTORY_CLEAR, async () => {
+    if (!cloudClient) return false;
+    await cloudClient.clearSearchHistory();
+    return true;
+  });
+
+  handleTrusted(IPC_CHANNELS.INDEX_STATS, async () => {
+    if (!cloudClient) throw new Error('Index service unavailable');
+    return cloudClient.getIndexStats();
+  });
+
+  handleTrusted(IPC_CHANNELS.INDEX_CRAWL, async (_e, raw) => {
+    if (!cloudClient) throw new Error('Crawler service unavailable');
+    return cloudClient.crawlIndexSeeds(raw as import('@shared/types').CrawlSeedConfig);
   });
 
   handleTrusted(
