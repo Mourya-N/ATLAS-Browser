@@ -1,0 +1,62 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  --atlas-bg: 248 250 252;
+  --atlas-surface: 255 255 255;
+  --atlas-elevated: 241 245 249;
+  --atlas-border: 226 232 240;
+  --atlas-text: 15 23 42;
+  --atlas-muted: 100 116 139;
+  --atlas-accent: 37 99 235;
+  --atlas-danger: 220 38 38;
+  --atlas-warning: 217 119 6;
+  --atlas-success: 22 163 74;
+}
+
+html.dark {
+  color-scheme: dark;
+  --atlas-bg: 10 14 23;
+  --atlas-surface: 17 24 39;
+  --atlas-elevated: 30 41 59;
+  --atlas-border: 51 65 85;
+  --atlas-text: 241 245 249;
+  --atlas-muted: 148 163 184;
+  --atlas-accent: 59 130 246;
+  --atlas-danger: 239 68 68;
+  --atlas-warning: 245 158 11;
+  --atlas-success: 34 197 94;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgb(var(--atlas-border));
+  border-radius: 9999px;
+}
+
+.app-drag-region {
+  -webkit-app-region: drag;
+}
+
+.app-no-drag {
+  -webkit-app-region: no-drag;
+}
+
+dialog::backdrop {
+  background: rgba(2, 6, 23, 0.7);
+  backdrop-filter: blur(4px);
+}
