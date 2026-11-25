@@ -40,7 +40,8 @@ export class AgentPlanner {
             type: 'object',
             properties: {
               description: { type: 'string' },
-              expectedEvidence: { type: 'string' }
+              expectedEvidence: { type: 'string' },
+              dependsOnIndex: { type: 'number' }
             },
             required: ['description', 'expectedEvidence']
           }
@@ -95,7 +96,7 @@ export class AgentPlanner {
         planSummary?: string;
         complexity?: 'simple' | 'moderate' | 'complex';
         parallelSubtasks?: string[];
-        subgoals?: Array<{ description: string; expectedEvidence: string }>;
+        subgoals?: Array<{ description: string; expectedEvidence: string; dependsOnIndex?: number }>;
       };
 
       const rawSubgoals =
@@ -103,18 +104,26 @@ export class AgentPlanner {
           ? parsed.subgoals
           : [{ description: params.goal, expectedEvidence: 'Goal answer or target state verified' }];
 
+      const created: Subgoal[] = rawSubgoals.slice(0, 8).map((sg, index) => ({
+        id: randomUUID(),
+        index,
+        description: sg.description,
+        expectedEvidence: sg.expectedEvidence,
+        dependsOn: [],
+        status: index === 0 ? 'in_progress' : 'pending',
+        attempts: 0
+      }));
+      rawSubgoals.slice(0, 8).forEach((sg: { dependsOnIndex?: number }, idx) => {
+        if (typeof sg.dependsOnIndex === 'number' && sg.dependsOnIndex >= 0 && sg.dependsOnIndex < idx) {
+          created[idx].dependsOn = [created[sg.dependsOnIndex].id];
+        }
+      });
+
       return {
         planSummary: parsed.planSummary || `Execute: ${params.goal}`,
         complexity: parsed.complexity || 'simple',
         parallelSubtasks: Array.isArray(parsed.parallelSubtasks) ? parsed.parallelSubtasks : [],
-        subgoals: rawSubgoals.slice(0, 8).map((sg, index) => ({
-          id: randomUUID(),
-          index,
-          description: sg.description,
-          expectedEvidence: sg.expectedEvidence,
-          status: index === 0 ? 'in_progress' : 'pending',
-          attempts: 0
-        }))
+        subgoals: created
       };
     } catch {
       return {

@@ -1,12 +1,14 @@
 import React, { useEffect, useState } from 'react';
-import { Key, Settings as SettingsIcon, Shield, X } from 'lucide-react';
-import type { AppSettings, SearchEngineId, ThemeMode } from '@shared/types';
+import { CheckCircle2, Key, Settings as SettingsIcon, Shield, X, XCircle } from 'lucide-react';
+import type { AppSettings, ProviderTestResult, SearchEngineId, ThemeMode } from '@shared/types';
 import { useAtlasStore } from '../../store/useAtlasStore';
 
 export const SettingsView: React.FC = () => {
-  const { settings, setSettings, setOverlayView, pushToast } = useAtlasStore();
+  const { settings, setSettings, setOverlayView, setProviderStatus, pushToast } = useAtlasStore();
   const [local, setLocal] = useState<AppSettings | null>(settings);
   const [apiKeyInput, setApiKeyInput] = useState('');
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<ProviderTestResult | null>(null);
 
   useEffect(() => {
     void window.atlas.getSettings().then((s) => {
@@ -21,6 +23,8 @@ export const SettingsView: React.FC = () => {
     const updated = await window.atlas.updateSettings(patch);
     setSettings(updated);
     setLocal(updated);
+    const st = await window.atlas.getProviderStatus();
+    setProviderStatus(st);
     pushToast('Settings updated', 'success');
   };
 
@@ -115,13 +119,61 @@ export const SettingsView: React.FC = () => {
                     setSettings(next);
                     setLocal(next);
                     setApiKeyInput('');
+                    setProviderStatus(await window.atlas.getProviderStatus());
                     pushToast('Gemini API key encrypted and saved', 'success');
                   }}
                   className="rounded-lg bg-atlas-accent px-4 py-2 font-semibold text-white"
                 >
                   Save Key
                 </button>
+                <button
+                  type="button"
+                  disabled={testing}
+                  onClick={async () => {
+                    setTesting(true);
+                    try {
+                      const res = await window.atlas.testProvider(local.defaultModel);
+                      setTestResult(res);
+                    } finally {
+                      setTesting(false);
+                    }
+                  }}
+                  className="rounded-lg border border-atlas-border bg-atlas-elevated px-3 py-2 font-semibold hover:bg-atlas-border disabled:opacity-50"
+                >
+                  {testing ? 'Testing...' : 'Test Connection'}
+                </button>
               </div>
+              {testResult && (
+                <div
+                  className={`flex items-start gap-2 rounded-lg border p-2.5 text-[11px] ${
+                    testResult.ok
+                      ? 'border-atlas-success/40 bg-atlas-success/10 text-atlas-success'
+                      : 'border-atlas-danger/40 bg-atlas-danger/10 text-atlas-danger'
+                  }`}
+                >
+                  {testResult.ok ? (
+                    <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5" />
+                  ) : (
+                    <XCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                  )}
+                  <div>
+                    <div className="font-semibold">
+                      {testResult.ok
+                        ? `Connected (${testResult.provider} / ${testResult.model}, ${testResult.latencyMs}ms)`
+                        : `Connection Failed (${testResult.provider})`}
+                    </div>
+                    {testResult.ok ? (
+                      <div>
+                        Capabilities: Tools={String(testResult.capabilities.tools)} • Structured Output=
+                        {String(testResult.capabilities.structuredOutput)} • Vision=
+                        {String(testResult.capabilities.vision)}
+                      </div>
+                    ) : (
+                      <div>{testResult.error}</div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </section>
 
@@ -177,6 +229,21 @@ export const SettingsView: React.FC = () => {
                 label="Retain Agent Step Screenshots on Disk"
                 checked={local.retainScreenshots}
                 onChange={(v) => void update({ retainScreenshots: v })}
+              />
+              <ToggleRow
+                label="Proactive Assistance (Opt-in page & tab suggestions; never auto-executes)"
+                checked={local.proactiveAssistanceEnabled}
+                onChange={(v) => void update({ proactiveAssistanceEnabled: v })}
+              />
+              <ToggleRow
+                label="Spoken Voice Responses (Web Speech Synthesis)"
+                checked={local.voiceSpokenResponsesEnabled}
+                onChange={(v) => void update({ voiceSpokenResponsesEnabled: v })}
+              />
+              <ToggleRow
+                label="Telemetry (Disabled by default)"
+                checked={local.telemetryEnabled}
+                onChange={(v) => void update({ telemetryEnabled: v })}
               />
             </div>
           </section>

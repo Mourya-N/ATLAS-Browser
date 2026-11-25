@@ -99,6 +99,7 @@ const atlasApi = {
     goal: string;
     mode: AgentMode;
     selectedText?: string;
+    selectedTabIds?: string[];
   }) => invoke(IPC_CHANNELS.AGENT_START_RUN, payload),
   pauseAgentRun: (runId: string) => invoke(IPC_CHANNELS.AGENT_PAUSE_RUN, { runId }),
   resumeAgentRun: (runId: string) => invoke(IPC_CHANNELS.AGENT_RESUME_RUN, { runId }),
@@ -187,6 +188,25 @@ const atlasApi = {
   setApiKey: (provider: 'gemini' | 'custom_openai_compatible', apiKey: string) =>
     invoke(IPC_CHANNELS.SETTINGS_SET_API_KEY, { provider, apiKey }),
   clearApiKey: () => invoke(IPC_CHANNELS.SETTINGS_CLEAR_API_KEY),
+  getProviderStatus: () => invoke(IPC_CHANNELS.SETTINGS_PROVIDER_STATUS),
+  testProvider: (model?: string) => invoke(IPC_CHANNELS.SETTINGS_TEST_PROVIDER, { model }),
+
+  // Advanced Intelligence
+  listInterruptedRuns: () => invoke(IPC_CHANNELS.AGENT_LIST_INTERRUPTED),
+  resumeCheckpoint: (runId: string) => invoke(IPC_CHANNELS.AGENT_RESUME_CHECKPOINT, { runId }),
+  runResearch: (query: string, tabIds?: string[]) => invoke(IPC_CHANNELS.RESEARCH_RUN, { query, tabIds }),
+  listResearchReports: () => invoke(IPC_CHANNELS.RESEARCH_LIST),
+  exportResearchMarkdown: (reportId: string) => invoke(IPC_CHANNELS.RESEARCH_EXPORT_MD, { reportId }),
+  understandPage: (tabId: string, question: string) => invoke(IPC_CHANNELS.PAGE_UNDERSTAND, { tabId, question }),
+  semanticSearchPage: (tabId: string, query: string) =>
+    invoke(IPC_CHANNELS.PAGE_SEMANTIC_SEARCH, { tabId, query }),
+  checkPageChanges: (tabId: string) => invoke(IPC_CHANNELS.PAGE_CHECK_CHANGES, { tabId }),
+  analyzeCrossTabs: (tabIds?: string[]) => invoke(IPC_CHANNELS.CROSSTAB_ANALYZE, { tabIds }),
+  compareCrossTabs: (criteria: string, tabIds?: string[]) =>
+    invoke(IPC_CHANNELS.CROSSTAB_COMPARE, { criteria, tabIds }),
+  testSkill: (skillId: string, params: Record<string, unknown>, tabId?: string | null) =>
+    invoke(IPC_CHANNELS.SKILL_TEST, { skillId, params, tabId }),
+  checkProactiveSuggestions: (tabId?: string | null) => invoke(IPC_CHANNELS.PROACTIVE_CHECK, { tabId }),
 
   // Page selection / context menu actions
   onContentSelection: (cb: (data: { tabId: string; text: string; x: number; y: number }) => void) =>

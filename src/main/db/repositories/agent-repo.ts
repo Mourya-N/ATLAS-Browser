@@ -6,6 +6,8 @@ import type {
   AgentRun,
   AgentStep,
   CostSummary,
+  ResearchReport,
+  TaskCheckpoint,
   ToolExecutionRecord
 } from '@shared/types';
 
@@ -378,5 +380,81 @@ export class AgentRepository {
       startedAt: Number(r.started_at),
       endedAt: (r.ended_at as number | null) ?? null
     };
+  }
+
+  // --- Long-Horizon Task Checkpoints ---
+  saveCheckpoint(cp: TaskCheckpoint): void {
+    this.db
+      .prepare(
+        `INSERT INTO task_checkpoints (run_id, state_json, updated_at)
+         VALUES (?, ?, ?)
+         ON CONFLICT(run_id) DO UPDATE SET state_json = excluded.state_json, updated_at = excluded.updated_at`
+      )
+      .run(cp.runId, JSON.stringify(cp), cp.updatedAt);
+  }
+
+  getCheckpoint(runId: string): TaskCheckpoint | null {
+    const row = this.db
+      .prepare('SELECT state_json FROM task_checkpoints WHERE run_id = ?')
+      .get(runId) as { state_json: string } | undefined;
+    if (!row) return null;
+    try {
+      return JSON.parse(row.state_json) as TaskCheckpoint;
+    } catch {
+      return null;
+    }
+  }
+
+  deleteCheckpoint(runId: string): void {
+    this.db.prepare('DELETE FROM task_checkpoints WHERE run_id = ?').run(runId);
+  }
+
+  listInterruptedRuns(): Array<{ run: AgentRun; checkpoint: TaskCheckpoint }> {
+    const rows = this.db
+      .prepare(
+        `SELECT r.*, c.state_json FROM agent_runs r
+         INNER JOIN task_checkpoints c ON c.run_id = r.id
+         WHERE r.status IN ('planning', 'running', 'paused', 'awaiting_hitl', 'awaiting_confirmation')
+         ORDER BY c.updated_at DESC LIMIT 20`
+      )
+      .all() as Record<string, unknown>[];
+    const out: Array<{ run: AgentRun; checkpoint: TaskCheckpoint }> = [];
+    for (const r of rows) {
+      try {
+        out.push({
+          run: this.mapRunRow(r, []),
+          checkpoint: JSON.parse(String(r.state_json)) as TaskCheckpoint
+        });
+      } catch {
+        // skip corrupted checkpoint
+      }
+    }
+    return out;
+  }
+
+  // --- Research Reports ---
+  saveResearchReport(report: ResearchReport): ResearchReport {
+    this.db
+      .prepare(
+        `INSERT INTO research_reports (id, query, report_json, created_at)
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET report_json = excluded.report_json`
+      )
+      .run(report.id, report.query, JSON.stringify(report), report.createdAt);
+    return report;
+  }
+
+  listResearchReports(limit = 30): ResearchReport[] {
+    const rows = this.db
+      .prepare('SELECT report_json FROM research_reports ORDER BY created_at DESC LIMIT ?')
+      .all(limit) as Array<{ report_json: string }>;
+    return rows.map((r) => JSON.parse(r.report_json) as ResearchReport);
+  }
+
+  getResearchReport(id: string): ResearchReport | null {
+    const row = this.db
+      .prepare('SELECT report_json FROM research_reports WHERE id = ?')
+      .get(id) as { report_json: string } | undefined;
+    return row ? (JSON.parse(row.report_json) as ResearchReport) : null;
   }
 }

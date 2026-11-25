@@ -185,6 +185,26 @@ export const SkillsView: React.FC = () => {
                         type="button"
                         onClick={async (e) => {
                           e.stopPropagation();
+                          const params: Record<string, unknown> = {};
+                          for (const p of s.parameters) {
+                            params[p.name] = p.defaultValue ?? '';
+                          }
+                          const exec = await window.atlas.testSkill(s.id, params, activeTabId);
+                          pushToast(
+                            exec.status === 'completed' ? `Skill test passed` : `Skill test failed: ${exec.error}`,
+                            exec.status === 'completed' ? 'success' : 'warning'
+                          );
+                          void load();
+                        }}
+                        className="rounded border border-atlas-border bg-atlas-elevated px-2 py-1 text-[10px] font-semibold"
+                        title="Test skill with Assist confirmation"
+                      >
+                        Test
+                      </button>
+                      <button
+                        type="button"
+                        onClick={async (e) => {
+                          e.stopPropagation();
                           await window.atlas.duplicateSkill(s.id);
                           void load();
                         }}

@@ -271,43 +271,52 @@ export class PlatformRepository {
   }
 
   // --- Memory ---
-  listMemory(category?: MemoryCategory): MemoryItem[] {
+  listMemory(category?: MemoryCategory, profileId = 'default'): MemoryItem[] {
+    const now = Date.now();
+    this.db.prepare('DELETE FROM memory WHERE expires_at IS NOT NULL AND expires_at <= ?').run(now);
     const rows = category
       ? (this.db
-          .prepare('SELECT * FROM memory WHERE category = ? ORDER BY last_used_at DESC')
-          .all(category) as Record<string, unknown>[])
-      : (this.db.prepare('SELECT * FROM memory ORDER BY last_used_at DESC').all() as Record<
-          string,
-          unknown
-        >[]);
+          .prepare('SELECT * FROM memory WHERE category = ? AND profile_id = ? ORDER BY last_used_at DESC')
+          .all(category, profileId) as Record<string, unknown>[])
+      : (this.db
+          .prepare('SELECT * FROM memory WHERE profile_id = ? ORDER BY last_used_at DESC')
+          .all(profileId) as Record<string, unknown>[]);
     return rows.map(this.mapMemoryRow);
   }
 
   saveMemory(item: MemoryItem): MemoryItem {
     this.db
       .prepare(
-        `INSERT INTO memory (id, category, domain, title, content, confidence, source, user_approved, use_count, created_at, last_used_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO memory (id, profile_id, category, domain, source_url, title, content, confidence, source, user_approved, use_count, expires_at, embedding_json, created_at, last_used_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
+           profile_id = excluded.profile_id,
            category = excluded.category,
            domain = excluded.domain,
+           source_url = excluded.source_url,
            title = excluded.title,
            content = excluded.content,
            confidence = excluded.confidence,
            user_approved = excluded.user_approved,
            use_count = excluded.use_count,
+           expires_at = excluded.expires_at,
+           embedding_json = excluded.embedding_json,
            last_used_at = excluded.last_used_at`
       )
       .run(
         item.id,
+        item.profileId ?? 'default',
         item.category,
         item.domain ?? null,
+        item.sourceUrl ?? null,
         item.title,
         item.content,
         item.confidence,
         item.source,
         item.userApproved ? 1 : 0,
         item.useCount,
+        item.expiresAt ?? null,
+        item.embedding ? JSON.stringify(item.embedding) : null,
         item.createdAt,
         item.lastUsedAt
       );
@@ -318,21 +327,86 @@ export class PlatformRepository {
     this.db.prepare('DELETE FROM memory WHERE id = ?').run(id);
   }
 
-  clearMemory(): void {
-    this.db.prepare('DELETE FROM memory').run();
+  clearMemory(profileId?: string): void {
+    if (profileId) {
+      this.db.prepare('DELETE FROM memory WHERE profile_id = ?').run(profileId);
+    } else {
+      this.db.prepare('DELETE FROM memory').run();
+    }
+  }
+
+  // --- Page Snapshots (Change Detection) ---
+  savePageSnapshot(snap: {
+    url: string;
+    title: string;
+    headings: string[];
+    textFingerprint: string;
+    textExcerpt: string;
+    textLength: number;
+    capturedAt: number;
+  }): void {
+    this.db
+      .prepare(
+        `INSERT INTO page_snapshots (url, title, headings_json, text_fingerprint, text_excerpt, text_length, captured_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(url) DO UPDATE SET
+           title = excluded.title,
+           headings_json = excluded.headings_json,
+           text_fingerprint = excluded.text_fingerprint,
+           text_excerpt = excluded.text_excerpt,
+           text_length = excluded.text_length,
+           captured_at = excluded.captured_at`
+      )
+      .run(
+        snap.url,
+        snap.title,
+        JSON.stringify(snap.headings),
+        snap.textFingerprint,
+        snap.textExcerpt,
+        snap.textLength,
+        snap.capturedAt
+      );
+  }
+
+  getPageSnapshot(url: string): {
+    url: string;
+    title: string;
+    headings: string[];
+    textFingerprint: string;
+    textExcerpt: string;
+    textLength: number;
+    capturedAt: number;
+  } | null {
+    const row = this.db.prepare('SELECT * FROM page_snapshots WHERE url = ?').get(url) as
+      | Record<string, unknown>
+      | undefined;
+    if (!row) return null;
+    return {
+      url: String(row.url),
+      title: String(row.title),
+      headings: JSON.parse(String(row.headings_json || '[]')),
+      textFingerprint: String(row.text_fingerprint),
+      textExcerpt: String(row.text_excerpt),
+      textLength: Number(row.text_length),
+      capturedAt: Number(row.captured_at)
+    };
   }
 
   private mapMemoryRow(r: Record<string, unknown>): MemoryItem {
     return {
       id: String(r.id),
+      profileId: String(r.profile_id || 'default'),
       category: r.category as MemoryCategory,
       domain: (r.domain as string | null) ?? null,
+      sourceUrl: (r.source_url as string | null) ?? null,
       title: String(r.title),
       content: String(r.content),
       confidence: Number(r.confidence),
       source: String(r.source),
       userApproved: Boolean(r.user_approved),
       useCount: Number(r.use_count),
+      expiresAt: (r.expires_at as number | null) ?? null,
+      embedding: r.embedding_json ? (JSON.parse(String(r.embedding_json)) as number[]) : undefined,
       createdAt: Number(r.created_at),
       lastUsedAt: Number(r.last_used_at)
     };

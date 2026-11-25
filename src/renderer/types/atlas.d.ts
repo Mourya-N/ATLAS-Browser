@@ -11,6 +11,7 @@ import type {
   ConfirmationRequest,
   ConfirmationResponse,
   CostSummary,
+  CrossTabAnalysis,
   DomainPermissionMode,
   DomainRule,
   DownloadItem,
@@ -22,13 +23,19 @@ import type {
   MemoryCategory,
   MemoryItem,
   OmniboxSuggestion,
+  PageChangeResult,
+  ProactiveSuggestion,
+  ProviderStatusInfo,
+  ProviderTestResult,
   ReaderArticle,
+  ResearchReport,
   ScheduledJob,
   ScheduleTriggerType,
   Skill,
   SkillExecution,
   TabGroup,
-  TabInfo
+  TabInfo,
+  TaskCheckpoint
 } from '@shared/types';
 
 export interface AtlasBridge {
@@ -93,6 +100,7 @@ export interface AtlasBridge {
     goal: string;
     mode: AgentMode;
     selectedText?: string;
+    selectedTabIds?: string[];
   }) => Promise<AgentRun>;
   pauseAgentRun: (runId: string) => Promise<boolean>;
   resumeAgentRun: (runId: string) => Promise<boolean>;
@@ -169,6 +177,34 @@ export interface AtlasBridge {
   updateSettings: (patch: Partial<AppSettings>) => Promise<AppSettings>;
   setApiKey: (provider: 'gemini' | 'custom_openai_compatible', apiKey: string) => Promise<AppSettings>;
   clearApiKey: () => Promise<AppSettings>;
+  getProviderStatus: () => Promise<ProviderStatusInfo>;
+  testProvider: (model?: string) => Promise<ProviderTestResult>;
+
+  listInterruptedRuns: () => Promise<Array<{ run: AgentRun; checkpoint: TaskCheckpoint }>>;
+  resumeCheckpoint: (runId: string) => Promise<AgentRun | null>;
+  runResearch: (query: string, tabIds?: string[]) => Promise<ResearchReport>;
+  listResearchReports: () => Promise<ResearchReport[]>;
+  exportResearchMarkdown: (reportId: string) => Promise<string>;
+  understandPage: (
+    tabId: string,
+    question: string
+  ) => Promise<{
+    url: string;
+    title: string;
+    answer: string;
+    entities: Array<{ name: string; type: string; relationship?: string }>;
+    unavailableNotes: string[];
+    relevantChunks: Array<{ index: number; heading: string; text: string; score: number }>;
+  }>;
+  semanticSearchPage: (
+    tabId: string,
+    query: string
+  ) => Promise<Array<{ index: number; heading: string; text: string; score: number }>>;
+  checkPageChanges: (tabId: string) => Promise<PageChangeResult>;
+  analyzeCrossTabs: (tabIds?: string[]) => Promise<CrossTabAnalysis>;
+  compareCrossTabs: (criteria: string, tabIds?: string[]) => Promise<string>;
+  testSkill: (skillId: string, params: Record<string, unknown>, tabId?: string | null) => Promise<SkillExecution>;
+  checkProactiveSuggestions: (tabId?: string | null) => Promise<ProactiveSuggestion[]>;
 
   onContentSelection: (cb: (data: { tabId: string; text: string; x: number; y: number }) => void) => () => void;
   onContentContextAction: (

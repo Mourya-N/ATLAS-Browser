@@ -9,6 +9,9 @@ import type {
   ConfirmationRequest,
   DownloadItem,
   HitlPauseState,
+  ProactiveSuggestion,
+  ProviderStatusInfo,
+  SkillSuggestion,
   SubAgentProgress,
   TabGroup,
   TabInfo
@@ -28,7 +31,8 @@ export type OverlayView =
   | 'extract'
   | 'scheduler'
   | 'mcp'
-  | 'audit';
+  | 'audit'
+  | 'intelligence';
 
 export interface ToastItem {
   id: string;
@@ -59,6 +63,10 @@ interface AtlasState {
   confirmationQueue: ConfirmationRequest[];
   hitlPause: HitlPauseState | null;
   selectionOverlay: { tabId: string; text: string; x: number; y: number } | null;
+  selectedContextTabIds: string[];
+  skillSuggestion: SkillSuggestion | null;
+  proactiveSuggestions: ProactiveSuggestion[];
+  providerStatus: ProviderStatusInfo | null;
 
   downloads: DownloadItem[];
   adBlockStats: AdBlockStats | null;
@@ -83,6 +91,10 @@ interface AtlasState {
   shiftConfirmation: () => void;
   setHitlPause: (p: HitlPauseState | null) => void;
   setSelectionOverlay: (s: { tabId: string; text: string; x: number; y: number } | null) => void;
+  setSelectedContextTabIds: (ids: string[]) => void;
+  setSkillSuggestion: (s: SkillSuggestion | null) => void;
+  setProactiveSuggestions: (p: ProactiveSuggestion[]) => void;
+  setProviderStatus: (s: ProviderStatusInfo | null) => void;
   upsertDownload: (d: DownloadItem) => void;
   setDownloads: (d: DownloadItem[]) => void;
   setAdBlockStats: (s: AdBlockStats) => void;
@@ -114,6 +126,10 @@ export const useAtlasStore = create<AtlasState>((set) => ({
   confirmationQueue: [],
   hitlPause: null,
   selectionOverlay: null,
+  selectedContextTabIds: [],
+  skillSuggestion: null,
+  proactiveSuggestions: [],
+  providerStatus: null,
 
   downloads: [],
   adBlockStats: null,
@@ -148,6 +164,10 @@ export const useAtlasStore = create<AtlasState>((set) => ({
     set((s) => ({ confirmationQueue: s.confirmationQueue.slice(1) })),
   setHitlPause: (hitlPause) => set({ hitlPause }),
   setSelectionOverlay: (selectionOverlay) => set({ selectionOverlay }),
+  setSelectedContextTabIds: (selectedContextTabIds) => set({ selectedContextTabIds }),
+  setSkillSuggestion: (skillSuggestion) => set({ skillSuggestion }),
+  setProactiveSuggestions: (proactiveSuggestions) => set({ proactiveSuggestions }),
+  setProviderStatus: (providerStatus) => set({ providerStatus }),
   upsertDownload: (d) =>
     set((s) => {
       const idx = s.downloads.findIndex((x) => x.id === d.id);

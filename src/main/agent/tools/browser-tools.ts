@@ -973,6 +973,138 @@ export function registerAllBrowserTools(registry: ToolRegistry): void {
         const result = await ctx.cdp.evaluateInternal(tabId, wc, String(args.expression));
         return { success: true, data: { result } };
       }
+    },
+    {
+      name: 'visual_click',
+      description: 'Click at visual viewport coordinates (x, y) after validating against live DOM elementFromPoint.',
+      baseTier: 'interact',
+      parameters: {
+        type: 'object',
+        properties: {
+          x: { type: 'number', minimum: 0, maximum: 10000 },
+          y: { type: 'number', minimum: 0, maximum: 10000 },
+          expectedDescription: { type: 'string' },
+          tabId: { type: 'string' }
+        },
+        required: ['x', 'y'],
+        additionalProperties: false
+      },
+      resolveTier: async (args, ctx) => {
+        const { tabId, wc } = requireTabWc(ctx, args.tabId);
+        const check = await ctx.resolver.resolveAtPoint(tabId, wc, Number(args.x), Number(args.y));
+        const label = check.text || String(args.expectedDescription || `(${args.x},${args.y})`);
+        const sensitive = Boolean(check.isSensitiveAction) || isSensitiveTarget(label);
+        return {
+          tier: sensitive ? 'sensitive' : 'interact',
+          targetDescription: `Visual target <${check.tag || 'element'}> "${label}" at (${args.x},${args.y})`,
+          submittedDataSummary: 'Visual coordinate click',
+          expectedConsequence: sensitive
+            ? 'Clicks a potentially sensitive control (submit/purchase/delete).'
+            : 'Clicks validated visual element.',
+          reversible: !sensitive
+        };
+      },
+      execute: async (args, ctx) => {
+        const { tabId, wc } = requireTabWc(ctx, args.tabId);
+        const before = ctx.lastPerception ?? (await ctx.perception.capture(tabId, wc));
+        const x = Number(args.x);
+        const y = Number(args.y);
+        const check = await ctx.resolver.resolveAtPoint(tabId, wc, x, y);
+        if (!check.exists || !check.visible || !check.interactable) {
+          return {
+            success: false,
+            error: check.reason || `No visible interactable element at visual coordinate (${x}, ${y})`
+          };
+        }
+        await ctx.cdp.clickAt(tabId, wc, x, y);
+        await new Promise((r) => setTimeout(r, 250));
+        const after = await ctx.perception.capture(tabId, wc);
+        ctx.updateLastPerception(after);
+        return {
+          success: true,
+          data: { clickedAt: { x, y }, tag: check.tag, text: check.text, confidence: check.confidence },
+          pageDiff: ctx.perception.computeDiff(before, after)
+        };
+      }
+    },
+    {
+      name: 'fill_form',
+      description: 'Smart form fill: populate multiple form inputs by selector, atlasId, or label text without submitting.',
+      baseTier: 'interact',
+      parameters: {
+        type: 'object',
+        properties: {
+          fields: {
+            type: 'array',
+            minItems: 1,
+            maxItems: 20,
+            items: {
+              type: 'object',
+              properties: {
+                selector: { type: 'string' },
+                atlasId: { type: 'string' },
+                text: { type: 'string' },
+                value: { type: 'string' }
+              },
+              required: ['value']
+            }
+          },
+          tabId: { type: 'string' }
+        },
+        required: ['fields'],
+        additionalProperties: false
+      },
+      resolveTier: async (args, ctx) => {
+        const { tabId, wc } = requireTabWc(ctx, args.tabId);
+        const fields = Array.isArray(args.fields) ? (args.fields as Array<Record<string, unknown>>) : [];
+        let hasSensitive = false;
+        for (const f of fields) {
+          const check = await ctx.resolver.resolveTarget(tabId, wc, {
+            atlasId: f.atlasId as string | undefined,
+            selector: f.selector as string | undefined,
+            text: f.text as string | undefined
+          });
+          if (check.isSensitiveField) {
+            hasSensitive = true;
+            break;
+          }
+        }
+        return {
+          tier: hasSensitive ? 'sensitive' : 'interact',
+          targetDescription: `${fields.length} form field(s)`,
+          submittedDataSummary: hasSensitive ? '[REDACTED SENSITIVE FORM DATA]' : `${fields.length} field value(s)`,
+          expectedConsequence: 'Populates form fields without submitting the form.',
+          reversible: true
+        };
+      },
+      execute: async (args, ctx) => {
+        const { tabId, wc } = requireTabWc(ctx, args.tabId);
+        const before = ctx.lastPerception ?? (await ctx.perception.capture(tabId, wc));
+        const fields = args.fields as Array<{ selector?: string; atlasId?: string; text?: string; value: string }>;
+        let filledCount = 0;
+        for (const f of fields) {
+          const check = await resolveAndVerifyElement(ctx, tabId, wc, f);
+          if (!check.center) continue;
+          await ctx.cdp.clickAt(tabId, wc, check.center.x, check.center.y);
+          const sel = f.atlasId ? `[data-atlas-id="${f.atlasId.replace(/"/g, '')}"]` : f.selector;
+          if (sel) {
+            await ctx.cdp.evaluateInternal(
+              tabId,
+              wc,
+              `(() => { const el = document.querySelector(${JSON.stringify(sel)}); if (el && 'value' in el) { el.value = ''; el.dispatchEvent(new Event('input', { bubbles: true })); } })()`
+            );
+          }
+          await ctx.cdp.insertText(tabId, wc, String(f.value));
+          filledCount += 1;
+        }
+        const after = await ctx.perception.capture(tabId, wc);
+        ctx.updateLastPerception(after);
+        return {
+          success: filledCount === fields.length,
+          data: { filledCount, totalFields: fields.length },
+          pageDiff: ctx.perception.computeDiff(before, after)
+        };
+      }
     }
   ];
 

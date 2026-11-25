@@ -1,7 +1,12 @@
-import { app, globalShortcut, session } from 'electron';
+import { app, crashReporter, globalShortcut, session } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { AtlasDatabase } from './db/database';
+import { AtlasLogger } from './utils/logger';
+import { ResearchEngine } from './agent/research-engine';
+import { PageUnderstandingEngine } from './agent/page-understanding';
+import { CrossTabIntelligence } from './agent/cross-tab';
+import { ProactiveAssistant } from './agent/proactive-assistant';
 import { BrowserRepository } from './db/repositories/browser-repo';
 import { AgentRepository } from './db/repositories/agent-repo';
 import { PlatformRepository } from './db/repositories/platform-repo';
@@ -41,6 +46,13 @@ if (process.env.ATLAS_USER_DATA_DIR) {
   app.setPath('userData', process.env.ATLAS_USER_DATA_DIR);
 }
 
+// Local-only crash dumps (telemetry upload disabled)
+crashReporter.start({
+  productName: 'Atlas Browser',
+  uploadToServer: false,
+  compress: true
+});
+
 let db: AtlasDatabase | null = null;
 let scheduler: JobScheduler | null = null;
 let mcpServer: LocalMcpServer | null = null;
@@ -75,7 +87,7 @@ app.whenReady().then(async () => {
           responseHeaders: {
             ...details.responseHeaders,
             'Content-Security-Policy': [
-              "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: http:; connect-src 'self';"
+              "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self';"
             ]
           }
         });
@@ -84,6 +96,15 @@ app.whenReady().then(async () => {
       }
     });
   }
+
+  const logger = new AtlasLogger(userDataDir);
+  process.on('uncaughtException', (err) => {
+    logger.log('ERROR', 'main', `Uncaught exception: ${err.stack || err.message}`);
+  });
+  process.on('unhandledRejection', (reason) => {
+    logger.log('ERROR', 'main', `Unhandled rejection: ${String(reason)}`);
+  });
+  logger.log('INFO', 'main', 'Atlas Browser starting');
 
   db = new AtlasDatabase(path.join(userDataDir, 'atlas.db'));
   const browserRepo = new BrowserRepository(db.db);
@@ -142,6 +163,7 @@ app.whenReady().then(async () => {
   const geminiProvider = new GeminiProvider(() => vault.getGeminiApiKey());
   const mockProvider = new MockModelProvider();
   const getProvider = (): ModelProvider => {
+    // Never silently fall back from Gemini to Mock when Gemini is selected
     const selected = platformRepo.getSetting<'gemini' | 'mock'>('agent.defaultProvider', 'gemini');
     return selected === 'mock' ? mockProvider : geminiProvider;
   };
@@ -149,6 +171,10 @@ app.whenReady().then(async () => {
   const costTracker = new CostTracker(agentRepo);
   const memoryService = new MemoryService(platformRepo);
   const extractionEngine = new StructuredExtractionEngine(getProvider, injectionGuard);
+  const researchEngine = new ResearchEngine(getProvider, agentRepo, injectionGuard);
+  const pageUnderstanding = new PageUnderstandingEngine(getProvider, platformRepo, injectionGuard);
+  const crossTab = new CrossTabIntelligence(getProvider, injectionGuard);
+  const proactiveAssistant = new ProactiveAssistant(agentRepo);
 
   const orchestrator = new AgentOrchestrator(
     getProvider,
@@ -226,6 +252,11 @@ app.whenReady().then(async () => {
     skillRunner,
     memoryService,
     extractionEngine,
+    researchEngine,
+    pageUnderstanding,
+    crossTab,
+    proactiveAssistant,
+    geminiProvider,
     scheduler,
     mcpServer,
     vault,

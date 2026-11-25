@@ -132,6 +132,7 @@ export interface Subgoal {
   index: number;
   description: string;
   expectedEvidence: string;
+  dependsOn?: string[];
   status: 'pending' | 'in_progress' | 'completed' | 'failed' | 'skipped';
   attempts: number;
 }
@@ -171,7 +172,7 @@ export interface AgentStep {
   runId: string;
   stepIndex: number;
   subgoalId?: string | null;
-  phase: 'plan' | 'perceive' | 'execute' | 'verify' | 'recover' | 'hitl' | 'complete';
+  phase: 'observe' | 'plan' | 'perceive' | 'execute' | 'verify' | 'recover' | 'hitl' | 'complete';
   summary: string;
   decisionExplanation: string;
   evidence?: string | null;
@@ -331,6 +332,7 @@ export interface DOMElementInfo {
   inShadowDom: boolean;
   visible: boolean;
   interactable: boolean;
+  confidence?: number;
   boundingBox: { x: number; y: number; width: number; height: number };
   attributes: Record<string, string>;
 }
@@ -389,6 +391,9 @@ export interface Skill {
   version: number;
   parameters: SkillParameter[];
   preconditions: string[];
+  triggerConditions?: string[];
+  expectedOutput?: string;
+  failureBehavior?: 'retry' | 'ax_fallback' | 'llm_fallback' | 'abort';
   requiredPermissions: PermissionTier[];
   allowedDomains: string[];
   steps: SkillStep[];
@@ -417,18 +422,27 @@ export type MemoryCategory =
   | 'site_preference'
   | 'workflow_preference'
   | 'task_knowledge'
-  | 'task_summary';
+  | 'task_summary'
+  | 'note'
+  | 'approved_fact'
+  | 'bookmark_summary'
+  | 'research_collection'
+  | 'conversation_summary';
 
 export interface MemoryItem {
   id: string;
+  profileId?: string;
   category: MemoryCategory;
   domain?: string | null;
+  sourceUrl?: string | null;
   title: string;
   content: string;
   confidence: number;
   source: string;
   userApproved: boolean;
   useCount: number;
+  expiresAt?: number | null;
+  embedding?: number[];
   createdAt: number;
   lastUsedAt: number;
 }
@@ -524,12 +538,119 @@ export interface AppSettings {
   retainScreenshots: boolean;
   screenshotRetentionDays: number;
   experimentalScriptingEnabled: boolean;
+  proactiveAssistanceEnabled: boolean;
+  voiceSpokenResponsesEnabled: boolean;
+  telemetryEnabled: boolean;
+  activeProfileId: string;
   defaultProvider: 'gemini' | 'custom_openai_compatible' | 'mock';
   defaultModel: string;
   customEndpointUrl: string;
   hasGeminiApiKey: boolean;
   budgets: BudgetConfig;
   mcp: McpConfig;
+}
+
+export interface ProviderStatusInfo {
+  activeProvider: 'gemini' | 'custom_openai_compatible' | 'mock';
+  model: string;
+  isLive: boolean;
+  hasGeminiKey: boolean;
+  supportsVision: boolean;
+  supportsTools: boolean;
+  supportsStructuredOutput: boolean;
+  warning?: string;
+}
+
+export interface ProviderTestResult {
+  ok: boolean;
+  provider: string;
+  model: string;
+  latencyMs: number;
+  capabilities: {
+    tools: boolean;
+    structuredOutput: boolean;
+    vision: boolean;
+  };
+  error?: string;
+}
+
+export interface TaskCheckpoint {
+  runId: string;
+  conversationId: string;
+  goal: string;
+  mode: AgentMode;
+  subgoals: Subgoal[];
+  currentSubgoalIdx: number;
+  activeTabId: string | null;
+  activeUrl: string | null;
+  evidenceCollected: string[];
+  stepCount: number;
+  updatedAt: number;
+}
+
+export interface ResearchClaim {
+  id: string;
+  claim: string;
+  kind: 'fact' | 'analysis';
+  supportingQuote: string;
+  sourceUrl: string;
+  sourceTitle: string;
+  confidence: number;
+}
+
+export interface ResearchConflict {
+  topic: string;
+  statementA: string;
+  sourceA: string;
+  statementB: string;
+  sourceB: string;
+}
+
+export interface ResearchReport {
+  id: string;
+  query: string;
+  summary: string;
+  claims: ResearchClaim[];
+  conflicts: ResearchConflict[];
+  comparisonTable: { columns: string[]; rows: string[][] } | null;
+  notes: string;
+  sources: Array<{ url: string; title: string }>;
+  createdAt: number;
+}
+
+export interface PageChangeResult {
+  url: string;
+  hasPrevious: boolean;
+  previousVisitedAt?: number;
+  summary: string;
+  addedHeadings: string[];
+  removedHeadings: string[];
+  textLengthDelta: number;
+}
+
+export interface CrossTabAnalysis {
+  tabs: Array<{ tabId: string; url: string; title: string; groupId?: string | null }>;
+  duplicateGroups: Array<{ url: string; tabIds: string[] }>;
+  relatedPairs: Array<{ tabA: string; tabB: string; overlapScore: number; sharedTopics: string[] }>;
+  summary: string;
+}
+
+export interface SkillSuggestion {
+  runId: string;
+  suggestedName: string;
+  description: string;
+  stepsCount: number;
+  domains: string[];
+  requiredPermissions: PermissionTier[];
+}
+
+export interface ProactiveSuggestion {
+  id: string;
+  kind: 'long_article' | 'duplicate_tabs' | 'related_tabs' | 'interrupted_task' | 'save_research';
+  title: string;
+  description: string;
+  actionLabel: string;
+  payload: Record<string, unknown>;
 }
 
 export interface SubAgentProgress {

@@ -15,6 +15,8 @@ import {
   ShieldAlert,
   Square,
   Trash2,
+  Volume2,
+  VolumeX,
   XCircle
 } from 'lucide-react';
 import type { AgentMode, AgentStep } from '@shared/types';
@@ -45,6 +47,7 @@ interface SpeechRecognitionInstance {
 export const AgentPanel: React.FC = () => {
   const {
     agentPanelOpen,
+    tabs,
     activeTabId,
     conversations,
     activeConversationId,
@@ -57,16 +60,56 @@ export const AgentPanel: React.FC = () => {
     setAgentMode,
     streamBuffer,
     subAgents,
+    providerStatus,
+    settings,
+    selectedContextTabIds,
+    skillSuggestion,
+    setSkillSuggestion,
+    proactiveSuggestions,
+    setProactiveSuggestions,
     pushToast,
     setOverlayView
   } = useAtlasStore();
 
   const [goalInput, setGoalInput] = useState('');
   const [recording, setRecording] = useState(false);
+  const [speaking, setSpeaking] = useState(false);
+  const [micPermission, setMicPermission] = useState<'granted' | 'denied' | 'prompt' | 'unknown'>('unknown');
   const [voiceError, setVoiceError] = useState<string | null>(null);
   const [stepScreenshots, setStepScreenshots] = useState<Record<string, string>>({});
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
+  const lastSpokenRunRef = useRef<string | null>(null);
   const timelineEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (navigator.permissions?.query) {
+      void navigator.permissions
+        .query({ name: 'microphone' as PermissionName })
+        .then((res) => {
+          setMicPermission(res.state);
+          res.onchange = () => setMicPermission(res.state);
+        })
+        .catch(() => setMicPermission('unknown'));
+    }
+  }, []);
+
+  useEffect(() => {
+    if (
+      settings?.voiceSpokenResponsesEnabled &&
+      activeRun?.status === 'completed' &&
+      activeRun.finalAnswer &&
+      lastSpokenRunRef.current !== activeRun.id &&
+      typeof window.speechSynthesis !== 'undefined'
+    ) {
+      lastSpokenRunRef.current = activeRun.id;
+      window.speechSynthesis.cancel();
+      const utt = new SpeechSynthesisUtterance(activeRun.finalAnswer.slice(0, 600));
+      utt.onstart = () => setSpeaking(true);
+      utt.onend = () => setSpeaking(false);
+      utt.onerror = () => setSpeaking(false);
+      window.speechSynthesis.speak(utt);
+    }
+  }, [activeRun?.status, activeRun?.id, settings?.voiceSpokenResponsesEnabled]);
 
   const SpeechRecognitionCtor =
     (window as unknown as { SpeechRecognition?: new () => SpeechRecognitionInstance; webkitSpeechRecognition?: new () => SpeechRecognitionInstance })
@@ -101,14 +144,22 @@ export const AgentPanel: React.FC = () => {
     const goal = goalInput.trim();
     if (!goal || !activeConversationId) return;
     setGoalInput('');
+    window.speechSynthesis?.cancel();
+    setSpeaking(false);
     await window.atlas.startAgentRun({
       conversationId: activeConversationId,
       tabId: activeTabId,
       goal,
-      mode: agentMode
+      mode: agentMode,
+      selectedTabIds: selectedContextTabIds.length > 0 ? selectedContextTabIds : undefined
     });
     const refreshed = await window.atlas.getMessages(activeConversationId);
     setMessages(refreshed);
+  };
+
+  const stopSpeaking = () => {
+    window.speechSynthesis?.cancel();
+    setSpeaking(false);
   };
 
   const toggleVoice = () => {
@@ -117,6 +168,8 @@ export const AgentPanel: React.FC = () => {
       return;
     }
     setVoiceError(null);
+    window.speechSynthesis?.cancel();
+    setSpeaking(false);
     if (recording) {
       recognitionRef.current?.stop();
       setRecording(false);
@@ -132,6 +185,14 @@ export const AgentPanel: React.FC = () => {
           .map((r) => r[0]?.transcript || '')
           .join(' ')
           .trim();
+        // Voice task cancellation
+        if (/^(stop|cancel|abort|halt)(\s+agent|\s+task)?$/i.test(transcript) && activeRun && isRunning) {
+          void window.atlas.stopAgentRun(activeRun.id);
+          rec.stop();
+          setRecording(false);
+          pushToast('Voice command stopped active task', 'warning');
+          return;
+        }
         setGoalInput(transcript);
       };
       rec.onerror = (ev) => {
@@ -214,6 +275,36 @@ export const AgentPanel: React.FC = () => {
             <Trash2 className="h-3.5 w-3.5" />
           </button>
         </div>
+      </div>
+
+      {/* Provider Status & Tab Scope */}
+      <div className="flex items-center justify-between border-b border-atlas-border bg-atlas-bg/40 px-3 py-1.5 text-[10px]">
+        <div className="flex items-center gap-1.5">
+          <span
+            className={`h-2 w-2 rounded-full ${
+              providerStatus?.isLive && providerStatus?.hasGeminiKey
+                ? 'bg-atlas-success'
+                : providerStatus?.isLive
+                ? 'bg-atlas-warning'
+                : 'bg-atlas-muted'
+            }`}
+          />
+          <span className="font-semibold text-atlas-text">
+            {providerStatus?.isLive
+              ? providerStatus.hasGeminiKey
+                ? `Live Gemini (${providerStatus.model})`
+                : 'Gemini (Key Required)'
+              : 'Mock Provider'}
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={() => setOverlayView('intelligence')}
+          className="text-atlas-accent hover:underline"
+          title="Open Research, Page Understanding & Cross-Tab Scope"
+        >
+          Scope ({selectedContextTabIds.length || tabs.filter((t) => !t.isPrivate).length} tabs)
+        </button>
       </div>
 
       {/* Mode Switcher */}
@@ -492,7 +583,95 @@ export const AgentPanel: React.FC = () => {
             ))}
           </div>
         )}
+        {skillSuggestion && (
+          <div className="rounded-xl border border-atlas-accent/40 bg-atlas-accent/10 p-3 text-xs space-y-2">
+            <div className="font-bold text-atlas-text">Save repeatable workflow as a Skill?</div>
+            <div className="text-[11px] text-atlas-muted">
+              "{skillSuggestion.suggestedName}" ({skillSuggestion.stepsCount} steps • Permissions:{' '}
+              {skillSuggestion.requiredPermissions.join(', ')})
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={async () => {
+                  const saved = await window.atlas.recordSkillFromRun(
+                    skillSuggestion.runId,
+                    skillSuggestion.suggestedName,
+                    skillSuggestion.description
+                  );
+                  setSkillSuggestion(null);
+                  pushToast(`Saved approved skill "${saved.name}"`, 'success');
+                }}
+                className="rounded-lg bg-atlas-accent px-2.5 py-1 text-[11px] font-semibold text-white"
+              >
+                Approve & Save
+              </button>
+              <button
+                type="button"
+                onClick={() => setSkillSuggestion(null)}
+                className="rounded-lg bg-atlas-surface px-2.5 py-1 text-[11px]"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        )}
+
+        {proactiveSuggestions.length > 0 && (
+          <div className="space-y-1.5">
+            {proactiveSuggestions.map((ps) => (
+              <div
+                key={ps.id}
+                className="rounded-xl border border-atlas-border bg-atlas-elevated/60 p-2.5 text-[11px] flex items-center justify-between gap-2"
+              >
+                <div className="min-w-0">
+                  <div className="font-semibold text-atlas-text">{ps.title}</div>
+                  <div className="text-atlas-muted truncate">{ps.description}</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setProactiveSuggestions(proactiveSuggestions.filter((x) => x.id !== ps.id));
+                    if (ps.payload.command && activeConversationId) {
+                      await window.atlas.startAgentRun({
+                        conversationId: activeConversationId,
+                        tabId: activeTabId,
+                        goal: String(ps.payload.command),
+                        mode: 'ask'
+                      });
+                    } else if (ps.payload.runId) {
+                      await window.atlas.resumeCheckpoint(String(ps.payload.runId));
+                    }
+                  }}
+                  className="shrink-0 rounded-lg bg-atlas-accent px-2 py-1 font-semibold text-white"
+                >
+                  {ps.actionLabel}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
         {voiceError && <div className="text-[11px] text-atlas-warning">{voiceError}</div>}
+        <div className="flex items-center justify-between text-[10px] text-atlas-muted px-1">
+          <span>
+            Mic: {voiceSupported ? micPermission : 'unavailable'}
+          </span>
+          {speaking && (
+            <button
+              type="button"
+              onClick={stopSpeaking}
+              className="flex items-center gap-1 text-atlas-warning hover:underline"
+            >
+              <VolumeX className="h-3 w-3" /> Stop Speaking
+            </button>
+          )}
+          {!speaking && settings?.voiceSpokenResponsesEnabled && (
+            <span className="flex items-center gap-1">
+              <Volume2 className="h-3 w-3" /> Spoken replies on
+            </span>
+          )}
+        </div>
         <div className="flex items-end gap-1.5 rounded-xl border border-atlas-border bg-atlas-bg p-2">
           <textarea
             rows={2}

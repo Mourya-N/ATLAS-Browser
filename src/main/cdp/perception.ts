@@ -184,6 +184,7 @@ export class PerceptionEngine {
               inShadowDom: inShadow,
               visible,
               interactable: visible && !el.disabled && el.getAttribute('aria-disabled') !== 'true',
+              confidence: Number(Math.min(1, 0.35 + (visible ? 0.2 : 0) + (visible && !el.disabled ? 0.15 : 0) + (el.id || el.getAttribute('aria-label') ? 0.2 : 0) + ((el.innerText || el.getAttribute('aria-label') || '').trim() ? 0.1 : 0)).toFixed(2)),
               boundingBox: {
                 x: Math.round(rect.left + frameOffsetX),
                 y: Math.round(rect.top + frameOffsetY),

@@ -128,6 +128,23 @@ export const IPC_CHANNELS = {
   SETTINGS_UPDATE: 'atlas:settings:update',
   SETTINGS_SET_API_KEY: 'atlas:settings:set-api-key',
   SETTINGS_CLEAR_API_KEY: 'atlas:settings:clear-api-key',
+  SETTINGS_PROVIDER_STATUS: 'atlas:settings:provider-status',
+  SETTINGS_TEST_PROVIDER: 'atlas:settings:test-provider',
+
+  // Advanced Intelligence: Checkpoints, Research, Page Understanding, Cross-Tab, Proactive, Skills
+  AGENT_LIST_INTERRUPTED: 'atlas:agent:list-interrupted',
+  AGENT_RESUME_CHECKPOINT: 'atlas:agent:resume-checkpoint',
+  AGENT_SKILL_SUGGESTION: 'atlas:agent:skill-suggestion',
+  RESEARCH_RUN: 'atlas:research:run',
+  RESEARCH_LIST: 'atlas:research:list',
+  RESEARCH_EXPORT_MD: 'atlas:research:export-md',
+  PAGE_UNDERSTAND: 'atlas:page:understand',
+  PAGE_SEMANTIC_SEARCH: 'atlas:page:semantic-search',
+  PAGE_CHECK_CHANGES: 'atlas:page:check-changes',
+  CROSSTAB_ANALYZE: 'atlas:crosstab:analyze',
+  CROSSTAB_COMPARE: 'atlas:crosstab:compare',
+  SKILL_TEST: 'atlas:skill:test',
+  PROACTIVE_CHECK: 'atlas:proactive:check',
 
   // Content events (page -> main -> UI)
   CONTENT_SELECTION: 'atlas:content:selection',
@@ -171,7 +188,8 @@ export const AgentStartRunSchema = z.object({
   tabId: z.string().max(128).nullable().optional(),
   goal: z.string().min(1).max(16000),
   mode: z.enum(['ask', 'assist', 'agent', 'takeover']),
-  selectedText: z.string().max(20000).optional()
+  selectedText: z.string().max(20000).optional(),
+  selectedTabIds: z.array(z.string().min(1).max(128)).max(20).optional()
 });
 
 export const ConfirmationRespondSchema = z.object({

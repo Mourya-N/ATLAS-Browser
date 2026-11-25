@@ -19,6 +19,7 @@ import {
   SchedulerView
 } from './components/views/OperationsViews';
 import { SettingsView } from './components/views/SettingsView';
+import { IntelligenceView } from './components/views/IntelligenceView';
 
 export const App: React.FC = () => {
   const {
@@ -46,6 +47,9 @@ export const App: React.FC = () => {
     upsertDownload,
     setAdBlockStats,
     setSettings,
+    setProviderStatus,
+    setSkillSuggestion,
+    setProactiveSuggestions,
     setFindBarOpen,
     setTabSearchOpen,
     setAgentPanelOpen,
@@ -55,18 +59,23 @@ export const App: React.FC = () => {
   // Bootstrap initial state and IPC event listeners
   useEffect(() => {
     void (async () => {
-      const [tabData, convs, appSettings, adStats, dls] = await Promise.all([
+      const [tabData, convs, appSettings, adStats, dls, provStatus] = await Promise.all([
         window.atlas.listTabs(),
         window.atlas.listConversations(),
         window.atlas.getSettings(),
         window.atlas.getAdBlockStats(),
-        window.atlas.listDownloads()
+        window.atlas.listDownloads(),
+        window.atlas.getProviderStatus()
       ]);
 
       setTabsState(tabData);
       setSettings(appSettings);
+      setProviderStatus(provStatus);
       setAdBlockStats(adStats);
       useAtlasStore.getState().setDownloads(dls);
+      if (appSettings.proactiveAssistanceEnabled && tabData.activeTabId) {
+        void window.atlas.checkProactiveSuggestions(tabData.activeTabId).then(setProactiveSuggestions);
+      }
 
       setConversations(convs);
       if (convs[0]) {
@@ -142,6 +151,8 @@ export const App: React.FC = () => {
         setHitlPause(null);
       } else if (ev.type === 'budget_warning') {
         pushToast(ev.message, 'warning');
+      } else if (ev.type === 'skill_suggestion') {
+        setSkillSuggestion(ev.suggestion);
       }
     });
 
@@ -265,6 +276,8 @@ export const App: React.FC = () => {
         return <McpServerView />;
       case 'audit':
         return <AuditAndRulesView />;
+      case 'intelligence':
+        return <IntelligenceView />;
       default:
         return null;
     }

@@ -301,6 +301,7 @@ export const AddressBar: React.FC = () => {
               <MenuBtn icon={<Download className="h-3.5 w-3.5" />} label="Downloads" onClick={() => { setOverlayView('downloads'); setMenuOpen(false); }} />
               <div className="my-1 border-t border-atlas-border" />
               <MenuBtn icon={<Bot className="h-3.5 w-3.5" />} label="Skills Library" onClick={() => { setOverlayView('skills'); setMenuOpen(false); }} />
+              <MenuBtn icon={<Sparkles className="h-3.5 w-3.5" />} label="Research & Intelligence" onClick={() => { setOverlayView('intelligence'); setMenuOpen(false); }} />
               <MenuBtn icon={<Sparkles className="h-3.5 w-3.5" />} label="Structured Extraction" onClick={() => { setOverlayView('extract'); setMenuOpen(false); }} />
               <MenuBtn icon={<BookOpen className="h-3.5 w-3.5" />} label="Local Memory" onClick={() => { setOverlayView('memory'); setMenuOpen(false); }} />
               <MenuBtn icon={<RotateCw className="h-3.5 w-3.5" />} label="Run History & Replay" onClick={() => { setOverlayView('runs'); setMenuOpen(false); }} />

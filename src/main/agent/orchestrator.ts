@@ -9,8 +9,11 @@ import type {
   HitlPauseReason,
   HitlPauseState,
   PagePerception,
+  PermissionTier,
+  SkillSuggestion,
   SubAgentProgress
 } from '@shared/types';
+import { extractDomain } from '@main/security/permission-gate';
 import type { BrowserRepository } from '@main/db/repositories/browser-repo';
 import type { AgentRepository } from '@main/db/repositories/agent-repo';
 import type { PlatformRepository } from '@main/db/repositories/platform-repo';
@@ -38,7 +41,8 @@ export type AgentEventPayload =
   | { type: 'hitl_paused'; pause: HitlPauseState }
   | { type: 'hitl_resumed'; runId: string }
   | { type: 'subagent_updated'; progress: SubAgentProgress }
-  | { type: 'budget_warning'; runId: string; message: string };
+  | { type: 'budget_warning'; runId: string; message: string }
+  | { type: 'skill_suggestion'; suggestion: SkillSuggestion };
 
 export const DEFAULT_BUDGETS: BudgetConfig = {
   maxStepsPerRun: 25,
@@ -291,6 +295,7 @@ export class AgentOrchestrator {
     goal: string;
     mode: AgentMode;
     selectedText?: string;
+    selectedTabIds?: string[];
     parentRunId?: string | null;
     allowedDomainsOverride?: string[];
     budgetsOverride?: Partial<BudgetConfig>;
@@ -417,12 +422,41 @@ export class AgentOrchestrator {
     // Execute loop asynchronously while returning the created Run handle immediately
     void this.executeRunLoop(ctrl, {
       selectedText: params.selectedText,
+      selectedTabIds: params.selectedTabIds,
       isExplicitResearch: parsedCmd.command === '/research',
       allowedDomainsOverride: params.allowedDomainsOverride,
       budgets: { ...this.getBudgets(), ...params.budgetsOverride }
     });
 
     return { ...run };
+  }
+
+  public async resumeFromCheckpoint(runId: string): Promise<AgentRun | null> {
+    const checkpoint = this.agentRepo.getCheckpoint(runId);
+    const oldRun = this.agentRepo.getRun(runId);
+    if (!checkpoint || !oldRun) return null;
+
+    const targetTabId =
+      (checkpoint.activeTabId && this.tabManager.getTab(checkpoint.activeTabId)?.info.id) ||
+      this.tabManager.getAllTabs().find((t) => !t.isPrivate)?.id ||
+      null;
+
+    const remainingGoal = checkpoint.subgoals
+      .filter((s) => s.status !== 'completed')
+      .map((s) => s.description)
+      .join('; ');
+
+    const resumedGoal = remainingGoal
+      ? `Resume interrupted task "${checkpoint.goal}". Completed evidence so far: ${checkpoint.evidenceCollected.slice(-4).join(' | ') || 'none'}. Remaining steps: ${remainingGoal}`
+      : checkpoint.goal;
+
+    this.agentRepo.deleteCheckpoint(runId);
+    return this.startRun({
+      conversationId: checkpoint.conversationId,
+      tabId: targetTabId,
+      goal: resumedGoal,
+      mode: checkpoint.mode === 'takeover' ? 'assist' : checkpoint.mode
+    });
   }
 
   private createInstantSystemRun(
@@ -463,6 +497,7 @@ export class AgentOrchestrator {
     ctrl: ActiveRunControl,
     opts: {
       selectedText?: string;
+      selectedTabIds?: string[];
       isExplicitResearch?: boolean;
       allowedDomainsOverride?: string[];
       budgets: BudgetConfig;
@@ -518,11 +553,26 @@ export class AgentOrchestrator {
         });
       }
 
-      // 2. Plan subgoals
-      const tabsSummary = this.tabManager
-        .getAllTabs()
+      // 2. Plan subgoals (strictly exclude private tabs unless explicitly in private window)
+      const allowedTabs = this.tabManager.getAllTabs().filter((t) => {
+        if (!run.isPrivate && t.isPrivate) return false;
+        if (opts.selectedTabIds && opts.selectedTabIds.length > 0) {
+          return opts.selectedTabIds.includes(t.id);
+        }
+        return true;
+      });
+      const tabsSummary = allowedTabs
         .map((t) => `- [${t.id}] ${t.title} (${t.url})`)
         .join('\n');
+
+      if (lastPerception) {
+        recordStep({
+          phase: 'observe',
+          summary: `Observed ${lastPerception.title || lastPerception.url}`,
+          decisionExplanation: `Captured DOM (${lastPerception.interactiveElements.length} elements) and page context.`,
+          injectionWarnings: lastPerception.injectionWarnings
+        });
+      }
 
       const plan = await this.planner.plan({
         runId: run.id,
@@ -757,12 +807,17 @@ export class AgentOrchestrator {
           });
           this.persistRun(run);
           if (!run.isPrivate) {
+            this.agentRepo.deleteCheckpoint(run.id);
             this.agentRepo.addMessage({
               conversationId: run.conversationId,
               role: 'assistant',
               content: finalAnswer,
               runId: run.id
             });
+            const suggestion = this.buildSkillSuggestion(run);
+            if (suggestion) {
+              this.emit({ type: 'skill_suggestion', suggestion });
+            }
           }
           this.emit({ type: 'run_updated', run: { ...run } });
           return;
@@ -902,6 +957,21 @@ export class AgentOrchestrator {
         }
 
         this.persistRun(run);
+        if (!run.isPrivate) {
+          this.agentRepo.saveCheckpoint({
+            runId: run.id,
+            conversationId: run.conversationId,
+            goal: run.goal,
+            mode: run.mode,
+            subgoals: run.subgoals,
+            currentSubgoalIdx: activeSubgoalIdx,
+            activeTabId: currentTabId ?? null,
+            activeUrl: lastPerception?.url ?? null,
+            evidenceCollected: run.steps.map((s) => s.evidence).filter((e): e is string => Boolean(e)),
+            stepCount: run.steps.length,
+            updatedAt: Date.now()
+          });
+        }
         this.emit({ type: 'run_updated', run: { ...run } });
       }
     } catch (err) {
@@ -1074,6 +1144,29 @@ export class AgentOrchestrator {
         }
       });
     });
+  }
+
+  private buildSkillSuggestion(run: AgentRun): SkillSuggestion | null {
+    const toolSteps = run.steps.filter((s) => s.toolExecution && s.toolExecution.success);
+    if (toolSteps.length < 2) return null;
+    const domains = Array.from(
+      new Set(
+        toolSteps
+          .map((s) => extractDomain(s.toolExecution?.pageDiff?.currentUrl || ''))
+          .filter((d) => d && d !== 'internal' && d !== 'unknown')
+      )
+    );
+    const perms = Array.from(
+      new Set(toolSteps.map((s) => s.toolExecution!.permissionTier))
+    ) as PermissionTier[];
+    return {
+      runId: run.id,
+      suggestedName: run.goal.slice(0, 48),
+      description: run.planSummary || run.goal,
+      stepsCount: toolSteps.length,
+      domains,
+      requiredPermissions: perms
+    };
   }
 
   private syncCostIntoRun(run: AgentRun): void {

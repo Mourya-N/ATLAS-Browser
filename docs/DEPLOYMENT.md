@@ -18,7 +18,8 @@ npm run rebuild
 ## Packaging (`electron-builder`)
 
 Configured in `package.json` under `"build"`:
-- **macOS**: Universal/Apple Silicon (`arm64`) and Intel (`x64`) `.dmg` targets, unpacking `node_modules/better-sqlite3/**/*` from ASAR.
+- **Branded App Icon**: `assets/icon.png` (512x512 RGBA).
+- **macOS**: Universal/Apple Silicon (`arm64`) and Intel (`x64`) `.dmg` targets with `hardenedRuntime: true`, `build/entitlements.mac.plist` (including JIT and `NSMicrophoneUsageDescription`), unpacking `node_modules/better-sqlite3/**/*` from ASAR.
 - **Windows**: `nsis` installer.
 - **Linux**: `AppImage` target.
 
@@ -30,7 +31,16 @@ npm run package
 npm run dist
 ```
 
-## Known Packaging Notes
+## Logging, Crash Reporting & Updates
 
-- `better-sqlite3` is a native N-API addon and must be compiled for the target architecture and Electron ABI (`@electron/rebuild`).
-- Code signing / notarization on macOS and Windows requires setting standard `CSC_LINK` / Apple Developer credentials in CI when distributing publicly.
+- **Logs**: Redacted rotating logs stored locally in `userData/logs/atlas.log` (2 MB rotation).
+- **Crash Reporting**: Electron `crashReporter` is initialized with `uploadToServer: false` (local dumps only; telemetry disabled by default).
+- **Update Strategy**: Configured for manual/signed release updates via GitHub Releases (`electron-updater` can be enabled once Developer ID signing credentials are provisioned).
+
+## Release Readiness & Signing Checklist
+
+- [x] Production `vite` + `esbuild` bundle (`npm run build`)
+- [x] Native `better-sqlite3` ABI rebuild & `asarUnpack`
+- [x] Branded icon (`assets/icon.png`) and `build/entitlements.mac.plist`
+- [x] Unpacked macOS `.app` bundle verified via `electron-builder --dir`
+- [ ] Apple Developer ID Application certificate (`CSC_LINK`) & notarization (`APPLE_ID` / `APPLE_APP_SPECIFIC_PASSWORD`) — requires active Apple Developer account credentials

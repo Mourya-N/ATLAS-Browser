@@ -16,7 +16,13 @@ import {
   TabRenameSchema,
   TabReorderSchema
 } from '@shared/ipc-channels';
-import type { AppSettings, McpConfig, MemoryCategory, Skill } from '@shared/types';
+import type { AppSettings, McpConfig, MemoryCategory, ProviderStatusInfo, Skill } from '@shared/types';
+import { DEFAULT_MODEL_PRICING } from '@shared/pricing';
+import type { GeminiProvider } from '@main/agent/providers/gemini-provider';
+import type { ResearchEngine } from '@main/agent/research-engine';
+import type { PageUnderstandingEngine } from '@main/agent/page-understanding';
+import type { CrossTabIntelligence } from '@main/agent/cross-tab';
+import type { ProactiveAssistant } from '@main/agent/proactive-assistant';
 import { validateIpcPayload, validateIpcSender, type TrustedSenderPolicy } from '@main/security/ipc-validator';
 import type { WindowManager } from '@main/window-manager';
 import type { TabManager } from '@main/browser/tab-manager';
@@ -57,6 +63,11 @@ export interface MainServices {
   skillRunner: SkillRunner;
   memoryService: MemoryService;
   extractionEngine: StructuredExtractionEngine;
+  researchEngine?: ResearchEngine;
+  pageUnderstanding?: PageUnderstandingEngine;
+  crossTab?: CrossTabIntelligence;
+  proactiveAssistant?: ProactiveAssistant;
+  geminiProvider?: GeminiProvider;
   scheduler: JobScheduler;
   mcpServer: LocalMcpServer;
   vault: SecretVault;
@@ -83,6 +94,11 @@ export function registerAllIpcHandlers(services: MainServices): void {
     skillRunner,
     memoryService,
     extractionEngine,
+    researchEngine,
+    pageUnderstanding,
+    crossTab,
+    proactiveAssistant,
+    geminiProvider,
     scheduler,
     mcpServer,
     vault,
@@ -573,6 +589,10 @@ export function registerAllIpcHandlers(services: MainServices): void {
     retainScreenshots: platformRepo.getSetting('agent.retainScreenshots', true),
     screenshotRetentionDays: platformRepo.getSetting('agent.screenshotRetentionDays', 14),
     experimentalScriptingEnabled: platformRepo.getSetting('security.experimentalScriptingEnabled', false),
+    proactiveAssistanceEnabled: platformRepo.getSetting('agent.proactiveAssistanceEnabled', false),
+    voiceSpokenResponsesEnabled: platformRepo.getSetting('agent.voiceSpokenResponsesEnabled', false),
+    telemetryEnabled: platformRepo.getSetting('privacy.telemetryEnabled', false),
+    activeProfileId: platformRepo.getSetting('memory.activeProfileId', 'default'),
     defaultProvider: platformRepo.getSetting('agent.defaultProvider', 'gemini'),
     defaultModel: platformRepo.getSetting('agent.defaultModel', 'gemini-2.5-flash'),
     customEndpointUrl: platformRepo.getSetting('agent.customEndpointUrl', ''),
@@ -597,6 +617,14 @@ export function registerAllIpcHandlers(services: MainServices): void {
       platformRepo.setSetting('agent.screenshotRetentionDays', patch.screenshotRetentionDays);
     if (patch.experimentalScriptingEnabled !== undefined)
       platformRepo.setSetting('security.experimentalScriptingEnabled', patch.experimentalScriptingEnabled);
+    if (patch.proactiveAssistanceEnabled !== undefined)
+      platformRepo.setSetting('agent.proactiveAssistanceEnabled', patch.proactiveAssistanceEnabled);
+    if (patch.voiceSpokenResponsesEnabled !== undefined)
+      platformRepo.setSetting('agent.voiceSpokenResponsesEnabled', patch.voiceSpokenResponsesEnabled);
+    if (patch.telemetryEnabled !== undefined)
+      platformRepo.setSetting('privacy.telemetryEnabled', patch.telemetryEnabled);
+    if (patch.activeProfileId !== undefined)
+      platformRepo.setSetting('memory.activeProfileId', patch.activeProfileId);
     if (patch.defaultProvider !== undefined)
       platformRepo.setSetting('agent.defaultProvider', patch.defaultProvider);
     if (patch.defaultModel !== undefined) platformRepo.setSetting('agent.defaultModel', patch.defaultModel);
@@ -623,5 +651,212 @@ export function registerAllIpcHandlers(services: MainServices): void {
   handleTrusted(IPC_CHANNELS.SETTINGS_CLEAR_API_KEY, () => {
     vault.clearGeminiApiKey();
     return getSettings();
+  });
+
+  handleTrusted(IPC_CHANNELS.SETTINGS_PROVIDER_STATUS, (): ProviderStatusInfo => {
+    const s = getSettings();
+    const pricing = DEFAULT_MODEL_PRICING.find((m) => m.model === s.defaultModel);
+    const isLive = s.defaultProvider === 'gemini';
+    return {
+      activeProvider: s.defaultProvider,
+      model: s.defaultModel,
+      isLive,
+      hasGeminiKey: s.hasGeminiApiKey,
+      supportsVision: pricing?.supportsVision ?? true,
+      supportsTools: pricing?.supportsTools ?? true,
+      supportsStructuredOutput: pricing?.supportsStructuredOutput ?? true,
+      warning:
+        isLive && !s.hasGeminiApiKey
+          ? 'Gemini is selected but no GEMINI_API_KEY is configured.'
+          : !isLive
+          ? 'Deterministic Mock provider is active (offline/testing only).'
+          : undefined
+    };
+  });
+
+  handleTrusted(IPC_CHANNELS.SETTINGS_TEST_PROVIDER, async (_e, p?: { model?: string }) => {
+    const s = getSettings();
+    const model = p?.model || s.defaultModel;
+    if (s.defaultProvider === 'mock') {
+      return {
+        ok: true,
+        provider: 'mock',
+        model: 'mock-deterministic',
+        latencyMs: 1,
+        capabilities: { tools: true, structuredOutput: true, vision: true }
+      };
+    }
+    if (!geminiProvider) {
+      throw new Error('Gemini provider not initialized');
+    }
+    return geminiProvider.testConnection(model);
+  });
+
+  // --- Checkpoints, Research, Page Understanding, Cross-Tab, Proactive, Skill Test ---
+  handleTrusted(IPC_CHANNELS.AGENT_LIST_INTERRUPTED, () => agentRepo.listInterruptedRuns());
+  handleTrusted(IPC_CHANNELS.AGENT_RESUME_CHECKPOINT, (_e, p: { runId: string }) =>
+    orchestrator.resumeFromCheckpoint(p.runId)
+  );
+
+  handleTrusted(
+    IPC_CHANNELS.RESEARCH_RUN,
+    async (_e, p: { query: string; tabIds?: string[] }) => {
+      if (!researchEngine) throw new Error('Research engine unavailable');
+      const allowedTabs = (crossTab
+        ? crossTab.filterAllowedTabs(tabManager.getAllTabs(), p.tabIds)
+        : tabManager.getAllTabs().filter((t) => !t.isPrivate)
+      ).slice(0, 8);
+
+      const perceptions = [];
+      for (const tab of allowedTabs) {
+        const wc = tabManager.getWebContents(tab.id);
+        if (!wc) continue;
+        try {
+          perceptions.push(await perception.capture(tab.id, wc, { includeAxTree: false }));
+        } catch {
+          // ignore unreadable tab
+        }
+      }
+      const model = platformRepo.getSetting<string>('agent.defaultModel', 'gemini-2.5-flash');
+      return researchEngine.buildReport({
+        query: p.query,
+        sources: researchEngine.sourcesFromPerceptions(perceptions),
+        model,
+        isPrivate: allowedTabs.some((t) => t.isPrivate)
+      });
+    }
+  );
+  handleTrusted(IPC_CHANNELS.RESEARCH_LIST, () => agentRepo.listResearchReports(30));
+  handleTrusted(IPC_CHANNELS.RESEARCH_EXPORT_MD, (_e, p: { reportId: string }) => {
+    if (!researchEngine) return '';
+    const r = agentRepo.getResearchReport(p.reportId);
+    return r ? researchEngine.toMarkdown(r) : '';
+  });
+
+  handleTrusted(
+    IPC_CHANNELS.PAGE_UNDERSTAND,
+    async (_e, p: { tabId: string; question: string }) => {
+      if (!pageUnderstanding) throw new Error('Page understanding engine unavailable');
+      const wc = tabManager.getWebContents(p.tabId);
+      if (!wc) throw new Error('Tab not found');
+      const perc = await perception.capture(p.tabId, wc, { includeAxTree: false });
+      const model = platformRepo.getSetting<string>('agent.defaultModel', 'gemini-2.5-flash');
+      return pageUnderstanding.answerQuestion({ perception: perc, question: p.question, model });
+    }
+  );
+
+  handleTrusted(
+    IPC_CHANNELS.PAGE_SEMANTIC_SEARCH,
+    async (_e, p: { tabId: string; query: string }) => {
+      if (!pageUnderstanding) return [];
+      const wc = tabManager.getWebContents(p.tabId);
+      if (!wc) return [];
+      const perc = await perception.capture(p.tabId, wc, { includeAxTree: false });
+      return pageUnderstanding.semanticSearchInPage(perc, p.query, 6);
+    }
+  );
+
+  handleTrusted(IPC_CHANNELS.PAGE_CHECK_CHANGES, async (_e, p: { tabId: string }) => {
+    if (!pageUnderstanding) throw new Error('Page understanding engine unavailable');
+    const tab = tabManager.getTab(p.tabId);
+    const wc = tabManager.getWebContents(p.tabId);
+    if (!tab || !wc) throw new Error('Tab not found');
+    const perc = await perception.capture(p.tabId, wc, { includeAxTree: false });
+    return pageUnderstanding.checkAndRecordPageChanges(perc, !tab.info.isPrivate);
+  });
+
+  handleTrusted(IPC_CHANNELS.CROSSTAB_ANALYZE, async (_e, p?: { tabIds?: string[] }) => {
+    if (!crossTab) throw new Error('Cross-tab engine unavailable');
+    const tabs = crossTab.filterAllowedTabs(tabManager.getAllTabs(), p?.tabIds);
+    const map = new Map<string, import('@shared/types').PagePerception>();
+    for (const t of tabs.slice(0, 10)) {
+      const wc = tabManager.getWebContents(t.id);
+      if (!wc) continue;
+      try {
+        map.set(t.id, await perception.capture(t.id, wc, { includeAxTree: false }));
+      } catch {
+        // skip
+      }
+    }
+    return crossTab.analyzeTabs(tabs, map);
+  });
+
+  handleTrusted(
+    IPC_CHANNELS.CROSSTAB_COMPARE,
+    async (_e, p: { tabIds?: string[]; criteria: string }) => {
+      if (!crossTab) throw new Error('Cross-tab engine unavailable');
+      const tabs = crossTab.filterAllowedTabs(tabManager.getAllTabs(), p.tabIds);
+      const perceptions = [];
+      for (const t of tabs.slice(0, 8)) {
+        const wc = tabManager.getWebContents(t.id);
+        if (!wc) continue;
+        perceptions.push(await perception.capture(t.id, wc, { includeAxTree: false }));
+      }
+      const model = platformRepo.getSetting<string>('agent.defaultModel', 'gemini-2.5-flash');
+      return crossTab.compareSelectedTabs({ tabs, perceptions, criteria: p.criteria, model });
+    }
+  );
+
+  handleTrusted(
+    IPC_CHANNELS.SKILL_TEST,
+    async (_e, p: { skillId: string; params: Record<string, unknown>; tabId?: string | null }) => {
+      const skill = platformRepo.getSkill(p.skillId);
+      if (!skill) throw new Error('Skill not found');
+      const targetTabId = p.tabId || tabManager.getAllTabs().find((t) => !t.isPrivate)?.id || '';
+      return skillRunner.runSkill({
+        skill,
+        args: p.params ?? {},
+        mode: 'assist', // Skill test mode always uses safe assist confirmation
+        createContext: (runId) => {
+          const ctx = {
+            runId,
+            tabId: targetTabId,
+            mode: 'assist' as const,
+            isPrivate: Boolean(tabManager.getTab(targetTabId)?.info.isPrivate),
+            experimentalScriptingEnabled: false,
+            tabManager,
+            browserRepo,
+            cdp,
+            resolver,
+            perception,
+            lastPerception: null as import('@shared/types').PagePerception | null,
+            updateLastPerception: (next: import('@shared/types').PagePerception) => {
+              ctx.lastPerception = next;
+            },
+            setActiveTabId: (id: string) => {
+              ctx.tabId = id;
+            }
+          };
+          return ctx;
+        }
+      });
+    }
+  );
+
+  handleTrusted(IPC_CHANNELS.PROACTIVE_CHECK, async (_e, p: { tabId?: string | null }) => {
+    const enabled = platformRepo.getSetting<boolean>('agent.proactiveAssistanceEnabled', false);
+    if (!proactiveAssistant || !enabled) return [];
+    const tabs = tabManager.getAllTabs().filter((t) => !t.isPrivate);
+    const activeTab = (p?.tabId ? tabManager.getTab(p.tabId)?.info : tabs[0]) ?? null;
+    let activePerc = null;
+    if (activeTab && !activeTab.isPrivate) {
+      const wc = tabManager.getWebContents(activeTab.id);
+      if (wc && !wc.isLoading()) {
+        try {
+          activePerc = await perception.capture(activeTab.id, wc, { includeAxTree: false });
+        } catch {
+          // ignore
+        }
+      }
+    }
+    const analysis = crossTab ? crossTab.analyzeTabs(tabs, new Map()) : { duplicateGroups: [], relatedPairs: [] };
+    return proactiveAssistant.evaluate({
+      enabled,
+      tabs,
+      activeTab,
+      activePerception: activePerc,
+      relatedPairsCount: analysis.relatedPairs.length,
+      duplicateGroups: analysis.duplicateGroups
+    });
   });
 }

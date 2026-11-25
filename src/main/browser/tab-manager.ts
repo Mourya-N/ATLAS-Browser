@@ -318,8 +318,27 @@ export class TabManager {
 
     wc.on('page-favicon-updated', (_ev, favicons) => {
       if (favicons && favicons.length > 0) {
-        info.favicon = favicons[0];
-        this.emitState(info.windowId);
+        const rawUrl = favicons[0];
+        if (rawUrl.startsWith('http://')) {
+          // Safely convert http:// favicons (including localhost) into bounded data: URIs so production CSP never allows broad http: images
+          void fetch(rawUrl, { signal: AbortSignal.timeout(2000) })
+            .then(async (res) => {
+              if (!res.ok) return;
+              const ct = res.headers.get('content-type') || '';
+              if (!ct.startsWith('image/')) return;
+              const buf = Buffer.from(await res.arrayBuffer());
+              if (buf.length > 0 && buf.length <= 65_536) {
+                info.favicon = `data:${ct.split(';')[0]};base64,${buf.toString('base64')}`;
+                this.emitState(info.windowId);
+              }
+            })
+            .catch(() => {
+              // Ignore missing/unreachable http favicon gracefully without violating CSP
+            });
+        } else if (rawUrl.startsWith('https://') || rawUrl.startsWith('data:image/')) {
+          info.favicon = rawUrl;
+          this.emitState(info.windowId);
+        }
       }
     });
 

@@ -33,6 +33,9 @@ import { SkillRunner } from '@main/skills/skill-runner';
 import { JobScheduler } from '@main/scheduler/job-scheduler';
 import { LocalMcpServer } from '@main/mcp/mcp-server';
 import { registerAllIpcHandlers } from '@main/ipc/register-handlers';
+import { ResearchEngine } from '@main/agent/research-engine';
+import { PageUnderstandingEngine } from '@main/agent/page-understanding';
+import { CrossTabIntelligence } from '@main/agent/cross-tab';
 import type { AgentRun, PagePerception } from '@shared/types';
 import { startE2EHttpServer } from '../fixtures/e2e-http-server';
 
@@ -475,6 +478,36 @@ app.whenReady().then(async () => {
     confirmBehavior = 'approve';
   });
 
+  await runCase('CDP-HYBRID', 'Visual coordinate-to-element validation (visual_click) and smart fill_form on real Chromium', async () => {
+    await toolRegistry.invoke('navigate', { url: `${server.baseUrl}/form` }, ctx);
+    const filled = await toolRegistry.invoke(
+      'fill_form',
+      { fields: [{ selector: '#name-input', value: 'Grace Hopper' }] },
+      ctx
+    );
+    assert.equal(filled.outcome.success, true);
+
+    const domRes = await toolRegistry.invoke('inspect_dom', {}, ctx);
+    const elems = (domRes.outcome.data as { elements: Array<{ selector: string; confidence?: number; boundingBox: { x: number; y: number; width: number; height: number } }> }).elements;
+    const submitEl = elems.find((e) => e.selector === '#submit-btn');
+    assert.ok(submitEl && (submitEl.confidence ?? 0) >= 0.7, 'Expected confidence score on DOM element');
+    const vx = Math.round(submitEl.boundingBox.x + submitEl.boundingBox.width / 2);
+    const vy = Math.round(submitEl.boundingBox.y + submitEl.boundingBox.height / 2);
+
+    // visual_click on submit button MUST still trigger sensitive confirmation!
+    confirmBehavior = 'reject';
+    const rejectedVisual = await toolRegistry.invoke('visual_click', { x: vx, y: vy }, ctx);
+    assert.equal(rejectedVisual.outcome.success, false);
+    assert.equal(rejectedVisual.permissionTier, 'sensitive');
+
+    confirmBehavior = 'approve';
+    const approvedVisual = await toolRegistry.invoke('visual_click', { x: vx, y: vy }, ctx);
+    assert.equal(approvedVisual.outcome.success, true);
+    await waitForTabLoad(tabManager, mainTabId);
+    const resultPage = await toolRegistry.invoke('read_page', {}, ctx);
+    assert.ok((resultPage.outcome.data as { mainText: string }).mainText.includes('Name=Grace Hopper'));
+  });
+
   await runCase('CDP-11 & 12', 'Open second tab and compare content across both real tabs', async () => {
     await toolRegistry.invoke('navigate', { url: `${server.baseUrl}/compare-1` }, ctx);
     const opened = await toolRegistry.invoke('open_tab', { url: `${server.baseUrl}/compare-2`, activate: false }, ctx);
@@ -653,6 +686,41 @@ app.whenReady().then(async () => {
     const done = await waitForRunDone(orchestrator, agentRepo, run.id);
     assert.equal(done.status, 'completed');
     assert.ok(done.finalAnswer?.includes('Option Alpha') && done.finalAnswer?.includes('Option Beta'));
+
+    // Also verify ResearchEngine, PageUnderstandingEngine, and CrossTabIntelligence on real Chromium tabs
+    const p1 = await perception.capture(mainTabId, tabManager.getWebContents(mainTabId)!, { includeAxTree: false });
+    const p2 = await perception.capture(tab2.id, tabManager.getWebContents(tab2.id)!, { includeAxTree: false });
+    const pageUnderstand = new PageUnderstandingEngine(() => mockProvider, platformRepo, injectionGuard);
+    const change1 = pageUnderstand.checkAndRecordPageChanges(p1, true);
+    assert.equal(change1.hasPrevious, false);
+    const change2 = pageUnderstand.checkAndRecordPageChanges(p1, true);
+    assert.equal(change2.hasPrevious, true);
+
+    const crossTab = new CrossTabIntelligence(() => mockProvider, injectionGuard);
+    const analysis = crossTab.analyzeTabs([tabManager.getTab(mainTabId)!.info, tabManager.getTab(tab2.id)!.info], new Map([[mainTabId, p1], [tab2.id, p2]]));
+    assert.equal(analysis.tabs.length, 2);
+
+    const research = new ResearchEngine(() => mockProvider, agentRepo, injectionGuard);
+    mockProvider.enqueue([
+      {
+        text: JSON.stringify({
+          summary: 'Option Alpha is $29/mo; Option Beta is $99/mo.',
+          claims: [{ claim: 'Option Alpha costs $29/mo', kind: 'fact', supportingQuote: 'Price: $29/month', sourceUrl: p1.url, sourceTitle: p1.title, confidence: 0.95 }],
+          conflicts: [],
+          notes: 'Verified live'
+        }),
+        functionCalls: [],
+        usage: { inputTokens: 80, outputTokens: 40, fromProvider: false }
+      }
+    ]);
+    const report = await research.buildReport({
+      query: 'Compare Alpha and Beta',
+      sources: research.sourcesFromPerceptions([p1, p2]),
+      model: 'mock'
+    });
+    assert.equal(report.sources.length, 2);
+    assert.ok(report.claims.length >= 1);
+
     tabManager.closeTab(tab2.id);
   });
 
