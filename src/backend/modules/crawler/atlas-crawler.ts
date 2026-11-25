@@ -4,7 +4,7 @@ import type {
   CrawlCheckpoint,
   CrawlSeedConfig
 } from '@shared/types';
-import { computeLocalEmbedding } from '@main/memory/memory-service';
+import { computeLocalEmbedding } from '@shared/text-utils';
 import type { CloudRepository } from '../../db/repository';
 import { SsrfGuard } from '../../security/ssrf-guard';
 import type { ResearchExtractorService } from '../research/research-extractor';

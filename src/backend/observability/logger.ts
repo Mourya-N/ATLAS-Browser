@@ -1,4 +1,4 @@
-import { redactSecrets, redactObjectSecrets } from '@main/security/secrets';
+import { redactSecrets, redactObjectSecrets } from '@shared/redaction';
 
 export interface StructuredLogEntry {
   timestamp: string;

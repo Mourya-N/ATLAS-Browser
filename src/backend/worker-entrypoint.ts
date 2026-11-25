@@ -1,4 +1,4 @@
-import { createBackendContainer } from './api/server';
+import { createBackendContainer } from './container';
 
 async function main(): Promise<void> {
   const { services, redis } = await createBackendContainer();

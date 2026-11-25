@@ -17,7 +17,7 @@ import type {
   MemoryItem,
   ResearchReport
 } from '@shared/types';
-import { cosineSimilarity } from '@main/memory/memory-service';
+import { cosineSimilarity } from '@shared/text-utils';
 import type {
   CloudAuditEventRecord,
   CloudRepository,
@@ -876,10 +876,21 @@ export class PostgresCloudRepository implements CloudRepository {
   }): Promise<Array<{ document: AtlasIndexDocument; lexicalScore: number; semanticScore: number }>> {
     const domains = params.domains && params.domains.length > 0 ? params.domains.map((d) => d.toLowerCase()) : null;
     const res = await this.pool.query(
-      `SELECT *, ts_rank_cd(tsv, plainto_tsquery('english', $1)) AS ts_rank
-       FROM atlas_index_documents
-       WHERE ($2::text[] IS NULL OR source_domain = ANY($2::text[]))
-       ORDER BY ts_rank DESC, crawled_at DESC
+      `WITH q AS (
+         SELECT
+           plainto_tsquery('english', $1) AS and_q,
+           NULLIF(regexp_replace(plainto_tsquery('english', $1)::text, ' & ', ' | ', 'g'), '')::tsquery AS or_q
+       )
+       SELECT
+         d.*,
+         COALESCE(d.tsv @@ q.and_q, FALSE) AS fts_exact,
+         COALESCE(d.tsv @@ q.or_q, FALSE) AS fts_any,
+         CASE WHEN d.tsv @@ q.and_q THEN COALESCE(ts_rank(d.tsv, q.and_q), 0) ELSE 0 END AS and_rank,
+         CASE WHEN d.tsv @@ q.or_q THEN COALESCE(ts_rank(d.tsv, q.or_q), 0) ELSE 0 END AS or_rank
+       FROM atlas_index_documents d
+       CROSS JOIN q
+       WHERE ($2::text[] IS NULL OR d.source_domain = ANY($2::text[]))
+       ORDER BY and_rank DESC, or_rank DESC, d.crawled_at DESC
        LIMIT 100`,
       [params.query, domains]
     );
@@ -887,13 +898,16 @@ export class PostgresCloudRepository implements CloudRepository {
     return res.rows
       .map((r) => {
         const doc = this.mapAtlasDocRow(r);
-        const lexicalScore = Math.min(1, Number(r.ts_rank || 0));
+        const ftsExact = Boolean(r.fts_exact);
+        const ftsAny = Boolean(r.fts_any);
+        const lexicalScore = Math.min(1, Math.max(Number(r.and_rank || 0), Number(r.or_rank || 0) * 0.65));
         const semanticScore = cosineSimilarity(params.queryEmbedding, doc.embedding);
-        return { document: doc, lexicalScore, semanticScore };
+        return { document: doc, lexicalScore, semanticScore, ftsMatched: ftsExact || ftsAny };
       })
-      .filter((x) => x.lexicalScore > 0.05 || x.semanticScore > 0.45)
-      .sort((a, b) => b.lexicalScore * 0.6 + b.semanticScore * 0.4 - (a.lexicalScore * 0.6 + a.semanticScore * 0.4))
-      .slice(0, params.limit ?? 20);
+      .filter((x) => x.ftsMatched || x.lexicalScore > 0.02 || x.semanticScore > 0.45)
+      .sort((a, b) => (b.lexicalScore * 0.6 + b.semanticScore * 0.4) - (a.lexicalScore * 0.6 + a.semanticScore * 0.4))
+      .slice(0, params.limit ?? 20)
+      .map(({ document, lexicalScore, semanticScore }) => ({ document, lexicalScore, semanticScore }));
   }
 
   public async getAtlasIndexStats(): Promise<AtlasIndexStats> {

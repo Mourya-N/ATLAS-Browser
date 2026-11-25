@@ -4,7 +4,7 @@ import type {
   SearchMode,
   SearchProviderHealth
 } from '@shared/types';
-import { computeLocalEmbedding } from '@main/memory/memory-service';
+import { computeLocalEmbedding } from '@shared/text-utils';
 import type { CloudRepository } from '../../db/repository';
 import type { ProviderSearchParams, RawSearchCandidate, SearchProvider } from './provider';
 

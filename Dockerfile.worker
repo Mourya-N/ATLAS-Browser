@@ -11,8 +11,6 @@ COPY scripts/build-backend.mjs ./scripts/build-backend.mjs
 COPY src/shared ./src/shared
 COPY src/backend ./src/backend
 COPY src/main/agent/providers ./src/main/agent/providers
-COPY src/main/memory ./src/main/memory
-COPY src/main/security/secrets.ts ./src/main/security/secrets.ts
 COPY src/main/security/injection-guard.ts ./src/main/security/injection-guard.ts
 
 RUN node scripts/build-backend.mjs

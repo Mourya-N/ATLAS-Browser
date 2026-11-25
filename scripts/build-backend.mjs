@@ -21,7 +21,7 @@ async function main() {
     target: 'node20',
     outdir: path.join(rootDir, 'dist/backend'),
     sourcemap: true,
-    external: ['pg', 'ioredis', 'electron', 'better-sqlite3'],
+    external: ['pg', 'ioredis'],
     alias: {
       '@shared': path.join(rootDir, 'src/shared'),
       '@main': path.join(rootDir, 'src/main')

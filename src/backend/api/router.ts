@@ -23,6 +23,7 @@ export interface BackendServicesContainer {
   repo: CloudRepository;
   logger: BackendLogger;
   metrics: MetricsRegistry;
+  isRedisReady?: () => boolean;
   rateLimiter: RateLimiter;
   identity: IdentityService;
   ai: AiOrchestrator;
@@ -80,6 +81,7 @@ export function createCloudApiRouter(services: BackendServicesContainer) {
     repo,
     logger,
     metrics,
+    isRedisReady,
     rateLimiter,
     identity,
     ai,
@@ -248,14 +250,21 @@ export function createCloudApiRouter(services: BackendServicesContainer) {
       if (method === 'GET' && pathname === '/metrics') {
         const providers = await search.getProviderHealth();
         const workerStats = await repo.getJobStats();
+        const indexStats = await firstPartyIndex.getStats();
         const snap = metrics.snapshot({
           service: 'atlas-cloud-backend',
           providers,
           worker: workerStats,
           storage: {
             postgresConnected: repo.mode === 'postgres' ? await repo.ping() : false,
-            redisConnected: false,
+            redisConnected: isRedisReady ? isRedisReady() : false,
             mode: repo.mode
+          },
+          crawler: {
+            indexedDocuments: indexStats.totalDocuments,
+            crawlErrors: 0,
+            duplicateRate: 0,
+            crawlThroughputPerMin: 0
           }
         });
         res.statusCode = 200;
@@ -268,14 +277,21 @@ export function createCloudApiRouter(services: BackendServicesContainer) {
       if (method === 'GET' && pathname === '/api/v1/observability/metrics') {
         const providers = await search.getProviderHealth();
         const workerStats = await repo.getJobStats();
+        const indexStats = await firstPartyIndex.getStats();
         const snap = metrics.snapshot({
           service: 'atlas-cloud-backend',
           providers,
           worker: workerStats,
           storage: {
             postgresConnected: repo.mode === 'postgres' ? await repo.ping() : false,
-            redisConnected: false,
+            redisConnected: isRedisReady ? isRedisReady() : false,
             mode: repo.mode
+          },
+          crawler: {
+            indexedDocuments: indexStats.totalDocuments,
+            crawlErrors: 0,
+            duplicateRate: 0,
+            crawlThroughputPerMin: 0
           }
         });
         sendJson(res, 200, snap, requestId);

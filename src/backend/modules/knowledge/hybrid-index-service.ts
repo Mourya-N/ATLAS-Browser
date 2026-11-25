@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { HybridIndexDocument, HybridSearchHit } from '@shared/types';
-import { computeLocalEmbedding } from '@main/memory/memory-service';
+import { computeLocalEmbedding } from '@shared/text-utils';
 import type { CloudRepository } from '../../db/repository';
 
 export const CURRENT_EMBEDDING_VERSION = 'v1-hash64';

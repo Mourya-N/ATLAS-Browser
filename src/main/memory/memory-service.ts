@@ -1,85 +1,16 @@
 import { randomUUID } from 'node:crypto';
 import type { MemoryCategory, MemoryItem } from '@shared/types';
+import { containsSensitiveText } from '@shared/redaction';
+import { computeLocalEmbedding, cosineSimilarity, tokenizeText as tokenize } from '@shared/text-utils';
 import type { PlatformRepository } from '@main/db/repositories/platform-repo';
 
-const SENSITIVE_MEMORY_PATTERNS: RegExp[] = [
-  /password\s*[:=]\s*\S+/i,
-  /cvv\s*[:=]\s*\d{3,4}/i,
-  /\b(?:\d[ -]*?){13,16}\b/, // credit card numbers
-  /-----BEGIN\s+(RSA|OPENSSH|EC|PGP)\s+PRIVATE\s+KEY-----/i,
-  /AIza[0-9A-Za-z\-_]{20,}/,
-  /sk-[0-9A-Za-z\-_]{20,}/,
-  /bearer\s+(?=[0-9a-z\-._~+/]*[\d._\-+/])[0-9a-z\-._~+/]{12,}=*/i,
-  /atlas_mcp_[0-9a-f]{16,}/i
-];
-
-const EMBEDDING_DIM = 64;
-
-function tokenize(text: string): string[] {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .split(/\s+/)
-    .filter((w) => w.length >= 2);
-}
-
-/**
- * Deterministic local hashed n-gram + word embedding vector (normalized L2)
- * for offline semantic retrieval stored in SQLite without external API dependencies.
- */
-export function computeLocalEmbedding(text: string): number[] {
-  const vec = new Array<number>(EMBEDDING_DIM).fill(0);
-  const normalized = text.toLowerCase().replace(/\s+/g, ' ').trim();
-  if (!normalized) return vec;
-
-  const words = tokenize(normalized);
-  for (const w of words) {
-    let h = 2166136261;
-    for (let i = 0; i < w.length; i++) {
-      h ^= w.charCodeAt(i);
-      h = Math.imul(h, 16777619);
-    }
-    const idx = Math.abs(h) % EMBEDDING_DIM;
-    const wSign = ((h >>> 16) & 1) === 0 ? 1 : -1;
-    vec[idx] += wSign * 1.5;
-
-    // Signed character trigrams capture morphological similarity while keeping unrelated vectors near zero
-    for (let i = 0; i <= w.length - 3; i++) {
-      const tri = w.slice(i, i + 3);
-      let th = 2166136261;
-      for (let j = 0; j < 3; j++) {
-        th ^= tri.charCodeAt(j);
-        th = Math.imul(th, 16777619);
-      }
-      const tSign = ((th >>> 16) & 1) === 0 ? 1 : -1;
-      vec[Math.abs(th) % EMBEDDING_DIM] += tSign * 0.6;
-    }
-  }
-
-  const norm = Math.sqrt(vec.reduce((acc, v) => acc + v * v, 0));
-  if (norm > 0) {
-    for (let i = 0; i < vec.length; i++) {
-      vec[i] = Number((vec[i] / norm).toFixed(5));
-    }
-  }
-  return vec;
-}
-
-export function cosineSimilarity(a: number[], b: number[]): number {
-  const len = Math.min(a.length, b.length);
-  if (len === 0) return 0;
-  let dot = 0;
-  for (let i = 0; i < len; i++) {
-    dot += a[i] * b[i];
-  }
-  return Math.max(0, Math.min(1, dot));
-}
+export { computeLocalEmbedding, cosineSimilarity };
 
 export class MemoryService {
   constructor(private readonly repo: PlatformRepository) {}
 
   public containsSensitiveData(text: string): boolean {
-    return SENSITIVE_MEMORY_PATTERNS.some((rx) => rx.test(text));
+    return containsSensitiveText(text);
   }
 
   public list(category?: MemoryCategory, profileId = 'default'): MemoryItem[] {

@@ -7,7 +7,7 @@ import type {
   SearchEvidencePassage
 } from '@shared/types';
 import { InjectionGuard } from '@main/security/injection-guard';
-import { computeLocalEmbedding, cosineSimilarity } from '@main/memory/memory-service';
+import { computeLocalEmbedding, cosineSimilarity } from '@shared/text-utils';
 import type { AiOrchestrator } from '../ai/ai-orchestrator';
 import type { ResearchExtractorService } from '../research/research-extractor';
 

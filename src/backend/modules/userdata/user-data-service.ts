@@ -8,7 +8,8 @@ import type {
   ResearchReport,
   SearchMode
 } from '@shared/types';
-import { computeLocalEmbedding, MemoryService } from '@main/memory/memory-service';
+import { containsSensitiveText } from '@shared/redaction';
+import { computeLocalEmbedding } from '@shared/text-utils';
 import type { CloudRepository } from '../../db/repository';
 import type { HybridIndexService } from '../knowledge/hybrid-index-service';
 
@@ -23,8 +24,6 @@ export class ConsentRequiredError extends Error {
 }
 
 export class UserDataService {
-  private readonly secretChecker = new MemoryService(null as never);
-
   constructor(
     private readonly repo: CloudRepository,
     private readonly hybridIndex: HybridIndexService
@@ -108,7 +107,7 @@ export class UserDataService {
       throw new Error('Private browsing notes cannot be uploaded to Atlas Cloud');
     }
     await this.requireConsent(params.userId, params.profileId, 'syncNotes');
-    if (this.secretChecker.containsSensitiveData(`${params.title}\n${params.content}`)) {
+    if (containsSensitiveText(`${params.title}\n${params.content}`)) {
       throw new Error('Refusing to store sensitive credentials or secrets in cloud notes');
     }
     const now = Date.now();
@@ -231,7 +230,7 @@ export class UserDataService {
     if (!params.item.userApproved) {
       throw new Error('Only user-approved memory items may sync to Atlas Cloud');
     }
-    if (this.secretChecker.containsSensitiveData(`${params.item.title}\n${params.item.content}`)) {
+    if (containsSensitiveText(`${params.item.title}\n${params.item.content}`)) {
       throw new Error('Refusing to upload sensitive secret data to cloud memory');
     }
     const enriched: MemoryItem = {

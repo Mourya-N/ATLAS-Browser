@@ -6,7 +6,7 @@ import type {
   SearchQueryUnderstanding,
   SearchResultOrigin
 } from '@shared/types';
-import { computeLocalEmbedding, cosineSimilarity } from '@main/memory/memory-service';
+import { computeLocalEmbedding, cosineSimilarity } from '@shared/text-utils';
 import { isPrivateOrReservedIp } from '../../security/ssrf-guard';
 import type { RawSearchCandidate } from './provider';
 

@@ -14,7 +14,7 @@ import type {
   MemoryItem,
   ResearchReport
 } from '@shared/types';
-import { cosineSimilarity } from '@main/memory/memory-service';
+import { cosineSimilarity } from '@shared/text-utils';
 import type {
   CloudAuditEventRecord,
   CloudRepository,

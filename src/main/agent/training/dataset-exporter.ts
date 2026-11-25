@@ -1,5 +1,5 @@
 import type { AgentRun } from '@shared/types';
-import { redactSecrets } from '@main/security/secrets';
+import { redactSecrets } from '@shared/redaction';
 
 export interface SftTrainingExample {
   id: string;

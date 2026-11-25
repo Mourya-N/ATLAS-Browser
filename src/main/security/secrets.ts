@@ -2,6 +2,9 @@ import { safeStorage } from 'electron';
 import { randomBytes, createCipheriv, createDecipheriv, scryptSync } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import { redactSecrets, redactObjectSecrets } from '@shared/redaction';
+
+export { redactSecrets, redactObjectSecrets };
 
 export interface SecretVaultData {
   geminiApiKey?: string;
@@ -9,49 +12,6 @@ export interface SecretVaultData {
   mcpAuthToken?: string;
   cloudAccessToken?: string;
   cloudRefreshToken?: string;
-}
-
-const REDACTION_PATTERNS: RegExp[] = [
-  /AIza[0-9A-Za-z\-_]{20,}/g,
-  /sk-[0-9A-Za-z\-_]{20,}/g,
-  /Bearer\s+[0-9A-Za-z\-._~+/]+=*/gi,
-  /atlas_mcp_[0-9a-f]{16,}/gi
-];
-
-export function redactSecrets(input: string): string {
-  let out = input;
-  for (const pattern of REDACTION_PATTERNS) {
-    out = out.replace(pattern, '[REDACTED_SECRET]');
-  }
-  return out;
-}
-
-export function redactObjectSecrets<T>(obj: T): T {
-  if (obj === null || obj === undefined) return obj;
-  if (typeof obj === 'string') return redactSecrets(obj) as unknown as T;
-  if (Array.isArray(obj)) return obj.map((item) => redactObjectSecrets(item)) as unknown as T;
-  if (typeof obj === 'object') {
-    const out: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
-      const lower = k.toLowerCase();
-      if (
-        lower.includes('password') ||
-        lower.includes('apikey') ||
-        lower.includes('api_key') ||
-        lower.includes('secret') ||
-        lower.includes('token') ||
-        lower.includes('authorization') ||
-        lower.includes('creditcard') ||
-        lower.includes('cvv')
-      ) {
-        out[k] = '[REDACTED]';
-      } else {
-        out[k] = redactObjectSecrets(v);
-      }
-    }
-    return out as T;
-  }
-  return obj;
 }
 
 export class SecretVault {

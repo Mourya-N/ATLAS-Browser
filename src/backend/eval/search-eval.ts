@@ -4,7 +4,7 @@ import type {
   ModelGenerateResponse,
   ModelProvider
 } from '@main/agent/providers/model-provider';
-import { computeLocalEmbedding } from '@main/memory/memory-service';
+import { computeLocalEmbedding } from '@shared/text-utils';
 import type { AtlasIndexDocument, SearchEvalCaseResult, SearchEvalMetrics, SearchMode } from '@shared/types';
 import { loadBackendConfig } from '../config';
 import { InMemoryCloudRepository } from '../db/memory-repository';
