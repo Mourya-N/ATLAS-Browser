@@ -22,7 +22,15 @@ export class SessionRestoreService {
       const safeTabs = state.tabs.filter((t) => !t.isPrivate);
       this.repo.saveSessionSnapshot(safeTabs, state.activeTabId, state.groups);
     } catch (err) {
+      if (err instanceof Error && /not open/i.test(err.message)) return;
       console.error('[SessionRestore] Failed to save snapshot:', err);
+    }
+  }
+
+  public dispose(): void {
+    if (this.saveTimer) {
+      clearTimeout(this.saveTimer);
+      this.saveTimer = null;
     }
   }
 

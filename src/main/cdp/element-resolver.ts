@@ -95,7 +95,13 @@ export class ElementResolver {
       let coveredByOverlay = false;
       let overlayDescription = undefined;
       const doc = el.ownerDocument || document;
-      const topEl = doc.elementFromPoint(cx, cy);
+      // Pierce Shadow DOM boundaries recursively so shadow hosts are not misclassified as overlays
+      let topEl = doc.elementFromPoint(cx, cy);
+      while (topEl && topEl.shadowRoot && typeof topEl.shadowRoot.elementFromPoint === 'function') {
+        const inner = topEl.shadowRoot.elementFromPoint(cx, cy);
+        if (!inner || inner === topEl) break;
+        topEl = inner;
+      }
       if (topEl && topEl !== el && !el.contains(topEl) && !topEl.contains(el)) {
         coveredByOverlay = true;
         overlayDescription = topEl.tagName.toLowerCase() + (topEl.id ? '#' + topEl.id : '');

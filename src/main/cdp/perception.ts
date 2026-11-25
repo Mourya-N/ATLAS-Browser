@@ -89,7 +89,7 @@ export class PerceptionEngine {
 
   private async captureDomSnapshot(tabId: string, webContents: WebContents): Promise<RawPageSnapshot> {
     const script = `(() => {
-      let counter = 1;
+      if (!window.__atlasNextId) window.__atlasNextId = 1;
       const interactive = [];
       const hiddenTexts = [];
       const comments = [];
@@ -158,8 +158,11 @@ export class PerceptionEngine {
 
           if (isInteractiveTag(el) && interactive.length < 150) {
             const visible = rect.width > 0 && rect.height > 0 && !isHidden;
-            const atlasId = 'el_' + (counter++);
-            el.setAttribute('data-atlas-id', atlasId);
+            let atlasId = el.getAttribute('data-atlas-id');
+            if (!atlasId) {
+              atlasId = 'el_' + (window.__atlasNextId++);
+              el.setAttribute('data-atlas-id', atlasId);
+            }
             const attrs = {};
             for (const attr of ['id', 'name', 'type', 'placeholder', 'aria-label', 'role', 'href', 'value']) {
               const v = el.getAttribute(attr);

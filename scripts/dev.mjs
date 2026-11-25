@@ -64,13 +64,14 @@ async function main() {
   });
 
   const electronBin = path.join(rootDir, 'node_modules/.bin/electron');
+  const env = { ...process.env };
+  delete env.ELECTRON_RUN_AS_NODE;
+  env.ATLAS_DEV_SERVER_URL = process.env.ATLAS_DEV_SERVER_URL;
+
   const child = spawn(electronBin, ['.'], {
     cwd: rootDir,
     stdio: 'inherit',
-    env: {
-      ...process.env,
-      ATLAS_DEV_SERVER_URL: process.env.ATLAS_DEV_SERVER_URL
-    }
+    env
   });
 
   child.on('close', async (code) => {

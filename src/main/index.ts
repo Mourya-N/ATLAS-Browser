@@ -37,9 +37,14 @@ import { registerAllIpcHandlers } from './ipc/register-handlers';
 // Disable Electron remote module & enforce secure defaults
 app.enableSandbox();
 
+if (process.env.ATLAS_USER_DATA_DIR) {
+  app.setPath('userData', process.env.ATLAS_USER_DATA_DIR);
+}
+
 let db: AtlasDatabase | null = null;
 let scheduler: JobScheduler | null = null;
 let mcpServer: LocalMcpServer | null = null;
+let sessionRestoreRef: SessionRestoreService | null = null;
 
 function pruneOldScreenshots(screenshotsDir: string, retentionDays: number): void {
   if (!fs.existsSync(screenshotsDir)) return;
@@ -70,7 +75,7 @@ app.whenReady().then(async () => {
           responseHeaders: {
             ...details.responseHeaders,
             'Content-Security-Policy': [
-              "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self';"
+              "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: http:; connect-src 'self';"
             ]
           }
         });
@@ -102,6 +107,7 @@ app.whenReady().then(async () => {
   const adBlocker = new AdBlocker(platformRepo);
   const privateSessionManager = new PrivateSessionManager();
   const sessionRestore = new SessionRestoreService(browserRepo);
+  sessionRestoreRef = sessionRestore;
 
   let windowManagerRef: WindowManager | null = null;
   const downloadManager = new DownloadManager(browserRepo, platformRepo, () =>
@@ -245,6 +251,7 @@ app.whenReady().then(async () => {
 
 app.on('before-quit', async () => {
   globalShortcut.unregisterAll();
+  sessionRestoreRef?.dispose();
   scheduler?.stop();
   await mcpServer?.stop();
   db?.close();
