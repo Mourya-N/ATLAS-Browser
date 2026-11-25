@@ -8,6 +8,9 @@ import type {
   AuditEvent,
   BookmarkEntry,
   BookmarkFolder,
+  CloudConnectionStatus,
+  CloudConsentSettings,
+  CloudNoteRecord,
   ConfirmationRequest,
   ConfirmationResponse,
   CostSummary,
@@ -31,6 +34,9 @@ import type {
   ResearchReport,
   ScheduledJob,
   ScheduleTriggerType,
+  SearchFilterOptions,
+  SearchMode,
+  SearchResponse,
   Skill,
   SkillExecution,
   TabGroup,
@@ -205,6 +211,37 @@ export interface AtlasBridge {
   compareCrossTabs: (criteria: string, tabIds?: string[]) => Promise<string>;
   testSkill: (skillId: string, params: Record<string, unknown>, tabId?: string | null) => Promise<SkillExecution>;
   checkProactiveSuggestions: (tabId?: string | null) => Promise<ProactiveSuggestion[]>;
+
+  executeSearch: (payload: {
+    query: string;
+    mode?: SearchMode;
+    filters?: SearchFilterOptions;
+    selectedTabIds?: string[];
+  }) => Promise<SearchResponse>;
+  openSearchGroup: (title: string, urls: string[]) => Promise<{ group: TabGroup; tabs: TabInfo[] }>;
+  saveSearchToResearch: (
+    query: string,
+    sources: Array<{ url: string; title: string; snippet?: string }>
+  ) => Promise<ResearchReport>;
+  getCloudStatus: () => Promise<CloudConnectionStatus>;
+  cloudRegister: (payload: {
+    email: string;
+    password: string;
+    displayName?: string;
+  }) => Promise<CloudConnectionStatus>;
+  cloudLogin: (payload: { email: string; password: string }) => Promise<CloudConnectionStatus>;
+  cloudLogout: () => Promise<CloudConnectionStatus>;
+  updateCloudConsent: (patch: Partial<CloudConsentSettings>) => Promise<CloudConnectionStatus>;
+  syncCloudNow: () => Promise<{ synced: Record<string, number>; skipped: string[] }>;
+  exportCloudData: () => Promise<string>;
+  deleteCloudAccount: () => Promise<CloudConnectionStatus>;
+  listCloudNotes: () => Promise<CloudNoteRecord[]>;
+  saveCloudNote: (note: {
+    title: string;
+    content: string;
+    sourceUrl?: string | null;
+    tags?: string[];
+  }) => Promise<CloudNoteRecord>;
 
   onContentSelection: (cb: (data: { tabId: string; text: string; x: number; y: number }) => void) => () => void;
   onContentContextAction: (

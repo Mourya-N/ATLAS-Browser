@@ -4,25 +4,35 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {
   AgentStartRunSchema,
+  CloudAuthSchema,
   ConfirmationRespondSchema,
   ContentSelectionSchema,
   DomainRuleSetSchema,
   IPC_CHANNELS,
   LayoutSchema,
   NavGoSchema,
+  SearchExecuteSchema,
   SettingsSetApiKeySchema,
   TabCreateSchema,
   TabIdSchema,
   TabRenameSchema,
   TabReorderSchema
 } from '@shared/ipc-channels';
-import type { AppSettings, McpConfig, MemoryCategory, ProviderStatusInfo, Skill } from '@shared/types';
+import {
+  DEFAULT_CLOUD_CONSENT,
+  type AppSettings,
+  type McpConfig,
+  type MemoryCategory,
+  type ProviderStatusInfo,
+  type Skill
+} from '@shared/types';
 import { DEFAULT_MODEL_PRICING } from '@shared/pricing';
 import type { GeminiProvider } from '@main/agent/providers/gemini-provider';
 import type { ResearchEngine } from '@main/agent/research-engine';
 import type { PageUnderstandingEngine } from '@main/agent/page-understanding';
 import type { CrossTabIntelligence } from '@main/agent/cross-tab';
 import type { ProactiveAssistant } from '@main/agent/proactive-assistant';
+import type { CloudClientService } from '@main/cloud/cloud-client';
 import { validateIpcPayload, validateIpcSender, type TrustedSenderPolicy } from '@main/security/ipc-validator';
 import type { WindowManager } from '@main/window-manager';
 import type { TabManager } from '@main/browser/tab-manager';
@@ -68,6 +78,7 @@ export interface MainServices {
   crossTab?: CrossTabIntelligence;
   proactiveAssistant?: ProactiveAssistant;
   geminiProvider?: GeminiProvider;
+  cloudClient?: CloudClientService;
   scheduler: JobScheduler;
   mcpServer: LocalMcpServer;
   vault: SecretVault;
@@ -99,6 +110,7 @@ export function registerAllIpcHandlers(services: MainServices): void {
     crossTab,
     proactiveAssistant,
     geminiProvider,
+    cloudClient,
     scheduler,
     mcpServer,
     vault,
@@ -597,6 +609,12 @@ export function registerAllIpcHandlers(services: MainServices): void {
     defaultModel: platformRepo.getSetting('agent.defaultModel', 'gemini-2.5-flash'),
     customEndpointUrl: platformRepo.getSetting('agent.customEndpointUrl', ''),
     hasGeminiApiKey: Boolean(vault.getGeminiApiKey()),
+    cloudModeEnabled: platformRepo.getSetting('cloud.enabled', false),
+    cloudEndpointUrl: platformRepo.getSetting('cloud.endpointUrl', 'http://127.0.0.1:48080'),
+    cloudConsent: {
+      ...DEFAULT_CLOUD_CONSENT,
+      ...platformRepo.getSetting('cloud.consent', DEFAULT_CLOUD_CONSENT)
+    },
     budgets: platformRepo.getSetting('agent.budgets', DEFAULT_BUDGETS),
     mcp: platformRepo.getSetting('mcp.config', DEFAULT_MCP_CONFIG)
   });
@@ -630,6 +648,12 @@ export function registerAllIpcHandlers(services: MainServices): void {
     if (patch.defaultModel !== undefined) platformRepo.setSetting('agent.defaultModel', patch.defaultModel);
     if (patch.customEndpointUrl !== undefined)
       platformRepo.setSetting('agent.customEndpointUrl', patch.customEndpointUrl);
+    if (patch.cloudModeEnabled !== undefined)
+      platformRepo.setSetting('cloud.enabled', patch.cloudModeEnabled);
+    if (patch.cloudEndpointUrl !== undefined)
+      platformRepo.setSetting('cloud.endpointUrl', patch.cloudEndpointUrl);
+    if (patch.cloudConsent !== undefined)
+      platformRepo.setSetting('cloud.consent', patch.cloudConsent);
     if (patch.budgets !== undefined) platformRepo.setSetting('agent.budgets', patch.budgets);
     if (patch.mcp !== undefined) await mcpServer.configure(patch.mcp);
     return getSettings();
@@ -859,4 +883,98 @@ export function registerAllIpcHandlers(services: MainServices): void {
       duplicateGroups: analysis.duplicateGroups
     });
   });
+
+  // --- Atlas Intelligent Search & Cloud Synchronization ---
+  handleTrusted(IPC_CHANNELS.SEARCH_EXECUTE, async (_e, raw) => {
+    if (!cloudClient) throw new Error('Search service unavailable');
+    const data = SearchExecuteSchema.parse(raw);
+    return cloudClient.executeSearch(data);
+  });
+
+  handleTrusted(
+    IPC_CHANNELS.SEARCH_OPEN_GROUP,
+    async (_e, p: { title: string; urls: string[] }, win) => {
+      const group = tabManager.createGroup(p.title || 'Search Selection', '#3b82f6');
+      const created = [];
+      for (const u of (p.urls || []).slice(0, 10)) {
+        if (!u.startsWith('http://') && !u.startsWith('https://')) continue;
+        created.push(tabManager.createTab(win.id, { url: u, groupId: group.id, activate: created.length === 0 }));
+      }
+      return { group, tabs: created };
+    }
+  );
+
+  handleTrusted(
+    IPC_CHANNELS.SEARCH_SAVE_TO_RESEARCH,
+    async (_e, p: { query: string; sources: Array<{ url: string; title: string; snippet?: string }> }) => {
+      if (!researchEngine) throw new Error('Research engine unavailable');
+      const model = platformRepo.getSetting<string>('agent.defaultModel', 'gemini-2.5-flash');
+      return researchEngine.buildReport({
+        query: p.query,
+        sources: (p.sources || []).map((s) => ({
+          url: s.url,
+          title: s.title,
+          text: s.snippet || s.title,
+          headings: [s.title]
+        })),
+        model,
+        isPrivate: false
+      });
+    }
+  );
+
+  handleTrusted(IPC_CHANNELS.CLOUD_STATUS, async () => {
+    if (!cloudClient) throw new Error('Cloud client unavailable');
+    return cloudClient.getStatus();
+  });
+
+  handleTrusted(IPC_CHANNELS.CLOUD_REGISTER, async (_e, raw) => {
+    if (!cloudClient) throw new Error('Cloud client unavailable');
+    const data = CloudAuthSchema.parse(raw);
+    return cloudClient.register(data);
+  });
+
+  handleTrusted(IPC_CHANNELS.CLOUD_LOGIN, async (_e, raw) => {
+    if (!cloudClient) throw new Error('Cloud client unavailable');
+    const data = CloudAuthSchema.omit({ displayName: true }).parse(raw);
+    return cloudClient.login(data);
+  });
+
+  handleTrusted(IPC_CHANNELS.CLOUD_LOGOUT, async () => {
+    if (!cloudClient) throw new Error('Cloud client unavailable');
+    return cloudClient.logout();
+  });
+
+  handleTrusted(IPC_CHANNELS.CLOUD_UPDATE_CONSENT, async (_e, patch) => {
+    if (!cloudClient) throw new Error('Cloud client unavailable');
+    return cloudClient.updateConsent(patch || {});
+  });
+
+  handleTrusted(IPC_CHANNELS.CLOUD_SYNC_NOW, async () => {
+    if (!cloudClient) throw new Error('Cloud client unavailable');
+    return cloudClient.syncApprovedData();
+  });
+
+  handleTrusted(IPC_CHANNELS.CLOUD_EXPORT_DATA, async () => {
+    if (!cloudClient) throw new Error('Cloud client unavailable');
+    return cloudClient.exportCloudData();
+  });
+
+  handleTrusted(IPC_CHANNELS.CLOUD_DELETE_ACCOUNT_DATA, async () => {
+    if (!cloudClient) throw new Error('Cloud client unavailable');
+    return cloudClient.deleteAccountData();
+  });
+
+  handleTrusted(IPC_CHANNELS.CLOUD_NOTES_LIST, async () => {
+    if (!cloudClient) return [];
+    return cloudClient.listNotes();
+  });
+
+  handleTrusted(
+    IPC_CHANNELS.CLOUD_NOTES_SAVE,
+    async (_e, p: { title: string; content: string; sourceUrl?: string | null; tags?: string[] }) => {
+      if (!cloudClient) throw new Error('Cloud client unavailable');
+      return cloudClient.saveNote(p);
+    }
+  );
 }

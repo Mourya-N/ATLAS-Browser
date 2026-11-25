@@ -1,3 +1,6 @@
+export * from './cloud-types';
+import type { CloudConsentSettings } from './cloud-types';
+
 export type ThemeMode = 'light' | 'dark' | 'system';
 
 export type AgentMode = 'ask' | 'assist' | 'agent' | 'takeover';
@@ -546,6 +549,9 @@ export interface AppSettings {
   defaultModel: string;
   customEndpointUrl: string;
   hasGeminiApiKey: boolean;
+  cloudModeEnabled?: boolean;
+  cloudEndpointUrl?: string;
+  cloudConsent?: CloudConsentSettings;
   budgets: BudgetConfig;
   mcp: McpConfig;
 }

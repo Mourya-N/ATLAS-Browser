@@ -1,0 +1,14 @@
+node_modules
+dist
+release
+coverage
+.git
+.env
+*.db
+*.db-wal
+*.db-shm
+*.enc
+*.log
+tests
+assets
+build

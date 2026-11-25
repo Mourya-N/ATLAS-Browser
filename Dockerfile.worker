@@ -1,0 +1,37 @@
+# Stage 1: Build worker bundle
+FROM node:20.19.0-alpine AS builder
+WORKDIR /app
+
+ENV ELECTRON_SKIP_BINARY_DOWNLOAD=1
+COPY package.json package-lock.json ./
+RUN npm ci --ignore-scripts
+
+COPY tsconfig.json tsconfig.node.json tsconfig.backend.json ./
+COPY scripts/build-backend.mjs ./scripts/build-backend.mjs
+COPY src/shared ./src/shared
+COPY src/backend ./src/backend
+COPY src/main/agent/providers ./src/main/agent/providers
+COPY src/main/memory ./src/main/memory
+COPY src/main/security/secrets.ts ./src/main/security/secrets.ts
+COPY src/main/security/injection-guard.ts ./src/main/security/injection-guard.ts
+
+RUN node scripts/build-backend.mjs
+
+# Stage 2: Non-root background worker runtime
+FROM node:20.19.0-alpine AS runtime
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV ELECTRON_SKIP_BINARY_DOWNLOAD=1
+
+RUN addgroup -S atlas && adduser -S atlas -G atlas
+
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
+
+COPY --from=builder /app/dist/backend ./dist/backend
+RUN chown -R atlas:atlas /app
+
+USER atlas
+
+CMD ["node", "dist/backend/worker-entrypoint.js"]

@@ -1,0 +1,104 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: atlas-cloud-backend
+  namespace: atlas-cloud
+  labels:
+    app: atlas-cloud-backend
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: atlas-cloud-backend
+  template:
+    metadata:
+      labels:
+        app: atlas-cloud-backend
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+      containers:
+        - name: backend
+          image: ghcr.io/mourya-n/atlas-cloud-backend:1.0.0
+          ports:
+            - containerPort: 48080
+          envFrom:
+            - secretRef:
+                name: atlas-cloud-secrets
+          env:
+            - name: NODE_ENV
+              value: "production"
+            - name: ATLAS_INLINE_WORKER
+              value: "false"
+            - name: ATLAS_ALLOW_MOCK_SEARCH
+              value: "false"
+            - name: ATLAS_ALLOW_MOCK_AI
+              value: "false"
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1024Mi"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 48080
+            initialDelaySeconds: 15
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 48080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: atlas-cloud-backend
+  namespace: atlas-cloud
+spec:
+  selector:
+    app: atlas-cloud-backend
+  ports:
+    - port: 80
+      targetPort: 48080
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: atlas-cloud-backend-hpa
+  namespace: atlas-cloud
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: atlas-cloud-backend
+  minReplicas: 2
+  maxReplicas: 20
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: atlas-cloud-backend-pdb
+  namespace: atlas-cloud
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: atlas-cloud-backend

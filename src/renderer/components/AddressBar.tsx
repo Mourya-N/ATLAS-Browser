@@ -13,6 +13,7 @@ import {
   Menu,
   OctagonAlert,
   RotateCw,
+  Search,
   Settings,
   Shield,
   ShieldAlert,
@@ -33,6 +34,7 @@ export const AddressBar: React.FC = () => {
     setAgentPanelOpen,
     activeOverlayView,
     setOverlayView,
+    openAtlasSearch,
     adBlockStats,
     setAdBlockStats,
     pushToast
@@ -223,6 +225,24 @@ export const AddressBar: React.FC = () => {
 
         {focused && suggestions.length > 0 && (
           <div className="absolute left-0 right-0 top-11 z-40 rounded-xl border border-atlas-border bg-atlas-surface p-1.5 shadow-2xl">
+            <button
+              type="button"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                setSuggestions([]);
+                setFocused(false);
+                openAtlasSearch(inputValue);
+              }}
+              className="flex w-full items-center justify-between gap-3 rounded-lg bg-atlas-accent/10 px-3 py-2 text-left text-xs text-atlas-accent hover:bg-atlas-accent/20"
+            >
+              <div className="flex items-center gap-2 truncate font-semibold">
+                <Search className="h-3.5 w-3.5 shrink-0" />
+                Search Atlas Intelligent Engine for "{inputValue}"
+              </div>
+              <span className="shrink-0 rounded bg-atlas-accent/20 px-1.5 py-0.5 text-[10px] uppercase">
+                Atlas Search
+              </span>
+            </button>
             {suggestions.map((s, idx) => (
               <button
                 key={`${s.url}-${idx}`}
@@ -248,6 +268,20 @@ export const AddressBar: React.FC = () => {
 
       {/* Right Toolbar */}
       <div className="flex items-center gap-1 shrink-0">
+        <button
+          type="button"
+          onClick={() => openAtlasSearch('')}
+          title="Atlas Intelligent Search"
+          className={`flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium ${
+            activeOverlayView === 'search'
+              ? 'bg-atlas-accent text-white'
+              : 'text-atlas-muted hover:bg-atlas-elevated hover:text-atlas-text'
+          }`}
+        >
+          <Search className="h-3.5 w-3.5" />
+          <span className="hidden xl:inline">Search</span>
+        </button>
+
         <button
           type="button"
           onClick={() => setOverlayView(activeOverlayView === 'downloads' ? null : 'downloads')}
@@ -301,6 +335,7 @@ export const AddressBar: React.FC = () => {
               <MenuBtn icon={<Download className="h-3.5 w-3.5" />} label="Downloads" onClick={() => { setOverlayView('downloads'); setMenuOpen(false); }} />
               <div className="my-1 border-t border-atlas-border" />
               <MenuBtn icon={<Bot className="h-3.5 w-3.5" />} label="Skills Library" onClick={() => { setOverlayView('skills'); setMenuOpen(false); }} />
+              <MenuBtn icon={<Search className="h-3.5 w-3.5" />} label="Atlas Search Engine" onClick={() => { openAtlasSearch(''); setMenuOpen(false); }} />
               <MenuBtn icon={<Sparkles className="h-3.5 w-3.5" />} label="Research & Intelligence" onClick={() => { setOverlayView('intelligence'); setMenuOpen(false); }} />
               <MenuBtn icon={<Sparkles className="h-3.5 w-3.5" />} label="Structured Extraction" onClick={() => { setOverlayView('extract'); setMenuOpen(false); }} />
               <MenuBtn icon={<BookOpen className="h-3.5 w-3.5" />} label="Local Memory" onClick={() => { setOverlayView('memory'); setMenuOpen(false); }} />

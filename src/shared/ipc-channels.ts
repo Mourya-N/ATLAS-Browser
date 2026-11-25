@@ -146,6 +146,22 @@ export const IPC_CHANNELS = {
   SKILL_TEST: 'atlas:skill:test',
   PROACTIVE_CHECK: 'atlas:proactive:check',
 
+  // Atlas Cloud & Intelligent Search Engine
+  SEARCH_EXECUTE: 'atlas:search:execute',
+  SEARCH_SUGGEST: 'atlas:search:suggest',
+  SEARCH_OPEN_GROUP: 'atlas:search:open-group',
+  SEARCH_SAVE_TO_RESEARCH: 'atlas:search:save-to-research',
+  CLOUD_STATUS: 'atlas:cloud:status',
+  CLOUD_REGISTER: 'atlas:cloud:register',
+  CLOUD_LOGIN: 'atlas:cloud:login',
+  CLOUD_LOGOUT: 'atlas:cloud:logout',
+  CLOUD_UPDATE_CONSENT: 'atlas:cloud:update-consent',
+  CLOUD_SYNC_NOW: 'atlas:cloud:sync-now',
+  CLOUD_EXPORT_DATA: 'atlas:cloud:export-data',
+  CLOUD_DELETE_ACCOUNT_DATA: 'atlas:cloud:delete-account-data',
+  CLOUD_NOTES_LIST: 'atlas:cloud:notes-list',
+  CLOUD_NOTES_SAVE: 'atlas:cloud:notes-save',
+
   // Content events (page -> main -> UI)
   CONTENT_SELECTION: 'atlas:content:selection',
   CONTENT_CONTEXT_ACTION: 'atlas:content:context-action'
@@ -214,4 +230,30 @@ export const ContentSelectionSchema = z.object({
   text: z.string().max(10000),
   x: z.number().min(0).max(10000),
   y: z.number().min(0).max(10000)
+});
+
+export const SearchExecuteSchema = z.object({
+  query: z.string().min(1).max(2000),
+  mode: z
+    .enum(['web', 'news', 'docs', 'research', 'current_page', 'cross_tab', 'personal_knowledge'])
+    .optional(),
+  filters: z
+    .object({
+      domains: z.array(z.string().max(255)).max(20).optional(),
+      excludeDomains: z.array(z.string().max(255)).max(20).optional(),
+      timeRange: z.enum(['any', 'day', 'week', 'month', 'year']).optional(),
+      language: z.string().max(16).optional(),
+      includeOpenTabs: z.boolean().optional(),
+      includePersonalKnowledge: z.boolean().optional(),
+      includeAiAnswer: z.boolean().optional(),
+      limit: z.number().int().min(1).max(50).optional()
+    })
+    .optional(),
+  selectedTabIds: z.array(z.string().min(1).max(128)).max(20).optional()
+});
+
+export const CloudAuthSchema = z.object({
+  email: z.string().email().max(254),
+  password: z.string().min(8).max(256),
+  displayName: z.string().min(1).max(120).optional()
 });

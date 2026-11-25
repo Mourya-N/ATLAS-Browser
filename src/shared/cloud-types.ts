@@ -1,0 +1,375 @@
+export type SearchMode =
+  | 'web'
+  | 'news'
+  | 'docs'
+  | 'research'
+  | 'current_page'
+  | 'cross_tab'
+  | 'personal_knowledge';
+
+export type SearchIntent =
+  | 'informational'
+  | 'navigational'
+  | 'comparative'
+  | 'temporal_news'
+  | 'technical_docs'
+  | 'personal_knowledge';
+
+export interface SearchFilterOptions {
+  domains?: string[];
+  excludeDomains?: string[];
+  timeRange?: 'any' | 'day' | 'week' | 'month' | 'year';
+  language?: string;
+  contentTypes?: Array<'web' | 'news' | 'docs' | 'knowledge' | 'tab' | 'bookmark' | 'research'>;
+  includeOpenTabs?: boolean;
+  includePersonalKnowledge?: boolean;
+  includeAiAnswer?: boolean;
+  limit?: number;
+}
+
+export interface SearchQueryUnderstanding {
+  originalQuery: string;
+  normalizedQuery: string;
+  rewrittenQueries: string[];
+  expandedTerms: string[];
+  intent: SearchIntent;
+  recommendedMode: SearchMode;
+  entities: string[];
+  temporalIntent: {
+    hasTemporalConstraint: boolean;
+    timeHint?: 'recent' | 'today' | 'week' | 'month' | 'year';
+    yearMentions: string[];
+  };
+  language: string;
+  usedLlm: boolean;
+}
+
+export interface NormalizedSearchResult {
+  id: string;
+  title: string;
+  url: string;
+  canonicalUrl: string;
+  displayUrl: string;
+  domain: string;
+  snippet: string;
+  sourceProvider: string;
+  publishedAt?: string | null;
+  retrievedAt: number;
+  contentType: 'web' | 'news' | 'docs' | 'knowledge' | 'tab' | 'bookmark' | 'research';
+  language: string;
+  favicon?: string | null;
+  relevanceScore: number;
+  scoreBreakdown?: {
+    lexical: number;
+    semantic: number;
+    intent: number;
+    authority: number;
+    freshness: number;
+    rerank?: number;
+  };
+  clusterCount?: number;
+}
+
+export interface SearchSuggestion {
+  text: string;
+  kind: 'completion' | 'related' | 'refinement' | 'knowledge';
+}
+
+export interface SearchEvidencePassage {
+  sourceUrl: string;
+  sourceTitle: string;
+  domain: string;
+  passageIndex: number;
+  excerpt: string;
+  relevance: number;
+}
+
+export interface SearchCitationClaim {
+  id: string;
+  statement: string;
+  kind: 'fact' | 'interpretation';
+  sourceUrl: string;
+  sourceTitle: string;
+  supportingQuote: string;
+  verifiedAgainstSource: boolean;
+}
+
+export interface SearchContradiction {
+  topic: string;
+  claimA: string;
+  sourceUrlA: string;
+  claimB: string;
+  sourceUrlB: string;
+}
+
+export interface AiCitedAnswer {
+  status: 'ok' | 'insufficient_evidence' | 'unavailable' | 'failed';
+  summary: string;
+  claims: SearchCitationClaim[];
+  contradictions: SearchContradiction[];
+  passages: SearchEvidencePassage[];
+  citations: Array<{ index: number; url: string; title: string; domain: string }>;
+  model: string;
+  provider: string;
+  inputTokens: number;
+  outputTokens: number;
+  estimatedCostUsd: number;
+  latencyMs: number;
+  warning?: string;
+}
+
+export interface SearchProviderHealth {
+  providerId: string;
+  name: string;
+  configured: boolean;
+  healthy: boolean;
+  isMock: boolean;
+  lastError?: string | null;
+  avgLatencyMs: number;
+  rateLimitRemaining?: number | null;
+}
+
+export interface SearchResponse {
+  requestId: string;
+  query: string;
+  mode: SearchMode;
+  understanding: SearchQueryUnderstanding;
+  results: NormalizedSearchResult[];
+  totalBeforeDedup: number;
+  duplicatesRemoved: number;
+  suggestions: SearchSuggestion[];
+  relatedQueries: string[];
+  aiAnswer: AiCitedAnswer | null;
+  providersQueried: string[];
+  providerErrors: Array<{ providerId: string; error: string }>;
+  cacheHit: boolean;
+  reranked: boolean;
+  latencyMs: number;
+  sourceMode: 'cloud' | 'local_fallback' | 'hybrid';
+}
+
+export interface HybridIndexDocument {
+  id: string;
+  userId: string;
+  profileId: string;
+  sourceType: 'bookmark' | 'note' | 'research' | 'memory' | 'tab_snapshot' | 'web_page';
+  sourceId: string;
+  url?: string | null;
+  title: string;
+  content: string;
+  metadata: Record<string, unknown>;
+  embeddingVersion: string;
+  embedding: number[];
+  expiresAt?: number | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface HybridSearchHit {
+  document: HybridIndexDocument;
+  keywordScore: number;
+  semanticScore: number;
+  recencyScore: number;
+  combinedScore: number;
+}
+
+export type CloudSyncCategory =
+  | 'profile'
+  | 'bookmarks'
+  | 'notes'
+  | 'search_history'
+  | 'research'
+  | 'memory'
+  | 'skills';
+
+export interface CloudConsentSettings {
+  syncProfile: boolean;
+  syncBookmarks: boolean;
+  syncNotes: boolean;
+  syncSearchHistory: boolean;
+  syncResearch: boolean;
+  syncMemory: boolean;
+  syncSkills: boolean;
+  allowCloudSearch: boolean;
+  allowCloudAi: boolean;
+}
+
+export const DEFAULT_CLOUD_CONSENT: CloudConsentSettings = {
+  syncProfile: false,
+  syncBookmarks: false,
+  syncNotes: false,
+  syncSearchHistory: false,
+  syncResearch: false,
+  syncMemory: false,
+  syncSkills: false,
+  allowCloudSearch: false,
+  allowCloudAi: false
+};
+
+export interface CloudUser {
+  id: string;
+  email: string;
+  displayName: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface CloudProfile {
+  id: string;
+  userId: string;
+  name: string;
+  settings: Record<string, unknown>;
+  consent: CloudConsentSettings;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface CloudDevice {
+  id: string;
+  userId: string;
+  profileId: string;
+  deviceName: string;
+  platform: string;
+  appVersion: string;
+  lastSeenAt: number;
+  createdAt: number;
+}
+
+export interface CloudAuthSession {
+  user: CloudUser;
+  profile: CloudProfile;
+  accessToken: string;
+  refreshToken: string;
+  expiresAt: number;
+}
+
+export interface CloudConnectionStatus {
+  cloudEnabled: boolean;
+  cloudEndpointUrl: string;
+  reachable: boolean;
+  authenticated: boolean;
+  operatingMode: 'local_only' | 'cloud_connected' | 'cloud_degraded';
+  userEmail?: string | null;
+  profileId?: string | null;
+  lastSyncedAt?: number | null;
+  lastError?: string | null;
+  consent: CloudConsentSettings;
+}
+
+export interface CloudBookmarkRecord {
+  id: string;
+  userId: string;
+  profileId: string;
+  url: string;
+  title: string;
+  folderName?: string | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface CloudNoteRecord {
+  id: string;
+  userId: string;
+  profileId: string;
+  title: string;
+  content: string;
+  sourceUrl?: string | null;
+  tags: string[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface CloudSearchHistoryRecord {
+  id: string;
+  userId: string;
+  profileId: string;
+  query: string;
+  mode: SearchMode;
+  resultCount: number;
+  createdAt: number;
+}
+
+export type BackgroundJobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'dead_letter';
+
+export interface CloudBackgroundJob {
+  id: string;
+  userId: string;
+  profileId: string;
+  type: 'research_job' | 'page_extract' | 'reindex_knowledge' | 'embedding_backfill';
+  payload: Record<string, unknown>;
+  status: BackgroundJobStatus;
+  attempts: number;
+  maxAttempts: number;
+  result?: Record<string, unknown> | null;
+  error?: string | null;
+  runAfter: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ObservabilitySnapshot {
+  service: string;
+  uptimeMs: number;
+  totalRequests: number;
+  errorCount: number;
+  errorRate: number;
+  avgLatencyMs: number;
+  p95LatencyMs: number;
+  search: {
+    totalSearches: number;
+    cacheHits: number;
+    cacheHitRate: number;
+    avgLatencyMs: number;
+    providerErrors: Record<string, number>;
+    providers: SearchProviderHealth[];
+  };
+  ai: {
+    totalCalls: number;
+    totalInputTokens: number;
+    totalOutputTokens: number;
+    totalEstimatedCostUsd: number;
+    failedCalls: number;
+  };
+  worker: {
+    queued: number;
+    running: number;
+    completed: number;
+    failed: number;
+    deadLetter: number;
+  };
+  storage: {
+    postgresConnected: boolean;
+    redisConnected: boolean;
+    mode: 'postgres' | 'in_memory';
+  };
+}
+
+export interface SearchEvalCaseResult {
+  queryId: string;
+  query: string;
+  mode: SearchMode;
+  precisionAt5: number;
+  recallAt5: number;
+  ndcgAt5: number;
+  duplicateRate: number;
+  citationAccuracy: number;
+  groundedness: number;
+  latencyMs: number;
+  estimatedCostUsd: number;
+  passed: boolean;
+}
+
+export interface SearchEvalMetrics {
+  datasetSize: number;
+  avgPrecisionAt5: number;
+  avgRecallAt5: number;
+  avgNdcgAt5: number;
+  avgDuplicateRate: number;
+  avgCitationAccuracy: number;
+  avgGroundedness: number;
+  providerFailureResilienceRate: number;
+  avgLatencyMs: number;
+  avgCostPerSearchUsd: number;
+  passRate: number;
+  cases: SearchEvalCaseResult[];
+}

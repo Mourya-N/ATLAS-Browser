@@ -20,6 +20,7 @@ import {
 } from './components/views/OperationsViews';
 import { SettingsView } from './components/views/SettingsView';
 import { IntelligenceView } from './components/views/IntelligenceView';
+import { SearchView } from './components/views/SearchView';
 
 export const App: React.FC = () => {
   const {
@@ -278,6 +279,8 @@ export const App: React.FC = () => {
         return <AuditAndRulesView />;
       case 'intelligence':
         return <IntelligenceView />;
+      case 'search':
+        return <SearchView />;
       default:
         return null;
     }

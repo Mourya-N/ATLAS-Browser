@@ -32,7 +32,8 @@ export type OverlayView =
   | 'scheduler'
   | 'mcp'
   | 'audit'
-  | 'intelligence';
+  | 'intelligence'
+  | 'search';
 
 export interface ToastItem {
   id: string;
@@ -50,6 +51,7 @@ interface AtlasState {
   agentPanelWidth: number;
   activeOverlayView: OverlayView;
   replayRunId: string | null;
+  searchInitialQuery: string;
   findBarOpen: boolean;
   tabSearchOpen: boolean;
 
@@ -77,6 +79,7 @@ interface AtlasState {
   setVerticalTabs: (v: boolean) => void;
   setAgentPanelOpen: (open: boolean) => void;
   setOverlayView: (view: OverlayView, replayRunId?: string | null) => void;
+  openAtlasSearch: (initialQuery?: string) => void;
   setFindBarOpen: (open: boolean) => void;
   setTabSearchOpen: (open: boolean) => void;
   setConversations: (c: AgentConversation[]) => void;
@@ -113,6 +116,7 @@ export const useAtlasStore = create<AtlasState>((set) => ({
   agentPanelWidth: 380,
   activeOverlayView: null,
   replayRunId: null,
+  searchInitialQuery: '',
   findBarOpen: false,
   tabSearchOpen: false,
 
@@ -147,6 +151,8 @@ export const useAtlasStore = create<AtlasState>((set) => ({
   setAgentPanelOpen: (agentPanelOpen) => set({ agentPanelOpen }),
   setOverlayView: (activeOverlayView, replayRunId = null) =>
     set({ activeOverlayView, replayRunId }),
+  openAtlasSearch: (initialQuery = '') =>
+    set({ activeOverlayView: 'search', searchInitialQuery: initialQuery }),
   setFindBarOpen: (findBarOpen) => set({ findBarOpen }),
   setTabSearchOpen: (tabSearchOpen) => set({ tabSearchOpen }),
   setConversations: (conversations) => set({ conversations }),

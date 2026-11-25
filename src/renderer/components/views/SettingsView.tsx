@@ -1,6 +1,13 @@
 import React, { useEffect, useState } from 'react';
-import { CheckCircle2, Key, Settings as SettingsIcon, Shield, X, XCircle } from 'lucide-react';
-import type { AppSettings, ProviderTestResult, SearchEngineId, ThemeMode } from '@shared/types';
+import { CheckCircle2, Cloud, Key, Settings as SettingsIcon, Shield, X, XCircle } from 'lucide-react';
+import type {
+  AppSettings,
+  CloudConnectionStatus,
+  CloudConsentSettings,
+  ProviderTestResult,
+  SearchEngineId,
+  ThemeMode
+} from '@shared/types';
 import { useAtlasStore } from '../../store/useAtlasStore';
 
 export const SettingsView: React.FC = () => {
@@ -9,12 +16,17 @@ export const SettingsView: React.FC = () => {
   const [apiKeyInput, setApiKeyInput] = useState('');
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<ProviderTestResult | null>(null);
+  const [cloudStatus, setCloudStatus] = useState<CloudConnectionStatus | null>(null);
+  const [cloudEmail, setCloudEmail] = useState('');
+  const [cloudPassword, setCloudPassword] = useState('');
+  const [cloudBusy, setCloudBusy] = useState(false);
 
   useEffect(() => {
     void window.atlas.getSettings().then((s) => {
       setSettings(s);
       setLocal(s);
     });
+    void window.atlas.getCloudStatus().then(setCloudStatus);
   }, []);
 
   if (!local) return null;
@@ -283,6 +295,204 @@ export const SettingsView: React.FC = () => {
               checked={local.experimentalScriptingEnabled}
               onChange={(v) => void update({ experimentalScriptingEnabled: v })}
             />
+          </section>
+
+          {/* Atlas Cloud & Granular Consent */}
+          <section className="rounded-xl border border-atlas-border bg-atlas-surface p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-sm font-bold">
+                <Cloud className="h-4 w-4 text-atlas-accent" />
+                Atlas Cloud & Consent Controls (Optional — Local-First by Default)
+              </div>
+              {cloudStatus && (
+                <span
+                  className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold ${
+                    cloudStatus.operatingMode === 'cloud_connected'
+                      ? 'bg-atlas-success/15 text-atlas-success'
+                      : cloudStatus.operatingMode === 'cloud_degraded'
+                      ? 'bg-atlas-warning/15 text-atlas-warning'
+                      : 'bg-atlas-elevated text-atlas-muted'
+                  }`}
+                >
+                  {cloudStatus.operatingMode === 'cloud_connected'
+                    ? 'Cloud Connected'
+                    : cloudStatus.operatingMode === 'cloud_degraded'
+                    ? 'Cloud Unreachable (Local Fallback)'
+                    : 'Local-Only Mode'}
+                </span>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-atlas-muted mb-1">Cloud API Endpoint</label>
+                <input
+                  defaultValue={local.cloudEndpointUrl || 'http://127.0.0.1:48080'}
+                  onBlur={(e) => {
+                    void update({ cloudEndpointUrl: e.target.value.trim() }).then(() =>
+                      window.atlas.getCloudStatus().then(setCloudStatus)
+                    );
+                  }}
+                  className="w-full rounded-lg border border-atlas-border bg-atlas-bg px-3 py-2 outline-none"
+                />
+              </div>
+              <div className="flex items-end">
+                <ToggleRow
+                  label="Enable Atlas Cloud Connectivity"
+                  checked={Boolean(local.cloudModeEnabled)}
+                  onChange={(v) => {
+                    void update({ cloudModeEnabled: v }).then(() =>
+                      window.atlas.getCloudStatus().then(setCloudStatus)
+                    );
+                  }}
+                />
+              </div>
+            </div>
+
+            {cloudStatus?.authenticated ? (
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-atlas-border bg-atlas-bg/60 p-3">
+                <div>
+                  Signed in{cloudStatus.userEmail ? ` as ${cloudStatus.userEmail}` : ''} (Encrypted tokens stored in SecretVault)
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={cloudBusy}
+                    onClick={async () => {
+                      setCloudBusy(true);
+                      try {
+                        const r = await window.atlas.syncCloudNow();
+                        pushToast(`Cloud sync complete: ${JSON.stringify(r.synced)}`, 'success');
+                      } catch (err) {
+                        pushToast(err instanceof Error ? err.message : 'Sync failed', 'danger');
+                      } finally {
+                        setCloudBusy(false);
+                      }
+                    }}
+                    className="rounded-lg bg-atlas-accent px-3 py-1.5 font-semibold text-white"
+                  >
+                    Sync Approved Data
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const json = await window.atlas.exportCloudData();
+                      await navigator.clipboard.writeText(json);
+                      pushToast('Cloud account data exported to clipboard', 'success');
+                    }}
+                    className="rounded-lg border border-atlas-border px-3 py-1.5"
+                  >
+                    Export Cloud Data
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setCloudStatus(await window.atlas.cloudLogout());
+                      pushToast('Signed out of Atlas Cloud', 'info');
+                    }}
+                    className="rounded-lg border border-atlas-border px-3 py-1.5"
+                  >
+                    Sign Out
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setCloudStatus(await window.atlas.deleteCloudAccount());
+                      pushToast('Cloud account and synced data deleted', 'warning');
+                    }}
+                    className="rounded-lg bg-atlas-danger/15 text-atlas-danger px-3 py-1.5 font-semibold"
+                  >
+                    Delete Cloud Account
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                <input
+                  type="email"
+                  value={cloudEmail}
+                  onChange={(e) => setCloudEmail(e.target.value)}
+                  placeholder="Account email..."
+                  className="flex-1 min-w-[180px] rounded-lg border border-atlas-border bg-atlas-bg px-3 py-2 outline-none"
+                />
+                <input
+                  type="password"
+                  value={cloudPassword}
+                  onChange={(e) => setCloudPassword(e.target.value)}
+                  placeholder="Password (min 8 chars)..."
+                  className="flex-1 min-w-[160px] rounded-lg border border-atlas-border bg-atlas-bg px-3 py-2 outline-none"
+                />
+                <button
+                  type="button"
+                  disabled={cloudBusy}
+                  onClick={async () => {
+                    setCloudBusy(true);
+                    try {
+                      setCloudStatus(await window.atlas.cloudLogin({ email: cloudEmail, password: cloudPassword }));
+                      setCloudPassword('');
+                      pushToast('Signed in to Atlas Cloud', 'success');
+                    } catch (err) {
+                      pushToast(err instanceof Error ? err.message : 'Login failed', 'danger');
+                    } finally {
+                      setCloudBusy(false);
+                    }
+                  }}
+                  className="rounded-lg bg-atlas-accent px-3 py-2 font-semibold text-white"
+                >
+                  Sign In
+                </button>
+                <button
+                  type="button"
+                  disabled={cloudBusy}
+                  onClick={async () => {
+                    setCloudBusy(true);
+                    try {
+                      setCloudStatus(await window.atlas.cloudRegister({ email: cloudEmail, password: cloudPassword }));
+                      setCloudPassword('');
+                      pushToast('Registered Atlas Cloud account', 'success');
+                    } catch (err) {
+                      pushToast(err instanceof Error ? err.message : 'Register failed', 'danger');
+                    } finally {
+                      setCloudBusy(false);
+                    }
+                  }}
+                  className="rounded-lg border border-atlas-border bg-atlas-elevated px-3 py-2 font-semibold"
+                >
+                  Register
+                </button>
+              </div>
+            )}
+
+            {cloudStatus && (
+              <div className="space-y-1.5 pt-1">
+                <div className="text-[11px] font-semibold text-atlas-muted">
+                  Explicit Per-Category Consent (Private tabs are NEVER uploaded)
+                </div>
+                {(
+                  [
+                    ['allowCloudSearch', 'Allow Cloud Search Queries (Atlas Search)'],
+                    ['allowCloudAi', 'Allow Cloud AI Answer & Citation Synthesis'],
+                    ['syncBookmarks', 'Sync Non-Private Bookmarks'],
+                    ['syncNotes', 'Sync Cloud Notes'],
+                    ['syncResearch', 'Sync Research Reports'],
+                    ['syncMemory', 'Sync User-Approved Memory'],
+                    ['syncSearchHistory', 'Sync Search History']
+                  ] as Array<[keyof CloudConsentSettings, string]>
+                ).map(([key, label]) => (
+                  <ToggleRow
+                    key={key}
+                    label={label}
+                    checked={Boolean(cloudStatus.consent[key])}
+                    onChange={(v) => {
+                      void window.atlas.updateCloudConsent({ [key]: v }).then((st) => {
+                        setCloudStatus(st);
+                        pushToast('Cloud consent updated', 'success');
+                      });
+                    }}
+                  />
+                ))}
+              </div>
+            )}
           </section>
         </div>
       </div>

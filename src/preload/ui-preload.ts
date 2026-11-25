@@ -208,6 +208,34 @@ const atlasApi = {
     invoke(IPC_CHANNELS.SKILL_TEST, { skillId, params, tabId }),
   checkProactiveSuggestions: (tabId?: string | null) => invoke(IPC_CHANNELS.PROACTIVE_CHECK, { tabId }),
 
+  // Atlas Search & Cloud
+  executeSearch: (payload: {
+    query: string;
+    mode?: string;
+    filters?: Record<string, unknown>;
+    selectedTabIds?: string[];
+  }) => invoke(IPC_CHANNELS.SEARCH_EXECUTE, payload),
+  openSearchGroup: (title: string, urls: string[]) =>
+    invoke(IPC_CHANNELS.SEARCH_OPEN_GROUP, { title, urls }),
+  saveSearchToResearch: (
+    query: string,
+    sources: Array<{ url: string; title: string; snippet?: string }>
+  ) => invoke(IPC_CHANNELS.SEARCH_SAVE_TO_RESEARCH, { query, sources }),
+  getCloudStatus: () => invoke(IPC_CHANNELS.CLOUD_STATUS),
+  cloudRegister: (payload: { email: string; password: string; displayName?: string }) =>
+    invoke(IPC_CHANNELS.CLOUD_REGISTER, payload),
+  cloudLogin: (payload: { email: string; password: string }) =>
+    invoke(IPC_CHANNELS.CLOUD_LOGIN, payload),
+  cloudLogout: () => invoke(IPC_CHANNELS.CLOUD_LOGOUT),
+  updateCloudConsent: (patch: Record<string, boolean>) =>
+    invoke(IPC_CHANNELS.CLOUD_UPDATE_CONSENT, patch),
+  syncCloudNow: () => invoke(IPC_CHANNELS.CLOUD_SYNC_NOW),
+  exportCloudData: () => invoke(IPC_CHANNELS.CLOUD_EXPORT_DATA),
+  deleteCloudAccount: () => invoke(IPC_CHANNELS.CLOUD_DELETE_ACCOUNT_DATA),
+  listCloudNotes: () => invoke(IPC_CHANNELS.CLOUD_NOTES_LIST),
+  saveCloudNote: (note: { title: string; content: string; sourceUrl?: string | null; tags?: string[] }) =>
+    invoke(IPC_CHANNELS.CLOUD_NOTES_SAVE, note),
+
   // Page selection / context menu actions
   onContentSelection: (cb: (data: { tabId: string; text: string; x: number; y: number }) => void) =>
     subscribe(IPC_CHANNELS.CONTENT_SELECTION, cb),

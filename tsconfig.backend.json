@@ -1,0 +1,7 @@
+{
+  "extends": "./tsconfig.node.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": ["src/backend/**/*", "src/shared/**/*", "src/main/agent/providers/**/*", "src/main/memory/**/*", "src/main/security/secrets.ts", "src/main/security/injection-guard.ts"]
+}

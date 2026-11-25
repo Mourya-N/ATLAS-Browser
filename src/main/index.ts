@@ -37,6 +37,7 @@ import { SkillRecorder } from './skills/skill-recorder';
 import { SkillRunner } from './skills/skill-runner';
 import { JobScheduler } from './scheduler/job-scheduler';
 import { LocalMcpServer } from './mcp/mcp-server';
+import { CloudClientService } from './cloud/cloud-client';
 import { registerAllIpcHandlers } from './ipc/register-handlers';
 
 // Disable Electron remote module & enforce secure defaults
@@ -236,6 +237,18 @@ app.whenReady().then(async () => {
     await mcpServer.start().catch((err) => console.error('[MCP] Failed to auto-start:', err));
   }
 
+  const cloudClient = new CloudClientService(
+    platformRepo,
+    browserRepo,
+    agentRepo,
+    tabManager,
+    perception,
+    memoryService,
+    vault,
+    auditLogger,
+    getProvider
+  );
+
   registerAllIpcHandlers({
     windowManager,
     tabManager,
@@ -257,6 +270,7 @@ app.whenReady().then(async () => {
     crossTab,
     proactiveAssistant,
     geminiProvider,
+    cloudClient,
     scheduler,
     mcpServer,
     vault,

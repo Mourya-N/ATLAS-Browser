@@ -7,6 +7,8 @@ export interface SecretVaultData {
   geminiApiKey?: string;
   customApiKey?: string;
   mcpAuthToken?: string;
+  cloudAccessToken?: string;
+  cloudRefreshToken?: string;
 }
 
 const REDACTION_PATTERNS: RegExp[] = [
@@ -180,5 +182,27 @@ export class SecretVault {
     const tok = this.load().mcpAuthToken;
     if (!tok) return 'Not generated';
     return `${tok.slice(0, 14)}...${tok.slice(-4)}`;
+  }
+
+  public setCloudTokens(accessToken: string, refreshToken: string): void {
+    const data = this.load();
+    data.cloudAccessToken = accessToken;
+    data.cloudRefreshToken = refreshToken;
+    this.save(data);
+  }
+
+  public getCloudTokens(): { accessToken?: string; refreshToken?: string } {
+    const data = this.load();
+    return {
+      accessToken: data.cloudAccessToken,
+      refreshToken: data.cloudRefreshToken
+    };
+  }
+
+  public clearCloudTokens(): void {
+    const data = this.load();
+    delete data.cloudAccessToken;
+    delete data.cloudRefreshToken;
+    this.save(data);
   }
 }
