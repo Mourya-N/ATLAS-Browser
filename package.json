@@ -30,7 +30,7 @@
   "dependencies": {
     "@mozilla/readability": "0.6.0",
     "ajv": "^8.17.1",
-    "better-sqlite3": "^11.5.0",
+    "better-sqlite3": "^13.2.0",
     "cron-parser": "^4.9.0",
     "ioredis": "5.4.1",
     "linkedom": "^0.18.5",
@@ -42,7 +42,7 @@
     "zustand": "^5.0.1"
   },
   "devDependencies": {
-    "@electron/rebuild": "^3.7.0",
+    "@electron/rebuild": "^4.2.1",
     "@types/better-sqlite3": "^7.6.11",
     "@types/node": "^20.17.6",
     "@types/pg": "8.11.10",
@@ -50,7 +50,7 @@
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^5.2.0",
     "autoprefixer": "^10.4.20",
-    "electron": "^33.2.0",
+    "electron": "^42.11.18",
     "electron-builder": "^26.18.0",
     "esbuild": "^0.28.2",
     "postcss": "^8.4.49",

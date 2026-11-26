@@ -486,6 +486,7 @@ app.whenReady().then(async () => {
     assert.equal(submit.outcome.success, true);
     assert.equal(submit.permissionTier, 'sensitive');
     assert.equal(submit.permissionDecision, 'confirmed');
+    await waitForCondition(async () => tabManager.getTab(mainTabId)!.info.url.includes('/form-result'), 5000);
     await waitForTabLoad(tabManager, mainTabId);
 
     const page = await toolRegistry.invoke('read_page', {}, ctx);
@@ -529,6 +530,7 @@ app.whenReady().then(async () => {
     confirmBehavior = 'approve';
     const approvedVisual = await toolRegistry.invoke('visual_click', { x: vx, y: vy }, ctx);
     assert.equal(approvedVisual.outcome.success, true);
+    await waitForCondition(async () => tabManager.getTab(mainTabId)!.info.url.includes('/form-result'), 5000);
     await waitForTabLoad(tabManager, mainTabId);
     const resultPage = await toolRegistry.invoke('read_page', {}, ctx);
     assert.ok((resultPage.outcome.data as { mainText: string }).mainText.includes('Name=Grace Hopper'));
