@@ -27,6 +27,10 @@ const STOPWORDS = new Set([
 
 const NEGATION_RE = /\b(never|cannot|can't|forbids?|prohibits?|prohibited|must\s+not|does\s+not|doesn't|do\s+not|don't|disallow(?:ed|s)?|no\s+longer)\b/i;
 const PASSAGE_NEGATION_RE = /\b(not|never|no|none|cannot|can't|forbid|prohibit|disallow|unless|except|without|must\s+not|should\s+not|may\s+not)\b/i;
+const STRICT_MODALITY_RE = /\b(must|mandatory|required|requires|always)\b/i;
+const PASSAGE_STRICT_MODALITY_RE = /\b(must|shall|mandatory|required|requires|always)\b/i;
+const UNIT_RE = /\b\d+(?:\.\d+)*\s*(seconds?|minutes?|hours?|days?|weeks?|bytes?|kb|kib|mb|mib|gb|gib|ms)\b/gi;
+const ACRONYM_RE = /\b[A-Z][A-Z0-9-]{2,}\b/g;
 
 function normalizeForMatch(text: string): string {
   return text
@@ -94,8 +98,17 @@ export function verifyClaimAgainstPassages(
     }
     if (!quoteMatched) continue;
 
-    // 2. Verify every numeric/version identifier in the claim appears in the passage or its source title
+    // 2. Verify every numeric/version identifier and numeric+unit pair in the claim appears in the passage or title
     if (stmtNumbers.some((num) => !passageWithTitleNorm.includes(num))) {
+      continue;
+    }
+    const stmtUnits = (claim.statement.match(UNIT_RE) ?? []).map((u) => normalizeForMatch(u));
+    if (stmtUnits.some((u) => !passageWithTitleNorm.includes(u))) {
+      continue;
+    }
+    // Verify uppercase acronyms/protocols (e.g. OAuth2, XML, SHA-256, JSON) in the claim exist in the passage/title
+    const stmtAcronyms = (claim.statement.match(ACRONYM_RE) ?? []).map((a) => a.toLowerCase());
+    if (stmtAcronyms.some((acr) => !passageWithTitleNorm.includes(acr))) {
       continue;
     }
 
@@ -107,8 +120,11 @@ export function verifyClaimAgainstPassages(
       continue;
     }
 
-    // 4. Negation polarity guard
+    // 4. Negation & modality polarity guards
     if (stmtHasNegation && !PASSAGE_NEGATION_RE.test(passageNorm)) {
+      continue;
+    }
+    if (STRICT_MODALITY_RE.test(stmtNorm) && !PASSAGE_STRICT_MODALITY_RE.test(passageNorm)) {
       continue;
     }
 

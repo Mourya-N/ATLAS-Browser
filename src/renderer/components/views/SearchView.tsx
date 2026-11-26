@@ -674,7 +674,7 @@ export const SearchView: React.FC = () => {
                       }`}
                     >
                       {response.aiAnswer.status === 'ok'
-                        ? `Verified (${response.aiAnswer.claims.filter((c) => c.verifiedAgainstSource).length})`
+                        ? `Evidence-Checked (${response.aiAnswer.claims.filter((c) => c.verifiedAgainstSource).length})`
                         : response.aiAnswer.status}
                     </span>
                   </div>
@@ -713,7 +713,7 @@ export const SearchView: React.FC = () => {
                   {response.aiAnswer.claims.filter((c) => c.verifiedAgainstSource).length > 0 && (
                     <div className="space-y-2">
                       <div className="font-semibold text-[11px] uppercase tracking-wide text-atlas-muted">
-                        Verified Claims & Evidence
+                        Evidence-Checked Claims (Heuristic Passage Match)
                       </div>
                       {response.aiAnswer.claims
                         .filter((c) => c.verifiedAgainstSource)
@@ -728,7 +728,7 @@ export const SearchView: React.FC = () => {
                                 {c.passageIndex !== undefined ? ` • Passage #${c.passageIndex + 1}` : ''}
                               </span>
                               <span className="flex items-center gap-1 text-atlas-success text-[10px]">
-                                <CheckCircle2 className="h-3 w-3" /> Source Verified
+                                <CheckCircle2 className="h-3 w-3" /> Passage Matched
                               </span>
                             </div>
                             <div>{c.statement}</div>

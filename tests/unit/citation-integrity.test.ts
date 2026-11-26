@@ -294,4 +294,62 @@ describe('Citation Integrity & Adversarial Grounding Verification', () => {
       expect(res.citations).toHaveLength(0);
     }
   });
+
+  it('11. rejects real quotes used to support contradictory negation/modality, wrong units, or extra acronyms', () => {
+    const passages: SearchEvidencePassage[] = [
+      {
+        documentId: 'doc-1',
+        sourceUrl: 'https://www.rfc-editor.org/rfc/rfc9309.html',
+        sourceTitle: 'RFC 9309',
+        domain: 'www.rfc-editor.org',
+        passageIndex: 0,
+        excerpt: 'Crawlers MAY cache the fetched robots.txt file for up to 24 hours.',
+        relevance: 0.9
+      }
+    ];
+
+    // Contradictory negation using real quote
+    expect(
+      verifyClaimAgainstPassages(
+        {
+          statement: 'Crawlers must never cache the fetched robots.txt file.',
+          supportingQuote: 'Crawlers MAY cache the fetched robots.txt file for up to 24 hours'
+        },
+        passages
+      ).verified
+    ).toBe(false);
+
+    // Modality upgrade ("MAY" -> "mandatory")
+    expect(
+      verifyClaimAgainstPassages(
+        {
+          statement: 'Caching the fetched robots.txt file for 24 hours is mandatory.',
+          supportingQuote: 'Crawlers MAY cache the fetched robots.txt file for up to 24 hours'
+        },
+        passages
+      ).verified
+    ).toBe(false);
+
+    // Wrong unit ("24 hours" -> "24 seconds")
+    expect(
+      verifyClaimAgainstPassages(
+        {
+          statement: 'Crawlers may cache the fetched robots.txt file for 24 seconds.',
+          supportingQuote: 'Crawlers MAY cache the fetched robots.txt file for up to 24 hours'
+        },
+        passages
+      ).verified
+    ).toBe(false);
+
+    // Extra unsupported acronym ("JSON-LD" not in passage)
+    expect(
+      verifyClaimAgainstPassages(
+        {
+          statement: 'Crawlers may cache robots.txt for 24 hours using JSON-LD.',
+          supportingQuote: 'Crawlers MAY cache the fetched robots.txt file for up to 24 hours.'
+        },
+        passages
+      ).verified
+    ).toBe(false);
+  });
 });

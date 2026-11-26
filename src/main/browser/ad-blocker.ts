@@ -162,10 +162,18 @@ interface CompiledListCache {
   networkRuleCount: number;
   domainIndex: Map<string, ParsedNetworkRule[]>;
   exceptionDomainIndex: Map<string, ParsedNetworkRule[]>;
+  tokenIndex: Map<string, ParsedNetworkRule[]>;
+  exceptionTokenIndex: Map<string, ParsedNetworkRule[]>;
   patternRules: ParsedNetworkRule[];
   exceptionPatternRules: ParsedNetworkRule[];
   cosmeticRules: ParsedCosmeticRule[];
   category: TrackerCategory;
+}
+
+function addToIndex(map: Map<string, ParsedNetworkRule[]>, key: string, rule: ParsedNetworkRule): void {
+  const arr = map.get(key);
+  if (arr) arr.push(rule);
+  else map.set(key, [rule]);
 }
 
 function buildCompiledListCache(
@@ -175,18 +183,22 @@ function buildCompiledListCache(
 ): CompiledListCache {
   const domainIndex = new Map<string, ParsedNetworkRule[]>();
   const exceptionDomainIndex = new Map<string, ParsedNetworkRule[]>();
+  const tokenIndex = new Map<string, ParsedNetworkRule[]>();
+  const exceptionTokenIndex = new Map<string, ParsedNetworkRule[]>();
   const patternRules: ParsedNetworkRule[] = [];
   const exceptionPatternRules: ParsedNetworkRule[] = [];
+  const seenRaw = new Set<string>();
+  let dedupedCount = 0;
 
   for (const rule of networkRules) {
+    if (seenRaw.has(rule.raw)) continue;
+    seenRaw.add(rule.raw);
+    dedupedCount += 1;
+
     if (rule.domainAnchor) {
-      const targetMap = rule.isException ? exceptionDomainIndex : domainIndex;
-      const arr = targetMap.get(rule.domainAnchor);
-      if (arr) {
-        arr.push(rule);
-      } else {
-        targetMap.set(rule.domainAnchor, [rule]);
-      }
+      addToIndex(rule.isException ? exceptionDomainIndex : domainIndex, rule.domainAnchor, rule);
+    } else if (rule.indexToken) {
+      addToIndex(rule.isException ? exceptionTokenIndex : tokenIndex, rule.indexToken, rule);
     } else if (rule.isException) {
       exceptionPatternRules.push(rule);
     } else {
@@ -195,9 +207,11 @@ function buildCompiledListCache(
   }
 
   return {
-    networkRuleCount: networkRules.length,
+    networkRuleCount: dedupedCount,
     domainIndex,
     exceptionDomainIndex,
+    tokenIndex,
+    exceptionTokenIndex,
     patternRules,
     exceptionPatternRules,
     cosmeticRules,
@@ -596,6 +610,9 @@ export class AdBlocker {
         return { block: false };
       }
     }
+
+    const urlTokens = requestUrl.toLowerCase().match(/[a-z0-9]{4,}/g) ?? [];
+
     for (const list of this.filterLists) {
       if (!list.enabled) continue;
       const cache = this.listCaches.get(list.id);
@@ -604,6 +621,14 @@ export class AdBlocker {
         const exBucket = cache.exceptionDomainIndex.get(candidate);
         if (exBucket) {
           for (const rule of exBucket) {
+            if (matchesNetworkRule(rule, matchCtx)) return { block: false };
+          }
+        }
+      }
+      for (const tok of urlTokens) {
+        const exTokBucket = cache.exceptionTokenIndex.get(tok);
+        if (exTokBucket) {
+          for (const rule of exTokBucket) {
             if (matchesNetworkRule(rule, matchCtx)) return { block: false };
           }
         }
@@ -644,7 +669,7 @@ export class AdBlocker {
       }
     }
 
-    // 5. Check compiled filter list blocking rules (O(labels) domain index + pattern rules)
+    // 5. Check compiled filter list blocking rules (O(labels) domain index + token inverted index + fallback)
     for (const list of this.filterLists) {
       if (!list.enabled) continue;
       const cache = this.listCaches.get(list.id);
@@ -658,6 +683,21 @@ export class AdBlocker {
                 block: true,
                 category: cache.category,
                 matchedDomain: rule.domainAnchor || reqHost,
+                matchedRule: rule.raw
+              };
+            }
+          }
+        }
+      }
+      for (const tok of urlTokens) {
+        const tokBucket = cache.tokenIndex.get(tok);
+        if (tokBucket) {
+          for (const rule of tokBucket) {
+            if (matchesNetworkRule(rule, matchCtx)) {
+              return {
+                block: true,
+                category: cache.category,
+                matchedDomain: reqHost,
                 matchedRule: rule.raw
               };
             }

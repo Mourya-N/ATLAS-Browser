@@ -19,8 +19,10 @@ export type FilterResourceType =
 export interface ParsedNetworkRule {
   raw: string;
   isException: boolean;
-  /** Domain anchor from `||example.com^` if present */
+  /** Domain anchor from `||example.com^` or `||example.com/path` if present */
   domainAnchor: string | null;
+  /** Longest static >=4-char alphanumeric token in pattern for inverted indexing */
+  indexToken: string | null;
   /** Safe literal/wildcard matcher if pattern has path/query parts */
   urlRegex: RegExp | null;
   thirdParty: boolean | null;
@@ -117,6 +119,20 @@ export function isSafeCssSelector(selector: string): boolean {
     return false;
   }
   return true;
+}
+
+function extractIndexToken(patternBody: string): string | null {
+  // Any literal [a-z0-9]{4,} run in the pattern (outside wildcard `*`) must appear in a matching URL
+  const cleaned = patternBody.replace(/^\|\|?/, '').replace(/\|$/, '');
+  const parts = cleaned.toLowerCase().match(/[a-z0-9]{4,}/g);
+  if (!parts || parts.length === 0) return null;
+  let best = parts[0];
+  for (let i = 1; i < parts.length; i++) {
+    if (parts[i].length > best.length) best = parts[i];
+  }
+  // Avoid ultra-common protocol tokens
+  if (best === 'http' || best === 'https' || best === 'www') return null;
+  return best;
 }
 
 function escapeRegexLiteral(str: string): string {
@@ -230,6 +246,7 @@ export function parseNetworkRuleLine(rawLine: string): ParsedNetworkRule | null 
       raw: line,
       isException: false,
       domainAnchor: dom,
+      indexToken: null,
       urlRegex: null,
       thirdParty: null,
       includeTypes: null,
@@ -312,6 +329,7 @@ export function parseNetworkRuleLine(rawLine: string): ParsedNetworkRule | null 
       raw: line,
       isException,
       domainAnchor: pureDomainMatch[1].toLowerCase(),
+      indexToken: null,
       urlRegex: null,
       thirdParty,
       includeTypes,
@@ -322,13 +340,17 @@ export function parseNetworkRuleLine(rawLine: string): ParsedNetworkRule | null 
     };
   }
 
+  // Also extract domainAnchor for `||domain.com/path...` rules so they use O(1) domain hash lookup!
+  const prefixedDomainMatch = body.match(/^\|\|([a-z0-9.-]+\.[a-z]{2,})(?:[/?^|]|$)/i);
+  const domainAnchor = prefixedDomainMatch ? prefixedDomainMatch[1].toLowerCase() : null;
   const urlRegex = compilePatternToRegex(body);
   if (!urlRegex) return null;
 
   return {
     raw: line,
     isException,
-    domainAnchor: null,
+    domainAnchor,
+    indexToken: domainAnchor ? null : extractIndexToken(body),
     urlRegex,
     thirdParty,
     includeTypes,
@@ -448,13 +470,13 @@ export function matchesNetworkRule(
     }
   }
 
-  if (rule.domainAnchor) {
-    return hostMatchesDomain(ctx.reqHost, rule.domainAnchor);
+  if (rule.domainAnchor && !hostMatchesDomain(ctx.reqHost, rule.domainAnchor)) {
+    return false;
   }
 
   if (rule.urlRegex) {
     return rule.urlRegex.test(ctx.requestUrl);
   }
 
-  return false;
+  return Boolean(rule.domainAnchor);
 }
