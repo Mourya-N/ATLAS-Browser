@@ -108,10 +108,12 @@ export class LocalMcpServer {
 
   public async stop(): Promise<void> {
     if (!this.server) return;
-    await new Promise<void>((resolve) => {
-      this.server!.close(() => resolve());
-    });
+    const srv = this.server;
     this.server = null;
+    srv.closeAllConnections?.();
+    await new Promise<void>((resolve) => {
+      srv.close(() => resolve());
+    });
     this.auditLogger.log({
       category: 'mcp',
       action: 'mcp_server_stopped',
