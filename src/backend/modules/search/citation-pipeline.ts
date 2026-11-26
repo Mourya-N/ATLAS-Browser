@@ -99,8 +99,8 @@ export class CitationAnswerPipeline {
         fullText
       });
 
-      const chunks = this.extractor.chunkText(fullText, 500, 4);
-      const effectiveChunks = chunks.length > 0 ? chunks : [fullText.slice(0, 500)];
+      const chunks = this.extractor.chunkText(fullText, 600, 24);
+      const effectiveChunks = chunks.length > 0 ? chunks : [fullText.slice(0, 600)];
 
       effectiveChunks.forEach((excerpt, idx) => {
         const lower = excerpt.toLowerCase();
@@ -193,7 +193,7 @@ export class CitationAnswerPipeline {
       const resp = await this.ai.generate({
         tier: 'balanced',
         systemInstruction:
-          'You are the Atlas Cited Answer Synthesizer. Base EVERY factual statement strictly on the provided PASSAGES. Never invent URLs or quotes. Distinguish direct retrieved facts ("fact") from synthesis ("interpretation"). Set sufficientEvidence=false if the passages do not answer the query. Highlight contradictions if sources disagree.',
+          'You are the Atlas Cited Answer Synthesizer. Your job is to synthesize a helpful, grounded answer from the provided PASSAGES.\n\nRules:\n1. Base EVERY factual statement strictly on the provided PASSAGES.\n2. Never invent URLs or quotes not present in the passages.\n3. For each claim, cite the source URL from the passage and provide a supporting quote.\n4. Set sufficientEvidence=true if the passages contain ANY relevant information that partially or fully answers the question.\n5. Set sufficientEvidence=false ONLY if the passages are completely unrelated to the question.\n6. Distinguish direct retrieved facts ("fact") from synthesis ("interpretation").\n7. If sources disagree, list contradictions.\n8. Always produce at least one claim if the passages mention the topic.',
         messages: [
           {
             role: 'user',
@@ -221,9 +221,25 @@ export class CitationAnswerPipeline {
       const verifiedClaims: SearchCitationClaim[] = [];
       const citedUrlOrder: string[] = [];
 
+      const resolveInspectedUrl = (rawUrl: string): string | null => {
+        const trimmed = (rawUrl || '').trim();
+        if (!trimmed) return null;
+        if (inspectedMeta.has(trimmed)) return trimmed;
+        const withoutHash = trimmed.split('#')[0];
+        if (inspectedMeta.has(withoutHash)) return withoutHash;
+        const withoutTrailingSlash = withoutHash.replace(/\/+$/, '');
+        for (const knownUrl of inspectedMeta.keys()) {
+          if (knownUrl.replace(/\/+$/, '') === withoutTrailingSlash) {
+            return knownUrl;
+          }
+        }
+        return null;
+      };
+
       for (const rawClaim of parsed.claims ?? []) {
-        const meta = inspectedMeta.get(rawClaim.sourceUrl);
-        if (!meta) {
+        const resolvedUrl = resolveInspectedUrl(rawClaim.sourceUrl);
+        const meta = resolvedUrl ? inspectedMeta.get(resolvedUrl) : undefined;
+        if (!meta || !resolvedUrl) {
           // Reject fabricated/uninspected URLs silently!
           continue;
         }
@@ -235,15 +251,15 @@ export class CitationAnswerPipeline {
         const verifiedAgainstSource =
           quoteFoundExact || (quoteTokens.length > 0 && tokenMatches / quoteTokens.length >= 0.5);
 
-        if (!citedUrlOrder.includes(rawClaim.sourceUrl)) {
-          citedUrlOrder.push(rawClaim.sourceUrl);
+        if (!citedUrlOrder.includes(resolvedUrl)) {
+          citedUrlOrder.push(resolvedUrl);
         }
 
         verifiedClaims.push({
           id: randomUUID(),
           statement: rawClaim.statement,
           kind: rawClaim.kind === 'fact' && verifiedAgainstSource ? 'fact' : 'interpretation',
-          sourceUrl: rawClaim.sourceUrl,
+          sourceUrl: resolvedUrl,
           sourceTitle: meta.title,
           supportingQuote: rawClaim.supportingQuote.slice(0, 260),
           verifiedAgainstSource

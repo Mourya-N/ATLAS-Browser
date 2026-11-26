@@ -51,9 +51,9 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-atlas}:${POSTGRES_PASSWORD:-atlas_dev_password}@postgres:5432/${POSTGRES_DB:-atlas_cloud}
       REDIS_URL: redis://redis:6379
       ATLAS_JWT_SECRET: ${ATLAS_JWT_SECRET:-dev-local-jwt-secret-replace-for-prod-32b}
-      ATLAS_AI_PROVIDER: ${ATLAS_AI_PROVIDER:-gemini}
-      ATLAS_SELF_HOSTED_URL: ${ATLAS_SELF_HOSTED_URL:-}
-      ATLAS_SELF_HOSTED_MODEL: ${ATLAS_SELF_HOSTED_MODEL:-qwen2.5:7b-instruct}
+      ATLAS_AI_PROVIDER: ${ATLAS_AI_PROVIDER:-self_hosted}
+      ATLAS_SELF_HOSTED_URL: ${ATLAS_SELF_HOSTED_URL:-http://host.docker.internal:11434}
+      ATLAS_SELF_HOSTED_MODEL: ${ATLAS_SELF_HOSTED_MODEL:-qwen2.5:3b}
       ATLAS_SELF_HOSTED_API_KEY: ${ATLAS_SELF_HOSTED_API_KEY:-}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       BRAVE_SEARCH_API_KEY: ${BRAVE_SEARCH_API_KEY:-}
@@ -89,9 +89,9 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-atlas}:${POSTGRES_PASSWORD:-atlas_dev_password}@postgres:5432/${POSTGRES_DB:-atlas_cloud}
       REDIS_URL: redis://redis:6379
       ATLAS_JWT_SECRET: ${ATLAS_JWT_SECRET:-dev-local-jwt-secret-replace-for-prod-32b}
-      ATLAS_AI_PROVIDER: ${ATLAS_AI_PROVIDER:-gemini}
-      ATLAS_SELF_HOSTED_URL: ${ATLAS_SELF_HOSTED_URL:-}
-      ATLAS_SELF_HOSTED_MODEL: ${ATLAS_SELF_HOSTED_MODEL:-qwen2.5:7b-instruct}
+      ATLAS_AI_PROVIDER: ${ATLAS_AI_PROVIDER:-self_hosted}
+      ATLAS_SELF_HOSTED_URL: ${ATLAS_SELF_HOSTED_URL:-http://host.docker.internal:11434}
+      ATLAS_SELF_HOSTED_MODEL: ${ATLAS_SELF_HOSTED_MODEL:-qwen2.5:3b}
       ATLAS_SELF_HOSTED_API_KEY: ${ATLAS_SELF_HOSTED_API_KEY:-}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       ATLAS_WORKER_POLL_MS: ${ATLAS_WORKER_POLL_MS:-2000}

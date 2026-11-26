@@ -115,7 +115,11 @@ async function main() {
   assert.equal(s1.cacheHit, false);
   assert.ok(!s1.providersQueried.includes('mock_search'), 'Docker Compose stack must NOT query mock_search by default');
   assert.ok(s1.results.some((r) => r.sourceOrigin === 'atlas_index'), 'Expected real first-party atlas_index result from Postgres');
-  assert.equal(s1.aiAnswer.status, 'unavailable', 'Must stay honestly unavailable without model weights (never mock silently)');
+  if (health.aiConfigured) {
+    assert.ok(['ok', 'insufficient_evidence'].includes(s1.aiAnswer.status), `Expected valid AI answer status when aiConfigured=true, got ${s1.aiAnswer.status}`);
+  } else {
+    assert.equal(s1.aiAnswer.status, 'unavailable', 'Must stay honestly unavailable without model weights (never mock silently)');
+  }
 
   // Repeat identical query -> verify Redis Search Cache HIT!
   const s2Started = Date.now();

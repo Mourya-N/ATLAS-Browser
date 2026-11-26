@@ -72,7 +72,7 @@ const ExtractUrlSchema = z.object({
 
 const JobEnqueueSchema = z.object({
   type: z.enum(['research_job', 'page_extract', 'reindex_knowledge', 'embedding_backfill']),
-  payload: z.record(z.unknown()).default({})
+  payload: z.record(z.string(), z.unknown()).default({})
 });
 
 export function createCloudApiRouter(services: BackendServicesContainer) {
