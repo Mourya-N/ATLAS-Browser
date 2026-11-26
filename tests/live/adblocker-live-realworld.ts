@@ -109,36 +109,73 @@ app.whenReady().then(async () => {
 
   const realSites = ['https://www.bbc.com/news', 'https://www.npr.org'];
   console.log('\n--- REAL PUBLIC WEBSITE BLOCKING TESTS ---');
+  const wc = tabManager.getWebContents(tab.id)!;
+  let siteObservedAllowed = 0;
+  let siteObservedBlockedAds = 0;
+  let siteObservedBlockedTrackers = 0;
+  let lastNetworkEventAt = Date.now();
+  const blockedDomainsSample = new Set<string>();
+
+  wc.session.webRequest.onCompleted((details) => {
+    if (details.webContentsId === wc.id) {
+      siteObservedAllowed += 1;
+      lastNetworkEventAt = Date.now();
+    }
+  });
+  const unsubBlocked = adBlocker.onBlocked((wcId, domain, category) => {
+    if (wcId === wc.id) {
+      lastNetworkEventAt = Date.now();
+      if (domain) blockedDomainsSample.add(domain);
+      if (category === 'advertising') siteObservedBlockedAds += 1;
+      else siteObservedBlockedTrackers += 1;
+    }
+  });
+
   for (const siteUrl of realSites) {
-    const beforeStats = adBlocker.getStats();
-    const beforeTabBlocked = tabManager.getTab(tab.id)?.info.blockedCount ?? 0;
+    siteObservedAllowed = 0;
+    siteObservedBlockedAds = 0;
+    siteObservedBlockedTrackers = 0;
+    blockedDomainsSample.clear();
+    lastNetworkEventAt = Date.now();
+
     try {
       await tabManager.navigate(tab.id, siteUrl);
-      const deadline = Date.now() + 12_000;
-      while (Date.now() < deadline) {
+      const loadDeadline = Date.now() + 12_000;
+      while (Date.now() < loadDeadline) {
         const cur = tabManager.getTab(tab.id);
         if (cur && !cur.info.isLoading) break;
-        await new Promise((r) => setTimeout(r, 150));
+        await new Promise((r) => setTimeout(r, 100));
       }
-      await new Promise((r) => setTimeout(r, 1000));
-      const wc = tabManager.getWebContents(tab.id)!;
+
+      // Wait deterministically for post-load async ad/tracker requests to settle (idle >= 500ms, max 4s)
+      const settleDeadline = Date.now() + 4_000;
+      while (Date.now() < settleDeadline) {
+        if (Date.now() - lastNetworkEventAt >= 500 && siteObservedAllowed > 0) break;
+        await new Promise((r) => setTimeout(r, 100));
+      }
+
       const pageSummary = await wc.executeJavaScript(`({
         title: document.title,
         textLen: (document.body?.innerText || '').trim().length,
         imgCount: document.images.length
       })`);
-      const afterStats = adBlocker.getStats();
-      const afterTabBlocked = tabManager.getTab(tab.id)?.info.blockedCount ?? 0;
-      const blockedOnSite = afterTabBlocked - beforeTabBlocked;
+      const observedBlockedTotal = siteObservedBlockedAds + siteObservedBlockedTrackers;
+      const statusLabel =
+        observedBlockedTotal > 0
+          ? 'observed_and_blocked'
+          : siteObservedAllowed > 0
+          ? 'observed_allowed_only (no ad/tracker requests fired)'
+          : 'never_observed';
       console.log(
-        `  [SITE] ${siteUrl} -> title="${pageSummary.title}", textLen=${pageSummary.textLen}, imgs=${pageSummary.imgCount}, blockedOnSite=${blockedOnSite}, totalAds=${afterStats.adsBlocked}, totalTrackers=${afterStats.trackersBlocked}`
+        `  [SITE] ${siteUrl} -> status=${statusLabel}, title="${pageSummary.title}", textLen=${pageSummary.textLen}, imgs=${pageSummary.imgCount}, observedAllowed=${siteObservedAllowed}, observedBlocked=${observedBlockedTotal} (ads=${siteObservedBlockedAds}, trackers=${siteObservedBlockedTrackers}), sampleBlocked=${JSON.stringify(Array.from(blockedDomainsSample).slice(0, 5))}`
       );
       assert.ok(pageSummary.textLen > 100, `Expected readable content on ${siteUrl}`);
-      assert.ok(afterStats.totalBlocked >= beforeStats.totalBlocked);
+      assert.ok(siteObservedAllowed > 0, `Expected observed allowed requests on ${siteUrl}`);
     } catch (err) {
       console.log(`  [SITE-WARN] ${siteUrl} failed/blocked automation: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
+  unsubBlocked();
 
   // 6. Test Reading List persistence across DB reopen
   const savedItem = browserRepo.saveReadingListItem({

@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "Atlas Browser — AI-Native Desktop Browser with Autonomous Agent Capabilities",
   "main": "dist/main/index.js",
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "author": "Atlas Browser Team",
   "license": "MIT",
   "scripts": {
