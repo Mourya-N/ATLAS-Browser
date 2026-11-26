@@ -43,7 +43,7 @@ export const AdBlockerPopover: React.FC<Props> = ({ activeTab, currentDomain, on
   return (
     <div
       data-testid="adblock-popover"
-      className="absolute right-0 top-10 z-50 w-80 rounded-xl border border-atlas-border bg-atlas-surface p-3.5 shadow-2xl text-xs space-y-3"
+      className="atlas-glass absolute right-0 top-9 z-50 w-80 rounded-xl border border-atlas-border p-3.5 shadow-atlas-float text-xs space-y-3"
     >
       {/* Header + Global Toggle */}
       <div className="flex items-center justify-between border-b border-atlas-border pb-2.5">
@@ -152,7 +152,7 @@ export const AdBlockerPopover: React.FC<Props> = ({ activeTab, currentDomain, on
             setRulesChanged(false);
             onClose();
           }}
-          className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-atlas-accent px-3 py-1.5 font-semibold text-white"
+          className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-atlas-accent px-3 py-1.5 font-medium text-atlas-accent-fg"
         >
           <RefreshCw className="h-3.5 w-3.5" />
           Refresh page to apply rule changes
@@ -236,7 +236,7 @@ export const AdBlockerPopover: React.FC<Props> = ({ activeTab, currentDomain, on
         <button
           type="submit"
           title="Add custom rule"
-          className="rounded-lg bg-atlas-elevated px-2 py-1 text-atlas-text hover:bg-atlas-accent hover:text-white"
+          className="rounded-lg bg-atlas-elevated px-2 py-1 text-atlas-text hover:bg-atlas-accent hover:text-atlas-accent-fg transition-colors"
         >
           <Plus className="h-3.5 w-3.5" />
         </button>

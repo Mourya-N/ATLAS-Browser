@@ -25,10 +25,10 @@ const ViewShell: React.FC<{
   const { setOverlayView } = useAtlasStore();
   return (
     <div className="flex h-full flex-col bg-atlas-bg text-atlas-text select-text">
-      <div className="flex items-center justify-between border-b border-atlas-border bg-atlas-surface px-6 py-3.5">
+      <div className="flex h-12 shrink-0 items-center justify-between border-b border-atlas-border bg-atlas-surface px-6">
         <div className="flex items-center gap-2.5">
           <span className="text-atlas-accent">{icon}</span>
-          <h1 className="text-base font-bold">{title}</h1>
+          <h1 className="text-[14px] font-semibold tracking-[-0.01em]">{title}</h1>
         </div>
         <div className="flex items-center gap-2">
           {actions}
@@ -231,7 +231,7 @@ export const BookmarksView: React.FC = () => {
             type="button"
             onClick={() => setSelectedFolder(null)}
             className={`rounded-lg px-3 py-1 text-xs font-medium ${
-              selectedFolder === null ? 'bg-atlas-accent text-white' : 'bg-atlas-surface border border-atlas-border'
+              selectedFolder === null ? 'bg-atlas-accent text-atlas-accent-fg' : 'bg-atlas-surface border border-atlas-border'
             }`}
           >
             All ({bookmarks.length})
@@ -242,7 +242,7 @@ export const BookmarksView: React.FC = () => {
               type="button"
               onClick={() => setSelectedFolder(f.id)}
               className={`rounded-lg px-3 py-1 text-xs font-medium ${
-                selectedFolder === f.id ? 'bg-atlas-accent text-white' : 'bg-atlas-surface border border-atlas-border'
+                selectedFolder === f.id ? 'bg-atlas-accent text-atlas-accent-fg' : 'bg-atlas-surface border border-atlas-border'
               }`}
             >
               {f.name}
@@ -275,7 +275,7 @@ export const BookmarksView: React.FC = () => {
           />
           <button
             type="submit"
-            className="flex items-center gap-1 rounded-lg bg-atlas-accent px-3 py-1.5 text-xs font-semibold text-white"
+            className="flex items-center gap-1 rounded-lg bg-atlas-accent px-3 py-1.5 text-xs font-semibold text-atlas-accent-fg"
           >
             <Plus className="h-3.5 w-3.5" /> Add Bookmark
           </button>

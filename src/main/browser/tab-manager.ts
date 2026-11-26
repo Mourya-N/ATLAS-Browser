@@ -176,9 +176,10 @@ export class TabManager {
     if (!winMeta) throw new Error(`Window ${windowId} not registered`);
 
     const id = options.id ?? randomUUID();
-    const homeUrl = this.platformRepo.getSetting<string>('browser.homeUrl', 'https://example.com');
+    const homeUrl = this.platformRepo.getSetting<string>('browser.homeUrl', 'atlas://newtab');
     const searchEngine = this.platformRepo.getSetting<SearchEngineId>('browser.searchEngine', 'google');
     const targetUrl = options.url ? resolveNavigationInput(options.url, searchEngine) : homeUrl;
+    const isInternalNewTab = targetUrl === 'atlas://newtab';
 
     const tabSession = winMeta.isPrivate && winMeta.partitionId
       ? session.fromPartition(winMeta.partitionId, { cache: false })
@@ -204,10 +205,10 @@ export class TabManager {
       id,
       windowId,
       url: targetUrl,
-      title: targetUrl,
+      title: isInternalNewTab ? 'New Tab' : targetUrl,
       customTitle: options.customTitle ?? null,
       favicon: null,
-      isLoading: true,
+      isLoading: !isInternalNewTab,
       canGoBack: false,
       canGoForward: false,
       isPinned: Boolean(options.isPinned),
@@ -240,9 +241,10 @@ export class TabManager {
       view.setVisible(false);
     }
 
-    if (isAllowedNavigationUrl(targetUrl)) {
-      void view.webContents.loadURL(targetUrl).catch((err) => {
-        console.warn('[TabManager] Initial load error:', targetUrl, err?.message || err);
+    const loadTarget = isInternalNewTab ? 'about:blank' : targetUrl;
+    if (isAllowedNavigationUrl(loadTarget)) {
+      void view.webContents.loadURL(loadTarget).catch((err) => {
+        console.warn('[TabManager] Initial load error:', loadTarget, err?.message || err);
       });
     }
 
@@ -258,8 +260,14 @@ export class TabManager {
       if (wc.isDestroyed()) return;
       info.canGoBack = wc.navigationHistory?.canGoBack() ?? wc.canGoBack();
       info.canGoForward = wc.navigationHistory?.canGoForward() ?? wc.canGoForward();
-      info.url = wc.getURL() || info.url;
-      info.securityState = getSecurityState(info.url);
+      const rawUrl = wc.getURL();
+      if (rawUrl === 'about:blank' && info.url === 'atlas://newtab') {
+        info.title = 'New Tab';
+        info.securityState = 'internal';
+      } else {
+        info.url = rawUrl || info.url;
+        info.securityState = getSecurityState(info.url);
+      }
     };
 
     wc.setWindowOpenHandler(({ url }) => {
@@ -301,24 +309,33 @@ export class TabManager {
     });
 
     wc.on('did-navigate', (_ev, url) => {
-      info.url = url;
+      if (!(url === 'about:blank' && info.url === 'atlas://newtab')) {
+        info.url = url;
+      }
       syncNavFlags();
-      if (!info.isPrivate && !url.startsWith('data:') && url !== 'about:blank') {
+      if (!info.isPrivate && !url.startsWith('data:') && url !== 'about:blank' && !url.startsWith('atlas://')) {
         this.browserRepo.recordVisit(url, info.title, info.favicon);
       }
       this.emitState(info.windowId);
     });
 
     wc.on('did-navigate-in-page', (_ev, url) => {
-      info.url = url;
+      if (!(url === 'about:blank' && info.url === 'atlas://newtab')) {
+        info.url = url;
+      }
       syncNavFlags();
-      if (!info.isPrivate && !url.startsWith('data:') && url !== 'about:blank') {
+      if (!info.isPrivate && !url.startsWith('data:') && url !== 'about:blank' && !url.startsWith('atlas://')) {
         this.browserRepo.recordVisit(url, info.title, info.favicon);
       }
       this.emitState(info.windowId);
     });
 
     wc.on('page-title-updated', (_ev, title) => {
+      if (info.url === 'atlas://newtab') {
+        info.title = 'New Tab';
+        this.emitState(info.windowId);
+        return;
+      }
       info.title = title || info.url;
       if (!info.isPrivate && info.url && !info.url.startsWith('data:') && info.url !== 'about:blank') {
         this.browserRepo.recordVisit(info.url, info.title, info.favicon);
@@ -458,7 +475,7 @@ export class TabManager {
 
     const remaining = this.getTabsForWindow(windowId);
     if (remaining.length === 0) {
-      this.createTab(windowId, { url: 'about:blank', activate: true });
+      this.createTab(windowId, { url: 'atlas://newtab', activate: true });
       return true;
     }
 
@@ -624,6 +641,19 @@ export class TabManager {
     }
     if (m.info.crashed) {
       m.view.webContents.reload();
+    }
+    if (targetUrl === 'atlas://newtab') {
+      m.info.url = 'atlas://newtab';
+      m.info.title = 'New Tab';
+      m.info.favicon = null;
+      m.info.securityState = 'internal';
+      m.info.isLoading = false;
+      await m.view.webContents.loadURL('about:blank');
+      this.emitState(m.info.windowId);
+      return 'atlas://newtab';
+    }
+    if (m.info.url === 'atlas://newtab') {
+      m.info.url = targetUrl;
     }
     await m.view.webContents.loadURL(targetUrl);
     return m.view.webContents.getURL() || targetUrl;

@@ -4,34 +4,96 @@
 
 :root {
   color-scheme: light;
-  --atlas-bg: 248 250 252;
+  /* Light Theme (Primary): Warm Architectural Paper + Deep Atlas Teal */
+  --atlas-bg: 250 250 248;
+  --atlas-shell: 242 242 239;
   --atlas-surface: 255 255 255;
-  --atlas-elevated: 241 245 249;
-  --atlas-border: 226 232 240;
-  --atlas-text: 15 23 42;
-  --atlas-muted: 100 116 139;
-  --atlas-accent: 37 99 235;
-  --atlas-danger: 220 38 38;
-  --atlas-warning: 217 119 6;
-  --atlas-success: 22 163 74;
+  --atlas-elevated: 235 235 231;
+  --atlas-hover: 226 226 221;
+  --atlas-border: 221 221 215;
+  --atlas-border-strong: 196 196 189;
+  --atlas-text: 24 24 27;
+  --atlas-secondary: 74 75 83;
+  --atlas-muted: 113 114 122;
+  --atlas-accent: 19 94 115;
+  --atlas-accent-fg: 255 255 255;
+  --atlas-danger: 185 45 45;
+  --atlas-warning: 180 105 14;
+  --atlas-success: 22 128 67;
+
+  --atlas-glass: rgb(255 255 255 / 0.86);
+  --atlas-shadow-sm: 0 1px 2px 0 rgb(24 24 27 / 0.05);
+  --atlas-shadow-tab: 0 -1px 0 0 rgb(var(--atlas-border) / 0.4), 0 1px 2px 0 rgb(24 24 27 / 0.04);
+  --atlas-shadow-float: 0 10px 28px -6px rgb(24 24 27 / 0.12), 0 0 0 1px rgb(24 24 27 / 0.06);
+
+  --atlas-topbar-h: 38px;
+  --atlas-nav-h: 44px;
+  --atlas-rail-w: 44px;
+  --atlas-agent-w: 372px;
 }
 
 html.dark {
   color-scheme: dark;
-  --atlas-bg: 10 14 23;
-  --atlas-surface: 17 24 39;
-  --atlas-elevated: 30 41 59;
-  --atlas-border: 51 65 85;
-  --atlas-text: 241 245 249;
-  --atlas-muted: 148 163 184;
-  --atlas-accent: 59 130 246;
-  --atlas-danger: 239 68 68;
-  --atlas-warning: 245 158 11;
-  --atlas-success: 34 197 94;
+  /* Dark Theme Companion: Obsidian Ink + Luminous Atlas Teal */
+  --atlas-bg: 17 18 20;
+  --atlas-shell: 22 24 27;
+  --atlas-surface: 28 30 34;
+  --atlas-elevated: 38 41 47;
+  --atlas-hover: 47 51 59;
+  --atlas-border: 48 51 58;
+  --atlas-border-strong: 68 72 82;
+  --atlas-text: 238 239 242;
+  --atlas-secondary: 176 180 189;
+  --atlas-muted: 120 125 136;
+  --atlas-accent: 56 163 184;
+  --atlas-accent-fg: 12 18 22;
+  --atlas-danger: 229 83 83;
+  --atlas-warning: 229 159 54;
+  --atlas-success: 56 178 107;
+
+  --atlas-glass: rgb(26 28 32 / 0.88);
+  --atlas-shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.22);
+  --atlas-shadow-tab: 0 1px 2px 0 rgb(0 0 0 / 0.25);
+  --atlas-shadow-float: 0 14px 32px -8px rgb(0 0 0 / 0.48), 0 0 0 1px rgb(255 255 255 / 0.06);
 }
 
 * {
   box-sizing: border-box;
+}
+
+button:focus:not(:focus-visible),
+a:focus:not(:focus-visible),
+[role='button']:focus:not(:focus-visible) {
+  outline: none;
+}
+
+button:focus-visible,
+[role='button']:focus-visible {
+  outline: 1.5px solid rgb(var(--atlas-accent) / 0.7);
+  outline-offset: 1px;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Selective Liquid Glass for floating popovers, palettes, and ephemeral controls */
+.atlas-glass {
+  background-color: var(--atlas-glass);
+  backdrop-filter: blur(14px) saturate(1.15);
+  -webkit-backdrop-filter: blur(14px) saturate(1.15);
+}
+
+@supports not (backdrop-filter: blur(1px)) {
+  .atlas-glass {
+    background-color: rgb(var(--atlas-surface));
+  }
 }
 
 ::-webkit-scrollbar {
@@ -44,8 +106,16 @@ html.dark {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgb(var(--atlas-border));
+  background: rgb(var(--atlas-border-strong) / 0.75);
   border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--atlas-muted) / 0.75);
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
 }
 
 .app-drag-region {
@@ -56,7 +126,26 @@ html.dark {
   -webkit-app-region: no-drag;
 }
 
-dialog::backdrop {
-  background: rgba(2, 6, 23, 0.7);
-  backdrop-filter: blur(4px);
+@keyframes atlas-shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(300%);
+  }
+}
+
+.atlas-loading-bar {
+  animation: atlas-shimmer 1.15s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .atlas-loading-bar {
+    animation: none;
+    width: 100%;
+    opacity: 0.45;
+  }
+  * {
+    transition-duration: 0.01ms !important;
+  }
 }

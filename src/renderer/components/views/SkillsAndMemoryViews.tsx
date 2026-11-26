@@ -24,10 +24,10 @@ const ModalShell: React.FC<{ title: string; icon: React.ReactNode; onClose: () =
   children
 }) => (
   <div className="flex h-full flex-col bg-atlas-bg text-atlas-text select-text">
-    <div className="flex items-center justify-between border-b border-atlas-border bg-atlas-surface px-6 py-3.5">
+    <div className="flex h-12 shrink-0 items-center justify-between border-b border-atlas-border bg-atlas-surface px-6">
       <div className="flex items-center gap-2.5">
         <span className="text-atlas-accent">{icon}</span>
-        <h1 className="text-base font-bold">{title}</h1>
+        <h1 className="text-[14px] font-semibold tracking-[-0.01em]">{title}</h1>
       </div>
       <div className="flex items-center gap-2">
         {actions}
@@ -107,7 +107,7 @@ export const SkillsView: React.FC = () => {
               setSelected(saved);
               void load();
             }}
-            className="flex items-center gap-1 rounded-lg bg-atlas-accent px-3 py-1.5 text-xs font-semibold text-white"
+            className="flex items-center gap-1 rounded-lg bg-atlas-accent px-3 py-1.5 text-xs font-semibold text-atlas-accent-fg"
           >
             <Plus className="h-3.5 w-3.5" /> New Skill
           </button>
@@ -133,7 +133,7 @@ export const SkillsView: React.FC = () => {
                 pushToast('Skill imported', 'success');
                 void load();
               }}
-              className="rounded-lg bg-atlas-accent px-3 py-1.5 text-xs font-semibold text-white"
+              className="rounded-lg bg-atlas-accent px-3 py-1.5 text-xs font-semibold text-atlas-accent-fg"
             >
               Import Skill
             </button>
@@ -177,7 +177,7 @@ export const SkillsView: React.FC = () => {
                           );
                           void load();
                         }}
-                        className="flex items-center gap-1 rounded bg-atlas-accent px-2 py-1 text-[10px] font-semibold text-white"
+                        className="flex items-center gap-1 rounded bg-atlas-accent px-2 py-1 text-[10px] font-semibold text-atlas-accent-fg"
                       >
                         <Play className="h-3 w-3" /> Run
                       </button>
@@ -293,7 +293,7 @@ export const SkillsView: React.FC = () => {
                   pushToast('Skill saved', 'success');
                   void load();
                 }}
-                className="rounded-lg bg-atlas-accent px-4 py-2 font-semibold text-white"
+                className="rounded-lg bg-atlas-accent px-4 py-2 font-semibold text-atlas-accent-fg"
               >
                 Save Changes
               </button>
@@ -422,7 +422,7 @@ export const MemoryView: React.FC = () => {
             placeholder="Preference or reusable workflow detail..."
             className="w-full rounded-lg border border-atlas-border bg-atlas-bg p-2"
           />
-          <button type="submit" className="rounded-lg bg-atlas-accent px-4 py-1.5 font-semibold text-white">
+          <button type="submit" className="rounded-lg bg-atlas-accent px-4 py-1.5 font-semibold text-atlas-accent-fg">
             Save Memory
           </button>
         </form>
@@ -520,7 +520,7 @@ export const ExtractionView: React.FC = () => {
                 setRunning(false);
               }
             }}
-            className="flex items-center gap-1.5 rounded-lg bg-atlas-accent px-4 py-2 font-semibold text-white disabled:opacity-50"
+            className="flex items-center gap-1.5 rounded-lg bg-atlas-accent px-4 py-2 font-semibold text-atlas-accent-fg disabled:opacity-50"
           >
             <Sparkles className="h-3.5 w-3.5" /> {running ? 'Extracting & Validating...' : 'Extract from Active Tab'}
           </button>

@@ -1,44 +1,37 @@
 import React from 'react';
-import { Hand, Play, Square } from 'lucide-react';
+import { Hand, Play, ShieldAlert, Square } from 'lucide-react';
 import { useAtlasStore } from '../store/useAtlasStore';
 
 export const HitlBanner: React.FC = () => {
   const { hitlPause, setHitlPause } = useAtlasStore();
-
   if (!hitlPause) return null;
 
   return (
-    <div className="flex items-center justify-between gap-3 border-b border-atlas-warning/40 bg-atlas-warning/15 px-4 py-2 text-xs text-atlas-text">
-      <div className="flex items-center gap-2.5 min-w-0">
-        <Hand className="h-4 w-4 text-atlas-warning shrink-0" />
-        <div className="min-w-0">
-          <span className="font-bold uppercase tracking-wide text-atlas-warning mr-2">
-            Human Intervention ({hitlPause.reason.replace('_', ' ')})
-          </span>
-          <span className="text-atlas-text">{hitlPause.explanation}</span>
-        </div>
+    <div className="flex h-10 items-center justify-between border-b border-atlas-warning/35 bg-atlas-warning/10 px-4 text-xs">
+      <div className="flex items-center gap-2 text-atlas-warning font-medium min-w-0">
+        <ShieldAlert className="h-4 w-4 shrink-0" />
+        <span className="truncate">Paused for manual action ({hitlPause.reason}): {hitlPause.explanation}</span>
       </div>
-
       <div className="flex items-center gap-1.5 shrink-0">
         <button
           type="button"
           onClick={async () => {
-            await window.atlas.activateTab(hitlPause.tabId);
-            await window.atlas.takeoverAgentRun(hitlPause.runId);
+            await window.atlas.resumeAgentRun(hitlPause.runId);
+            setHitlPause(null);
           }}
-          className="rounded-lg border border-atlas-border bg-atlas-surface px-2.5 py-1 font-semibold hover:bg-atlas-elevated"
+          className="flex items-center gap-1 rounded-md bg-atlas-success px-2.5 py-1 text-[11px] font-medium text-white hover:opacity-90"
         >
-          Take Over
+          <Play className="h-3 w-3" /> Continue
         </button>
         <button
           type="button"
           onClick={async () => {
-            await window.atlas.resumeHitl(hitlPause.runId);
+            await window.atlas.takeoverAgentRun(hitlPause.runId);
             setHitlPause(null);
           }}
-          className="flex items-center gap-1 rounded-lg bg-atlas-success px-2.5 py-1 font-semibold text-white hover:opacity-90"
+          className="flex items-center gap-1 rounded-md border border-atlas-border bg-atlas-surface px-2.5 py-1 text-[11px] font-medium text-atlas-text hover:bg-atlas-shell"
         >
-          <Play className="h-3 w-3" /> Resume Agent
+          <Hand className="h-3 w-3" /> Take Control
         </button>
         <button
           type="button"
@@ -46,9 +39,9 @@ export const HitlBanner: React.FC = () => {
             await window.atlas.stopAgentRun(hitlPause.runId);
             setHitlPause(null);
           }}
-          className="flex items-center gap-1 rounded-lg bg-atlas-danger px-2.5 py-1 font-semibold text-white hover:opacity-90"
+          className="flex items-center gap-1 rounded-md border border-atlas-danger/40 bg-atlas-danger/10 px-2.5 py-1 text-[11px] font-medium text-atlas-danger"
         >
-          <Square className="h-3 w-3" /> Cancel
+          <Square className="h-3 w-3" /> Stop
         </button>
       </div>
     </div>

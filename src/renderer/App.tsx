@@ -2,34 +2,33 @@ import React, { useEffect } from 'react';
 import { useAtlasStore } from './store/useAtlasStore';
 import { TabBar } from './components/TabBar';
 import { AddressBar } from './components/AddressBar';
+import { SidebarRail } from './components/SidebarRail';
 import { AgentPanel } from './components/AgentPanel';
-import { ConfirmationDialog } from './components/ConfirmationDialog';
+import { NewTabView } from './components/NewTabView';
 import { HitlBanner } from './components/HitlBanner';
 import { FindBar } from './components/FindBar';
 import { TabSearchModal } from './components/TabSearchModal';
+import { ConfirmationDialog } from './components/ConfirmationDialog';
 import { SelectionOverlay } from './components/SelectionOverlay';
 import { ReaderView } from './components/ReaderView';
+import { SettingsView } from './components/views/SettingsView';
 import { BookmarksView, DownloadsView, HistoryView } from './components/views/BrowserDataViews';
 import { ExtractionView, MemoryView, SkillsView } from './components/views/SkillsAndMemoryViews';
-import {
-  AuditAndRulesView,
-  DashboardView,
-  McpServerView,
-  RunsAndReplayView,
-  SchedulerView
-} from './components/views/OperationsViews';
-import { SettingsView } from './components/views/SettingsView';
+import { AuditAndRulesView, DashboardView, McpServerView, RunsAndReplayView, SchedulerView } from './components/views/OperationsViews';
 import { IntelligenceView } from './components/views/IntelligenceView';
 import { SearchView } from './components/views/SearchView';
 
 export const App: React.FC = () => {
   const {
+    tabs,
+    activeTabId,
     verticalTabs,
+    sidebarOpen,
+    setSidebarOpen,
     agentPanelOpen,
     agentPanelWidth,
     activeOverlayView,
-    confirmationQueue,
-    tabSearchOpen,
+    setOverlayView,
     hitlPause,
     settings,
     toasts,
@@ -168,9 +167,9 @@ export const App: React.FC = () => {
     };
   }, []);
 
-  // Theme application
+  // Theme application (light default)
   useEffect(() => {
-    const theme = settings?.theme ?? 'dark';
+    const theme = settings?.theme ?? 'light';
     const root = document.documentElement;
     const apply = (dark: boolean) => {
       root.classList.toggle('dark', dark);
@@ -186,63 +185,64 @@ export const App: React.FC = () => {
     return undefined;
   }, [settings?.theme]);
 
-  // Synchronize WebContentsView layout bounds with React shell geometry
+  // Keep provider status fresh whenever provider or model settings change
   useEffect(() => {
-    const topInset = (verticalTabs ? 48 : 88) + (hitlPause ? 40 : 0);
-    const leftInset = verticalTabs ? 224 : 0;
-    const rightInset = agentPanelOpen ? agentPanelWidth : 0;
-    const hideBrowserView = Boolean(
-      activeOverlayView !== null || confirmationQueue.length > 0 || tabSearchOpen
-    );
-    void window.atlas.setLayout({ topInset, leftInset, rightInset, hideBrowserView });
-  }, [
-    verticalTabs,
-    agentPanelOpen,
-    agentPanelWidth,
-    activeOverlayView,
-    confirmationQueue.length,
-    tabSearchOpen,
-    hitlPause
-  ]);
+    void window.atlas.getProviderStatus().then(setProviderStatus);
+  }, [settings?.defaultProvider, settings?.defaultModel, settings?.selfHostedModel, settings?.hasGeminiApiKey]);
 
-  // Browser keyboard shortcuts
+  const activeTab = tabs.find((t) => t.id === activeTabId) ?? null;
+  const isNewTab = Boolean(
+    activeTab && (activeTab.url === 'atlas://newtab' || activeTab.url === 'about:blank')
+  );
+
+  // Sync Electron WebContentsView insets whenever UI panels change
+  useEffect(() => {
+    const topInset = (verticalTabs ? 44 : 82) + (hitlPause ? 40 : 0);
+    const leftInset = (sidebarOpen ? 44 : 0) + (verticalTabs ? 224 : 0);
+    const rightInset = agentPanelOpen ? agentPanelWidth : 0;
+    void window.atlas.setLayout({
+      topInset,
+      leftInset,
+      rightInset,
+      hideBrowserView: Boolean(activeOverlayView) || isNewTab
+    });
+  }, [verticalTabs, sidebarOpen, agentPanelOpen, agentPanelWidth, activeOverlayView, isNewTab, hitlPause]);
+
+  // Global browser keyboard shortcuts
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey;
-      if (!mod) return;
       const key = e.key.toLowerCase();
-      const state = useAtlasStore.getState();
-
-      if (key === 't' && !e.shiftKey) {
+      if (mod && key === 'b') {
         e.preventDefault();
-        void window.atlas.createTab({ activate: true });
-      } else if (key === 't' && e.shiftKey) {
+        setSidebarOpen(!useAtlasStore.getState().sidebarOpen);
+      } else if (mod && key === 't' && !e.shiftKey) {
+        e.preventDefault();
+        void window.atlas.createTab({ url: 'atlas://newtab', activate: true });
+      } else if (mod && e.shiftKey && key === 't') {
         e.preventDefault();
         void window.atlas.restoreClosedTab();
-      } else if (key === 'w') {
+      } else if (mod && key === 'w') {
         e.preventDefault();
-        if (state.activeTabId) void window.atlas.closeTab(state.activeTabId);
-      } else if (key === 'r') {
+        const tid = useAtlasStore.getState().activeTabId;
+        if (tid) void window.atlas.closeTab(tid);
+      } else if (mod && key === 'r') {
         e.preventDefault();
-        if (state.activeTabId) void window.atlas.reload(state.activeTabId);
-      } else if (key === 'f') {
+        const tid = useAtlasStore.getState().activeTabId;
+        if (tid) void window.atlas.reload(tid);
+      } else if (mod && key === 'f') {
         e.preventDefault();
         setFindBarOpen(true);
-      } else if (key === 'a' && e.shiftKey) {
+      } else if (mod && e.shiftKey && key === 'a') {
         e.preventDefault();
         setTabSearchOpen(true);
-      } else if (key === 'n' && e.shiftKey) {
+      } else if (mod && e.shiftKey && key === 'n') {
         e.preventDefault();
         void window.atlas.newPrivateWindow();
-      } else if (key === '=' || key === '+') {
-        e.preventDefault();
-        if (state.activeTabId) void window.atlas.setZoom(state.activeTabId, 'in');
-      } else if (key === '-') {
-        e.preventDefault();
-        if (state.activeTabId) void window.atlas.setZoom(state.activeTabId, 'out');
-      } else if (key === '0') {
-        e.preventDefault();
-        if (state.activeTabId) void window.atlas.setZoom(state.activeTabId, 'reset');
+      } else if (e.key === 'Escape') {
+        setFindBarOpen(false);
+        setTabSearchOpen(false);
+        setOverlayView(null);
       }
     };
     window.addEventListener('keydown', onKeyDown);
@@ -251,6 +251,10 @@ export const App: React.FC = () => {
 
   const renderOverlay = () => {
     switch (activeOverlayView) {
+      case 'reader':
+        return <ReaderView />;
+      case 'settings':
+        return <SettingsView />;
       case 'history':
         return <HistoryView />;
       case 'bookmarks':
@@ -259,16 +263,12 @@ export const App: React.FC = () => {
         return <DownloadsView />;
       case 'skills':
         return <SkillsView />;
-      case 'memory':
-        return <MemoryView />;
       case 'runs':
         return <RunsAndReplayView />;
+      case 'memory':
+        return <MemoryView />;
       case 'dashboard':
         return <DashboardView />;
-      case 'settings':
-        return <SettingsView />;
-      case 'reader':
-        return <ReaderView />;
       case 'extract':
         return <ExtractionView />;
       case 'scheduler':
@@ -293,14 +293,17 @@ export const App: React.FC = () => {
       <HitlBanner />
 
       <div className="relative flex flex-1 min-h-0">
+        <SidebarRail />
         {verticalTabs && <TabBar vertical={true} />}
 
         <main className="relative flex-1 min-w-0 bg-atlas-bg">
           {activeOverlayView ? (
             <div className="absolute inset-0 z-20">{renderOverlay()}</div>
+          ) : isNewTab ? (
+            <NewTabView />
           ) : (
             <div className="flex h-full items-center justify-center text-xs text-atlas-muted">
-              Loading web viewport...
+              Loading page...
             </div>
           )}
         </main>
@@ -313,21 +316,21 @@ export const App: React.FC = () => {
       <ConfirmationDialog />
       <SelectionOverlay />
 
-      {/* Toast stack */}
+      {/* Toast Stack */}
       {toasts.length > 0 && (
-        <div className="fixed bottom-4 left-4 z-50 space-y-2">
+        <div className={`fixed bottom-4 z-50 space-y-1.5 ${sidebarOpen ? 'left-14' : 'left-4'}`}>
           {toasts.map((t) => (
             <div
               key={t.id}
               onClick={() => dismissToast(t.id)}
-              className={`cursor-pointer rounded-xl border px-3.5 py-2 text-xs font-medium shadow-xl ${
+              className={`atlas-glass cursor-pointer rounded-xl border px-3.5 py-2 text-xs font-medium shadow-atlas-float transition-opacity ${
                 t.tone === 'danger'
-                  ? 'border-atlas-danger/50 bg-atlas-danger text-white'
+                  ? 'border-atlas-danger/40 text-atlas-danger'
                   : t.tone === 'warning'
-                  ? 'border-atlas-warning/50 bg-atlas-surface text-atlas-warning'
+                  ? 'border-atlas-warning/40 text-atlas-warning'
                   : t.tone === 'success'
-                  ? 'border-atlas-success/50 bg-atlas-surface text-atlas-success'
-                  : 'border-atlas-border bg-atlas-surface text-atlas-text'
+                  ? 'border-atlas-success/40 text-atlas-success'
+                  : 'border-atlas-border text-atlas-text'
               }`}
             >
               {t.title}

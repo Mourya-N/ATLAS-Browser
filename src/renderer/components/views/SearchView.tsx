@@ -38,10 +38,10 @@ const MODES: Array<{ id: SearchMode; label: string }> = [
 ];
 
 const ORIGIN_STYLES: Record<string, { label: string; cls: string }> = {
-  atlas_index: { label: 'Atlas Index', cls: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' },
-  external_provider: { label: 'External Web', cls: 'bg-sky-500/15 text-sky-400 border-sky-500/30' },
-  open_tab: { label: 'Open Tab', cls: 'bg-purple-500/15 text-purple-400 border-purple-500/30' },
-  personal_knowledge: { label: 'Personal Knowledge', cls: 'bg-amber-500/15 text-amber-400 border-amber-500/30' }
+  atlas_index: { label: 'Atlas Index', cls: 'bg-atlas-success/12 text-atlas-success border-atlas-success/25' },
+  external_provider: { label: 'External Web', cls: 'bg-atlas-accent/12 text-atlas-accent border-atlas-accent/25' },
+  open_tab: { label: 'Open Tab', cls: 'bg-atlas-elevated text-atlas-secondary border-atlas-border' },
+  personal_knowledge: { label: 'Personal Knowledge', cls: 'bg-atlas-warning/12 text-atlas-warning border-atlas-warning/25' }
 };
 
 export const SearchView: React.FC = () => {
@@ -231,16 +231,16 @@ export const SearchView: React.FC = () => {
   return (
     <div className="flex h-full flex-col bg-atlas-bg text-atlas-text select-text">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-atlas-border bg-atlas-surface px-6 py-3">
+      <div className="flex h-12 shrink-0 items-center justify-between border-b border-atlas-border bg-atlas-surface px-6">
         <div className="flex flex-wrap items-center gap-2.5">
-          <Search className="h-5 w-5 text-atlas-accent" />
-          <h1 className="text-base font-bold">Atlas Intelligent Search</h1>
+          <Search className="h-4 w-4 text-atlas-accent" strokeWidth={1.75} />
+          <h1 className="text-[14px] font-semibold tracking-[-0.01em]">Atlas Intelligent Search</h1>
 
           {indexStats && (
             <button
               type="button"
               onClick={() => setShowCrawlerPanel((v) => !v)}
-              className="flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-0.5 text-[10px] font-medium text-emerald-400 hover:bg-emerald-500/20"
+              className="flex items-center gap-1 rounded-md border border-atlas-success/30 bg-atlas-success/10 px-2 py-0.5 text-[11px] font-medium text-atlas-success hover:bg-atlas-success/15 transition-colors"
             >
               <Database className="h-3 w-3" />
               Atlas Index: {indexStats.totalDocuments} doc(s)
@@ -315,7 +315,7 @@ export const SearchView: React.FC = () => {
               type="button"
               disabled={crawling}
               onClick={() => void runCrawler()}
-              className="flex items-center gap-1 rounded-lg bg-atlas-accent px-3 py-1.5 font-semibold text-white disabled:opacity-50"
+              className="flex items-center gap-1 rounded-lg bg-atlas-accent px-3 py-1.5 font-semibold text-atlas-accent-fg disabled:opacity-50"
             >
               <RefreshCw className={`h-3.5 w-3.5 ${crawling ? 'animate-spin' : ''}`} />
               {crawling ? 'Crawling...' : 'Crawl & Index Seeds'}
@@ -342,7 +342,7 @@ export const SearchView: React.FC = () => {
           <button
             type="submit"
             disabled={loading || !query.trim()}
-            className="rounded-xl bg-atlas-accent px-5 py-2.5 text-xs font-semibold text-white disabled:opacity-50"
+            className="rounded-xl bg-atlas-accent px-5 py-2.5 text-xs font-semibold text-atlas-accent-fg disabled:opacity-50"
           >
             {loading ? 'Searching...' : 'Search'}
           </button>
@@ -359,7 +359,7 @@ export const SearchView: React.FC = () => {
               }}
               className={`rounded-lg px-2.5 py-1 font-medium transition-colors ${
                 mode === m.id
-                  ? 'bg-atlas-accent text-white'
+                  ? 'bg-atlas-accent text-atlas-accent-fg'
                   : 'bg-atlas-elevated text-atlas-muted hover:text-atlas-text'
               }`}
             >
@@ -473,14 +473,14 @@ export const SearchView: React.FC = () => {
             <p>
               Searches Atlas's own first-party crawled index, external search APIs (when configured), non-private open tabs, and personal knowledge. External results and Atlas-indexed documents are always labeled separately, and private tabs are strictly excluded.
             </p>
-            {indexStats?.notice && <p className="text-[11px] text-amber-400">{indexStats.notice}</p>}
+            {indexStats?.notice && <p className="text-[11px] text-atlas-warning">{indexStats.notice}</p>}
           </div>
         ) : (
           <div className="mx-auto max-w-6xl grid grid-cols-1 lg:grid-cols-3 gap-6 text-xs">
             {/* Left / Main Column */}
             <div className="lg:col-span-2 space-y-4">
               {response.indexStatus?.limitedCoverage && (
-                <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 px-3.5 py-2 text-[11px] text-amber-300">
+                <div className="rounded-xl border border-atlas-warning/35 bg-atlas-warning/10 px-3.5 py-2 text-[11px] text-atlas-warning">
                   {response.indexStatus.notice}
                 </div>
               )}

@@ -47,6 +47,7 @@ interface AtlasState {
   groups: TabGroup[];
   isPrivateWindow: boolean;
   verticalTabs: boolean;
+  sidebarOpen: boolean;
   agentPanelOpen: boolean;
   agentPanelWidth: number;
   activeOverlayView: OverlayView;
@@ -77,6 +78,7 @@ interface AtlasState {
 
   setTabsState: (payload: { tabs: TabInfo[]; activeTabId: string | null; groups: TabGroup[]; isPrivate?: boolean }) => void;
   setVerticalTabs: (v: boolean) => void;
+  setSidebarOpen: (open: boolean) => void;
   setAgentPanelOpen: (open: boolean) => void;
   setOverlayView: (view: OverlayView, replayRunId?: string | null) => void;
   openAtlasSearch: (initialQuery?: string) => void;
@@ -112,8 +114,9 @@ export const useAtlasStore = create<AtlasState>((set) => ({
   groups: [],
   isPrivateWindow: false,
   verticalTabs: false,
+  sidebarOpen: false,
   agentPanelOpen: true,
-  agentPanelWidth: 380,
+  agentPanelWidth: 372,
   activeOverlayView: null,
   replayRunId: null,
   searchInitialQuery: '',
@@ -148,6 +151,7 @@ export const useAtlasStore = create<AtlasState>((set) => ({
       isPrivateWindow: payload.isPrivate ?? s.isPrivateWindow
     })),
   setVerticalTabs: (verticalTabs) => set({ verticalTabs }),
+  setSidebarOpen: (sidebarOpen) => set({ sidebarOpen }),
   setAgentPanelOpen: (agentPanelOpen) => set({ agentPanelOpen }),
   setOverlayView: (activeOverlayView, replayRunId = null) =>
     set({ activeOverlayView, replayRunId }),

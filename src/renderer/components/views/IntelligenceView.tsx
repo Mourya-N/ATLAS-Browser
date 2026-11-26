@@ -59,21 +59,24 @@ export const IntelligenceView: React.FC = () => {
 
   return (
     <div className="flex h-full flex-col bg-atlas-bg text-atlas-text select-text">
-      <div className="flex items-center justify-between border-b border-atlas-border bg-atlas-surface px-6 py-3.5">
+      <div className="flex h-12 shrink-0 items-center justify-between border-b border-atlas-border bg-atlas-surface px-6">
         <div className="flex items-center gap-2.5">
-          <Sparkles className="h-5 w-5 text-atlas-accent" />
-          <h1 className="text-base font-bold">Research, Page Understanding & Cross-Tab Intelligence</h1>
+          <Sparkles className="h-4 w-4 text-atlas-accent" strokeWidth={1.75} />
+          <h1 className="text-[14px] font-semibold tracking-[-0.01em]">
+            Research, Page Understanding & Cross-Tab Workspace
+          </h1>
         </div>
         <button
           type="button"
           onClick={() => setOverlayView(null)}
-          className="rounded-lg p-1.5 text-atlas-muted hover:bg-atlas-elevated"
+          className="rounded-lg p-1.5 text-atlas-muted hover:bg-atlas-shell hover:text-atlas-text"
+          aria-label="Close Research Workspace"
         >
           <X className="h-4 w-4" />
         </button>
       </div>
 
-      <div className="flex gap-1 border-b border-atlas-border bg-atlas-surface/50 px-6 py-2 text-xs">
+      <div className="flex gap-5 border-b border-atlas-border bg-atlas-surface px-6 pt-1 text-xs">
         <TabBtn active={section === 'research'} onClick={() => setSection('research')} icon={<BookOpenCheck className="h-3.5 w-3.5" />} label="Research & Evidence" />
         <TabBtn active={section === 'page'} onClick={() => setSection('page')} icon={<Search className="h-3.5 w-3.5" />} label="Page Understanding & Changes" />
         <TabBtn active={section === 'crosstab'} onClick={() => setSection('crosstab')} icon={<GitCompare className="h-3.5 w-3.5" />} label="Cross-Tab Intelligence" />
@@ -127,7 +130,7 @@ export const IntelligenceView: React.FC = () => {
                       setResearchRunning(false);
                     }
                   }}
-                  className="rounded-lg bg-atlas-accent px-4 py-2 font-semibold text-white disabled:opacity-50"
+                  className="rounded-lg bg-atlas-accent px-4 py-2 font-semibold text-atlas-accent-fg disabled:opacity-50"
                 >
                   {researchRunning ? 'Synthesizing...' : 'Generate Report'}
                 </button>
@@ -225,7 +228,7 @@ export const IntelligenceView: React.FC = () => {
                     const res = await window.atlas.understandPage(activeTabId, question);
                     setPageResult(res);
                   }}
-                  className="rounded-lg bg-atlas-accent px-4 py-2 font-semibold text-white"
+                  className="rounded-lg bg-atlas-accent px-4 py-2 font-semibold text-atlas-accent-fg"
                 >
                   Analyze Page
                 </button>
@@ -314,7 +317,7 @@ export const IntelligenceView: React.FC = () => {
                   onClick={async () =>
                     setComparisonMd(await window.atlas.compareCrossTabs('Features, pricing, and key differences', selectedTabs))
                   }
-                  className="rounded-lg bg-atlas-accent px-4 py-2 font-semibold text-white"
+                  className="rounded-lg bg-atlas-accent px-4 py-2 font-semibold text-atlas-accent-fg"
                 >
                   Compare Selected Tabs
                 </button>
@@ -382,7 +385,7 @@ export const IntelligenceView: React.FC = () => {
                     await window.atlas.resumeCheckpoint(run.id);
                     setOverlayView(null);
                   }}
-                  className="flex items-center gap-1 rounded-lg bg-atlas-accent px-3 py-2 font-semibold text-white"
+                  className="flex items-center gap-1 rounded-lg bg-atlas-accent px-3 py-2 font-semibold text-atlas-accent-fg"
                 >
                   <Play className="h-3.5 w-3.5" /> Safe Resume
                 </button>
@@ -407,11 +410,12 @@ const TabBtn: React.FC<{ active: boolean; onClick: () => void; icon: React.React
   <button
     type="button"
     onClick={onClick}
-    className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-semibold ${
-      active ? 'bg-atlas-accent text-white' : 'text-atlas-muted hover:bg-atlas-elevated'
+    className={`relative flex items-center gap-1.5 pb-2.5 pt-1.5 text-[12px] font-medium transition-colors ${
+      active ? 'text-atlas-accent font-semibold' : 'text-atlas-muted hover:text-atlas-text'
     }`}
   >
     {icon}
     <span>{label}</span>
+    {active && <span className="absolute bottom-0 left-0 right-0 h-[2px] rounded-full bg-atlas-accent" />}
   </button>
 );

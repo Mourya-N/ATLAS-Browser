@@ -3,7 +3,8 @@ import { ChevronDown, ChevronUp, X } from 'lucide-react';
 import { useAtlasStore } from '../store/useAtlasStore';
 
 export const FindBar: React.FC = () => {
-  const { findBarOpen, setFindBarOpen, activeTabId } = useAtlasStore();
+  const { findBarOpen, setFindBarOpen, activeTabId, agentPanelOpen, agentPanelWidth, verticalTabs } =
+    useAtlasStore();
   const [query, setQuery] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -25,7 +26,12 @@ export const FindBar: React.FC = () => {
   };
 
   return (
-    <div className="fixed right-96 top-24 z-40 flex items-center gap-1.5 rounded-xl border border-atlas-border bg-atlas-surface px-3 py-1.5 shadow-2xl">
+    <div
+      style={{ right: agentPanelOpen ? agentPanelWidth + 16 : 16 }}
+      className={`atlas-glass fixed z-40 flex items-center gap-1 rounded-xl border border-atlas-border px-3 py-1.5 shadow-atlas-float ${
+        verticalTabs ? 'top-14' : 'top-[90px]'
+      }`}
+    >
       <input
         ref={inputRef}
         value={query}
@@ -40,12 +46,12 @@ export const FindBar: React.FC = () => {
           if (e.key === 'Escape') setFindBarOpen(false);
         }}
         placeholder="Find in page..."
-        className="w-48 bg-transparent text-xs text-atlas-text outline-none select-text"
+        className="w-48 bg-transparent text-xs text-atlas-text placeholder:text-atlas-muted outline-none select-text"
       />
       <button
         type="button"
         onClick={() => find(false, true)}
-        className="rounded p-1 text-atlas-muted hover:bg-atlas-elevated hover:text-atlas-text"
+        className="rounded-md p-1 text-atlas-muted hover:bg-atlas-shell hover:text-atlas-text"
         aria-label="Previous match"
       >
         <ChevronUp className="h-3.5 w-3.5" />
@@ -53,7 +59,7 @@ export const FindBar: React.FC = () => {
       <button
         type="button"
         onClick={() => find(true, true)}
-        className="rounded p-1 text-atlas-muted hover:bg-atlas-elevated hover:text-atlas-text"
+        className="rounded-md p-1 text-atlas-muted hover:bg-atlas-shell hover:text-atlas-text"
         aria-label="Next match"
       >
         <ChevronDown className="h-3.5 w-3.5" />
@@ -61,7 +67,7 @@ export const FindBar: React.FC = () => {
       <button
         type="button"
         onClick={() => setFindBarOpen(false)}
-        className="rounded p-1 text-atlas-muted hover:bg-atlas-elevated hover:text-atlas-text"
+        className="rounded-md p-1 text-atlas-muted hover:bg-atlas-shell hover:text-atlas-text"
         aria-label="Close find bar"
       >
         <X className="h-3.5 w-3.5" />

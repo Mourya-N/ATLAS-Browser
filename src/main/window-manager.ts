@@ -1,4 +1,4 @@
-import { BrowserWindow, app } from 'electron';
+import { BrowserWindow, app, nativeTheme } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { PlatformRepository } from '@main/db/repositories/platform-repo';
@@ -51,6 +51,9 @@ export class WindowManager {
       partitionId = this.privateSessionManager.createEphemeralSession().partitionId;
     }
 
+    const savedTheme = this.platformRepo.getSetting<'light' | 'dark' | 'system'>('ui.theme', 'light');
+    const isDarkWindow = savedTheme === 'dark' || (savedTheme === 'system' && nativeTheme.shouldUseDarkColors);
+
     const win = new BrowserWindow({
       width: savedBounds.width || 1440,
       height: savedBounds.height || 920,
@@ -59,7 +62,7 @@ export class WindowManager {
       minWidth: 960,
       minHeight: 620,
       title: isPrivate ? 'Atlas Browser — Private' : 'Atlas Browser',
-      backgroundColor: '#0b0f19',
+      backgroundColor: isDarkWindow ? '#111214' : '#fafaf8',
       titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
       trafficLightPosition: process.platform === 'darwin' ? { x: 14, y: 14 } : undefined,
       webPreferences: {
@@ -129,7 +132,7 @@ export class WindowManager {
     // Restore previous tabs or open initial tab once UI finishes loading
     win.webContents.once('did-finish-load', () => {
       if (isPrivate) {
-        this.tabManager.createTab(win.id, { url: 'about:blank', activate: true });
+        this.tabManager.createTab(win.id, { url: 'atlas://newtab', activate: true });
         return;
       }
       const restoreEnabled = this.platformRepo.getSetting<boolean>('browser.restoreSessionOnStart', true);

@@ -37,10 +37,10 @@ const PanelShell: React.FC<{ title: string; icon: React.ReactNode; actions?: Rea
   const { setOverlayView } = useAtlasStore();
   return (
     <div className="flex h-full flex-col bg-atlas-bg text-atlas-text select-text">
-      <div className="flex items-center justify-between border-b border-atlas-border bg-atlas-surface px-6 py-3.5">
+      <div className="flex h-12 shrink-0 items-center justify-between border-b border-atlas-border bg-atlas-surface px-6">
         <div className="flex items-center gap-2.5">
           <span className="text-atlas-accent">{icon}</span>
-          <h1 className="text-base font-bold">{title}</h1>
+          <h1 className="text-[14px] font-semibold tracking-[-0.01em]">{title}</h1>
         </div>
         <div className="flex items-center gap-2">
           {actions}
@@ -144,7 +144,7 @@ export const RunsAndReplayView: React.FC = () => {
                       });
                       setOverlayView(null);
                     }}
-                    className="shrink-0 rounded-lg bg-atlas-accent px-3 py-1.5 font-semibold text-white"
+                    className="shrink-0 rounded-lg bg-atlas-accent px-3 py-1.5 font-semibold text-atlas-accent-fg"
                   >
                     Safe Replay (Assist Mode)
                   </button>
@@ -294,7 +294,7 @@ export const SchedulerView: React.FC = () => {
             <button
               type="submit"
               disabled={!skills.length}
-              className="flex-1 flex items-center justify-center gap-1 rounded-lg bg-atlas-accent px-3 py-1.5 font-semibold text-white disabled:opacity-40"
+              className="flex-1 flex items-center justify-center gap-1 rounded-lg bg-atlas-accent px-3 py-1.5 font-semibold text-atlas-accent-fg disabled:opacity-40"
             >
               <Plus className="h-3.5 w-3.5" /> Schedule
             </button>
@@ -322,7 +322,7 @@ export const SchedulerView: React.FC = () => {
                     pushToast(`Job "${job.name}": ${updated.lastStatus}`, updated.lastStatus === 'completed' ? 'success' : 'warning');
                     void load();
                   }}
-                  className="flex items-center gap-1 rounded bg-atlas-accent px-2.5 py-1 font-semibold text-white"
+                  className="flex items-center gap-1 rounded bg-atlas-accent px-2.5 py-1 font-semibold text-atlas-accent-fg"
                 >
                   <Play className="h-3 w-3" /> Run Now
                 </button>
@@ -480,7 +480,7 @@ export const AuditAndRulesView: React.FC = () => {
               <option value="read_only">Read-Only</option>
               <option value="deny">Deny All Agent Access</option>
             </select>
-            <button type="submit" className="rounded-lg bg-atlas-accent px-3 py-1.5 font-semibold text-white">
+            <button type="submit" className="rounded-lg bg-atlas-accent px-3 py-1.5 font-semibold text-atlas-accent-fg">
               Save Rule
             </button>
           </form>
@@ -570,8 +570,8 @@ export const McpServerView: React.FC = () => {
                   setStatus(next);
                   pushToast(next.running ? 'MCP server started' : 'MCP server stopped', 'info');
                 }}
-                className={`rounded-lg px-4 py-2 font-semibold text-white ${
-                  status.running ? 'bg-atlas-danger' : 'bg-atlas-accent'
+                className={`rounded-lg px-4 py-2 font-semibold ${
+                  status.running ? 'bg-atlas-danger text-white' : 'bg-atlas-accent text-atlas-accent-fg'
                 }`}
               >
                 {status.running ? 'Disable & Stop' : 'Enable & Start'}

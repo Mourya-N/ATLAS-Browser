@@ -312,7 +312,7 @@ export function registerAllIpcHandlers(services: MainServices): void {
   handleTrusted(IPC_CHANNELS.NAV_STOP, (_e, p) => tabManager.stop(validateIpcPayload(TabIdSchema, p).tabId));
   handleTrusted(IPC_CHANNELS.NAV_HOME, async (_e, p) => {
     const { tabId } = validateIpcPayload(TabIdSchema, p);
-    const homeUrl = platformRepo.getSetting<string>('browser.homeUrl', 'https://example.com');
+    const homeUrl = platformRepo.getSetting<string>('browser.homeUrl', 'atlas://newtab');
     return tabManager.navigate(tabId, homeUrl);
   });
   handleTrusted(IPC_CHANNELS.NAV_SUGGESTIONS, (_e, p: { query: string }) => {
@@ -683,9 +683,9 @@ export function registerAllIpcHandlers(services: MainServices): void {
   handleTrusted(IPC_CHANNELS.MCP_GET_TOKEN, () => vault.getOrCreateMcpToken());
 
   const getSettings = (): AppSettings => ({
-    theme: platformRepo.getSetting('ui.theme', 'dark'),
+    theme: platformRepo.getSetting('ui.theme', 'light'),
     searchEngine: platformRepo.getSetting('browser.searchEngine', 'google'),
-    homeUrl: platformRepo.getSetting('browser.homeUrl', 'https://example.com'),
+    homeUrl: platformRepo.getSetting('browser.homeUrl', 'atlas://newtab'),
     downloadDir: downloadManager.getDownloadDir(),
     verticalTabs: platformRepo.getSetting('ui.verticalTabs', false),
     adBlockEnabled: adBlocker.getStats().globalEnabled,

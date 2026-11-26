@@ -27,9 +27,9 @@ export const SelectionOverlay: React.FC = () => {
   };
 
   return (
-    <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 flex items-center gap-1 rounded-full border border-atlas-border bg-atlas-surface/95 px-2.5 py-1.5 shadow-2xl backdrop-blur">
-      <span className="max-w-[160px] truncate px-2 text-[11px] text-atlas-muted border-r border-atlas-border">
-        "{selectionOverlay.text}"
+    <div className="atlas-glass fixed bottom-4 left-1/2 -translate-x-1/2 z-40 flex items-center gap-0.5 rounded-xl border border-atlas-border px-2 py-1.5 shadow-atlas-float">
+      <span className="max-w-[150px] truncate px-2 text-[11px] text-atlas-muted border-r border-atlas-border">
+        &ldquo;{selectionOverlay.text}&rdquo;
       </span>
       <ActionBtn
         icon={<HelpCircle className="h-3 w-3" />}
@@ -68,7 +68,7 @@ export const SelectionOverlay: React.FC = () => {
       <button
         type="button"
         onClick={() => setSelectionOverlay(null)}
-        className="rounded-full p-1 text-atlas-muted hover:bg-atlas-elevated"
+        className="rounded-lg p-1 text-atlas-muted hover:bg-atlas-elevated hover:text-atlas-text"
         aria-label="Dismiss selection actions"
       >
         <X className="h-3 w-3" />
@@ -85,7 +85,7 @@ const ActionBtn: React.FC<{ icon: React.ReactNode; label: string; onClick: () =>
   <button
     type="button"
     onClick={onClick}
-    className="flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium text-atlas-text hover:bg-atlas-accent hover:text-white transition-colors"
+    className="flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-medium text-atlas-text hover:bg-atlas-accent hover:text-atlas-accent-fg transition-colors"
   >
     {icon}
     <span>{label}</span>
