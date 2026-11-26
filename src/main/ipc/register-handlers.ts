@@ -27,6 +27,7 @@ import {
   type Skill
 } from '@shared/types';
 import { DEFAULT_MODEL_PRICING } from '@shared/pricing';
+import { analyzePageTrust } from '@main/security/trust-analyzer';
 import type { GeminiProvider } from '@main/agent/providers/gemini-provider';
 import type { SelfHostedOpenAiProvider } from '@main/agent/providers/self-hosted-provider';
 import type { ResearchEngine } from '@main/agent/research-engine';
@@ -390,6 +391,73 @@ export function registerAllIpcHandlers(services: MainServices): void {
   handleTrusted(IPC_CHANNELS.ADBLOCK_TOGGLE_DOMAIN, (_e, p: { domain: string; allow: boolean }) => {
     adBlocker.toggleDomainAllowlist(p.domain, Boolean(p.allow));
     return adBlocker.getStats();
+  });
+  handleTrusted(IPC_CHANNELS.ADBLOCK_TOGGLE_TEMP_DOMAIN, (_e, p: { domain: string; disabled: boolean }) => {
+    adBlocker.toggleTemporaryDisable(p.domain, Boolean(p.disabled));
+    return adBlocker.getStats();
+  });
+  handleTrusted(IPC_CHANNELS.ADBLOCK_TOGGLE_COSMETIC, (_e, p: { enabled: boolean }) => {
+    adBlocker.cosmetic.setEnabled(Boolean(p.enabled));
+    return adBlocker.getStats();
+  });
+  handleTrusted(IPC_CHANNELS.ADBLOCK_TOGGLE_COSMETIC_DOMAIN, (_e, p: { domain: string; disabled: boolean }) => {
+    adBlocker.cosmetic.toggleDomainDisabled(p.domain, Boolean(p.disabled));
+    return adBlocker.getStats();
+  });
+  handleTrusted(IPC_CHANNELS.ADBLOCK_ADD_RULE, (_e, p: { rule: string }) => {
+    const added = adBlocker.addUserFilterRule(p.rule);
+    return { added, stats: adBlocker.getStats() };
+  });
+  handleTrusted(IPC_CHANNELS.ADBLOCK_REMOVE_RULE, (_e, p: { rule: string }) => {
+    adBlocker.removeUserFilterRule(p.rule);
+    return adBlocker.getStats();
+  });
+  handleTrusted(IPC_CHANNELS.ADBLOCK_UPDATE_LISTS, async () => {
+    await adBlocker.updateFilterLists();
+    return adBlocker.getStats();
+  });
+  handleTrusted(IPC_CHANNELS.ADBLOCK_TOGGLE_LIST, (_e, p: { listId: string; enabled: boolean }) => {
+    adBlocker.toggleFilterList(p.listId, Boolean(p.enabled));
+    return adBlocker.getStats();
+  });
+  handleTrusted(IPC_CHANNELS.ADBLOCK_REPORT_BROKEN, (_e, p: { url: string; reason?: string }) => {
+    adBlocker.reportBrokenSite(p.url, p.reason);
+    return adBlocker.getStats();
+  });
+
+  handleTrusted(IPC_CHANNELS.SECURITY_ANALYZE_TRUST, async (_e, p: { tabId: string }) => {
+    const tab = tabManager.getTab(p.tabId);
+    if (!tab) return analyzePageTrust('');
+    const wc = tabManager.getWebContents(p.tabId);
+    let pageSignals: {
+      hasPasswordField?: boolean;
+      hasExternalFormAction?: boolean;
+      externalFormHost?: string;
+    } = {};
+    if (wc && !wc.isDestroyed() && tab.info.url.startsWith('http')) {
+      try {
+        pageSignals = await wc.executeJavaScript(`
+          (() => {
+            const pw = document.querySelector('input[type="password"]');
+            let hasExternalFormAction = false;
+            let externalFormHost = '';
+            if (pw && pw.form && pw.form.action) {
+              try {
+                const actionHost = new URL(pw.form.action, location.href).hostname.toLowerCase();
+                if (actionHost && actionHost !== location.hostname.toLowerCase()) {
+                  hasExternalFormAction = true;
+                  externalFormHost = actionHost;
+                }
+              } catch {}
+            }
+            return { hasPasswordField: Boolean(pw), hasExternalFormAction, externalFormHost };
+          })()
+        `);
+      } catch {
+        // non-fatal
+      }
+    }
+    return analyzePageTrust(tab.info.url, pageSignals);
   });
 
   // --- Agent ---

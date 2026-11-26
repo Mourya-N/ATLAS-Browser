@@ -281,6 +281,16 @@ export class TabManager {
       this.emitState(info.windowId);
     });
 
+    wc.on('dom-ready', () => {
+      if (wc.isDestroyed()) return;
+      const css = this.adBlocker.getCosmeticCssForUrl(wc.getURL());
+      if (css) {
+        void wc.insertCSS(css, { cssOrigin: 'user' }).catch(() => {
+          // ignore stylesheet injection failures on restricted pages
+        });
+      }
+    });
+
     wc.on('did-stop-loading', () => {
       info.isLoading = false;
       syncNavFlags();

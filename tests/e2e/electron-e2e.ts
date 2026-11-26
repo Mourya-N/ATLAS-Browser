@@ -1,6 +1,7 @@
 import { app } from 'electron';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { AtlasDatabase } from '@main/db/database';
@@ -876,6 +877,70 @@ app.whenReady().then(async () => {
     `);
     await waitForCondition(async () => tabManager.getTab(mainTabId)!.info.url.includes('/form'), 5000);
     delete process.env.ATLAS_ALLOW_LOCALHOST_SEARCH_TEST;
+  });
+
+  await runCase('ADBLOCK-NET-1', 'Native AdBlocker cancels ad requests at webRequest network layer, applies cosmetic CSS, and respects allowlist', async () => {
+    const requestedUrls: string[] = [];
+    const adServer = http.createServer((req, res) => {
+      requestedUrls.push(req.url || '/');
+      if (req.url === '/ads/doubleclick-tracker.js') {
+        res.writeHead(200, { 'Content-Type': 'application/javascript' });
+        res.end('window.__adLoaded = true;');
+        return;
+      }
+      if (req.url === '/static/legit-app.js') {
+        res.writeHead(200, { 'Content-Type': 'application/javascript' });
+        res.end('window.__legitLoaded = true;');
+        return;
+      }
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(`<!doctype html><html><body>
+        <div class="ad-banner">Ad Banner</div>
+        <div class="real-article">Legit Article</div>
+        <script src="/ads/doubleclick-tracker.js"></script>
+        <script src="/static/legit-app.js"></script>
+      </body></html>`);
+    });
+
+    await new Promise<void>((resolve) => adServer.listen(0, '127.0.0.1', () => resolve()));
+    const port = (adServer.address() as { port: number }).port;
+    const baseUrl = `http://127.0.0.1:${port}`;
+
+    try {
+      adBlocker.addUserFilterRule('/ads/doubleclick-tracker.js$script');
+      const beforeStats = adBlocker.getStats();
+
+      await tabManager.navigate(mainTabId, `${baseUrl}/ad-test`);
+      await waitForTabLoad(tabManager, mainTabId);
+      await new Promise((r) => setTimeout(r, 250));
+
+      // Verify network-level blocking: /ads/doubleclick-tracker.js never reached the HTTP server!
+      assert.equal(requestedUrls.includes('/ads/doubleclick-tracker.js'), false, 'Ad script should be cancelled at network layer');
+      assert.equal(requestedUrls.includes('/static/legit-app.js'), true, 'Legitimate script should load normally');
+
+      const afterStats = adBlocker.getStats();
+      assert.ok((afterStats.adsBlocked ?? 0) > (beforeStats.adsBlocked ?? 0), 'adsBlocked counter must increment');
+      assert.ok((tabManager.getTab(mainTabId)?.info.blockedCount ?? 0) >= 1, 'tab.blockedCount must increment');
+
+      // Verify cosmetic CSS hiding in real Chromium DOM
+      const wc = tabManager.getWebContents(mainTabId)!;
+      const adDisplay = await wc.executeJavaScript(`getComputedStyle(document.querySelector('.ad-banner')).display`);
+      const articleDisplay = await wc.executeJavaScript(`getComputedStyle(document.querySelector('.real-article')).display`);
+      assert.equal(adDisplay, 'none', 'Cosmetic filter must hide .ad-banner');
+      assert.notEqual(articleDisplay, 'none', 'Real article must remain visible');
+
+      // Verify per-site allowlist disables blocking for 127.0.0.1
+      requestedUrls.length = 0;
+      adBlocker.toggleDomainAllowlist('127.0.0.1', true);
+      await tabManager.navigate(mainTabId, `${baseUrl}/ad-test-allowlisted`);
+      await waitForTabLoad(tabManager, mainTabId);
+      await new Promise((r) => setTimeout(r, 250));
+      assert.equal(requestedUrls.includes('/ads/doubleclick-tracker.js'), true, 'Allowlisted site should allow ad script');
+      adBlocker.toggleDomainAllowlist('127.0.0.1', false);
+      adBlocker.removeUserFilterRule('/ads/doubleclick-tracker.js$script');
+    } finally {
+      await new Promise<void>((resolve) => adServer.close(() => resolve()));
+    }
   });
 
   const passedCount = results.filter((r) => r.passed).length;

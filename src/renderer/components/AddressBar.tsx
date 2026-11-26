@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import type { OmniboxSuggestion } from '@shared/types';
 import { useAtlasStore } from '../store/useAtlasStore';
+import { AdBlockerPopover } from './AdBlockerPopover';
 
 export const AddressBar: React.FC = () => {
   const {
@@ -36,7 +37,6 @@ export const AddressBar: React.FC = () => {
     setOverlayView,
     openAtlasSearch,
     adBlockStats,
-    setAdBlockStats,
     pushToast
   } = useAtlasStore();
 
@@ -45,6 +45,7 @@ export const AddressBar: React.FC = () => {
   const [focused, setFocused] = useState(false);
   const [suggestions, setSuggestions] = useState<OmniboxSuggestion[]>([]);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [shieldOpen, setShieldOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -194,24 +195,32 @@ export const AddressBar: React.FC = () => {
             className="flex-1 bg-transparent text-sm text-atlas-text placeholder:text-atlas-muted outline-none select-text"
           />
 
-          {activeTab && activeTab.blockedCount > 0 && (
-            <button
-              type="button"
-              onClick={async () => {
-                if (!currentDomain) return;
-                const next = await window.atlas.toggleAdBlockDomain(currentDomain, !isAllowlisted);
-                setAdBlockStats(next);
-              }}
-              title={`Blocked ${activeTab.blockedCount} ads/trackers on this tab (click to toggle site allowlist)`}
-              className={`flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium ${
-                isAllowlisted
-                  ? 'bg-atlas-warning/15 text-atlas-warning'
-                  : 'bg-atlas-accent/15 text-atlas-accent'
-              }`}
-            >
-              {isAllowlisted ? <ShieldAlert className="h-3 w-3" /> : <Shield className="h-3 w-3" />}
-              {activeTab.blockedCount}
-            </button>
+          {activeTab && (
+            <div className="relative">
+              <button
+                type="button"
+                data-testid="adblock-shield-btn"
+                onClick={() => setShieldOpen((o) => !o)}
+                title={`Atlas Shield: ${activeTab.blockedCount} blocked on this tab`}
+                className={`flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium ${
+                  isAllowlisted || !adBlockStats?.globalEnabled
+                    ? 'bg-atlas-warning/15 text-atlas-warning'
+                    : activeTab.blockedCount > 0
+                    ? 'bg-atlas-accent/15 text-atlas-accent'
+                    : 'text-atlas-muted hover:text-atlas-text'
+                }`}
+              >
+                {isAllowlisted ? <ShieldAlert className="h-3.5 w-3.5" /> : <Shield className="h-3.5 w-3.5" />}
+                {activeTab.blockedCount > 0 && <span>{activeTab.blockedCount}</span>}
+              </button>
+              {shieldOpen && (
+                <AdBlockerPopover
+                  activeTab={activeTab}
+                  currentDomain={currentDomain}
+                  onClose={() => setShieldOpen(false)}
+                />
+              )}
+            </div>
           )}
 
           <button

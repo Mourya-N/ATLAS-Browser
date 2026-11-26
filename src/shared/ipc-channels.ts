@@ -57,6 +57,14 @@ export const IPC_CHANNELS = {
   ADBLOCK_STATS: 'atlas:adblock:stats',
   ADBLOCK_TOGGLE_GLOBAL: 'atlas:adblock:toggle-global',
   ADBLOCK_TOGGLE_DOMAIN: 'atlas:adblock:toggle-domain',
+  ADBLOCK_TOGGLE_TEMP_DOMAIN: 'atlas:adblock:toggle-temp-domain',
+  ADBLOCK_TOGGLE_COSMETIC: 'atlas:adblock:toggle-cosmetic',
+  ADBLOCK_TOGGLE_COSMETIC_DOMAIN: 'atlas:adblock:toggle-cosmetic-domain',
+  ADBLOCK_ADD_RULE: 'atlas:adblock:add-rule',
+  ADBLOCK_REMOVE_RULE: 'atlas:adblock:remove-rule',
+  ADBLOCK_UPDATE_LISTS: 'atlas:adblock:update-lists',
+  ADBLOCK_TOGGLE_LIST: 'atlas:adblock:toggle-list',
+  ADBLOCK_REPORT_BROKEN: 'atlas:adblock:report-broken',
 
   // Agent
   AGENT_LIST_CONVERSATIONS: 'atlas:agent:list-conversations',
@@ -86,6 +94,7 @@ export const IPC_CHANNELS = {
   AUDIT_LIST: 'atlas:audit:list',
   AUDIT_DELETE: 'atlas:audit:delete',
   AUDIT_EXPORT: 'atlas:audit:export',
+  SECURITY_ANALYZE_TRUST: 'atlas:security:analyze-trust',
 
   // Skills, Memory, Extraction, Scheduler
   SKILL_LIST: 'atlas:skill:list',

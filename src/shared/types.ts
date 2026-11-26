@@ -112,11 +112,33 @@ export interface AdBlockSiteSetting {
   blockedCount: number;
 }
 
+export interface FilterListStatus {
+  id: string;
+  name: string;
+  category: 'advertising' | 'privacy' | 'malware';
+  url: string;
+  license: string;
+  attribution: string;
+  enabled: boolean;
+  ruleCount: number;
+  lastUpdatedAt: number | null;
+  lastError: string | null;
+}
+
 export interface AdBlockStats {
   globalEnabled: boolean;
   totalBlocked: number;
+  adsBlocked?: number;
+  trackersBlocked?: number;
   ruleCount: number;
   allowlistedDomains: string[];
+  temporaryDisabledDomains?: string[];
+  cosmeticEnabled?: boolean;
+  cosmeticRuleCount?: number;
+  cosmeticDisabledDomains?: string[];
+  customRules?: string[];
+  filterLists?: FilterListStatus[];
+  brokenSiteReportsCount?: number;
 }
 
 export type AgentRunStatus =

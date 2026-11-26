@@ -85,6 +85,27 @@ export const IntelligenceView: React.FC = () => {
           <div className="mx-auto max-w-5xl space-y-4">
             <div className="rounded-xl border border-atlas-border bg-atlas-surface p-4 space-y-3">
               <div className="font-semibold">Synthesize Evidence-Backed Report from Selected Open Tabs</div>
+              <div className="space-y-1 max-h-32 overflow-y-auto">
+                {tabs
+                  .filter((t) => !t.isPrivate)
+                  .map((t) => (
+                    <label key={t.id} className="flex items-center gap-2 rounded bg-atlas-bg px-3 py-1 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={selectedTabs.includes(t.id)}
+                        onChange={(e) => {
+                          const next = e.target.checked
+                            ? [...selectedTabs, t.id]
+                            : selectedTabs.filter((id) => id !== t.id);
+                          setSelectedTabs(next);
+                          setSelectedContextTabIds(next);
+                        }}
+                      />
+                      <span className="truncate font-medium">{t.title}</span>
+                      <span className="truncate text-atlas-muted">{t.url}</span>
+                    </label>
+                  ))}
+              </div>
               <div className="flex gap-2">
                 <input
                   value={researchQuery}
@@ -302,7 +323,28 @@ export const IntelligenceView: React.FC = () => {
 
             {crossTabAnalysis && (
               <div className="rounded-xl border border-atlas-border bg-atlas-surface p-4 space-y-2">
-                <div className="font-bold">{crossTabAnalysis.summary}</div>
+                <div className="flex items-center justify-between">
+                  <div className="font-bold">{crossTabAnalysis.summary}</div>
+                  {crossTabAnalysis.duplicateGroups.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        let closed = 0;
+                        for (const grp of crossTabAnalysis.duplicateGroups) {
+                          for (const dupId of grp.tabIds.slice(1)) {
+                            await window.atlas.closeTab(dupId);
+                            closed += 1;
+                          }
+                        }
+                        pushToast(`Closed ${closed} duplicate tab(s)`, 'success');
+                        setCrossTabAnalysis(await window.atlas.analyzeCrossTabs(selectedTabs));
+                      }}
+                      className="rounded-lg bg-atlas-warning/20 px-2.5 py-1 text-[11px] font-semibold text-atlas-warning hover:bg-atlas-warning/30"
+                    >
+                      Approve & Close Duplicates
+                    </button>
+                  )}
+                </div>
                 {crossTabAnalysis.duplicateGroups.map((g, i) => (
                   <div key={i} className="text-atlas-warning">
                     Duplicate URL ({g.tabIds.length} tabs): {g.url}

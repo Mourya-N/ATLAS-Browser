@@ -1,0 +1,416 @@
+/**
+ * Safe Adblock Plus / EasyList / EasyPrivacy / Hosts filter list parser.
+ * Parses network blocking/exception rules and cosmetic hiding rules without
+ * executing any downloaded content or building catastrophic regexes.
+ */
+
+export type FilterResourceType =
+  | 'script'
+  | 'image'
+  | 'stylesheet'
+  | 'xmlhttprequest'
+  | 'subdocument'
+  | 'media'
+  | 'font'
+  | 'ping'
+  | 'websocket'
+  | 'other';
+
+export interface ParsedNetworkRule {
+  raw: string;
+  isException: boolean;
+  /** Domain anchor from `||example.com^` if present */
+  domainAnchor: string | null;
+  /** Safe literal/wildcard matcher if pattern has path/query parts */
+  urlRegex: RegExp | null;
+  thirdParty: boolean | null;
+  includeTypes: Set<FilterResourceType> | null;
+  excludeTypes: Set<FilterResourceType> | null;
+  includeDomains: string[] | null;
+  excludeDomains: string[] | null;
+  important: boolean;
+}
+
+export interface ParsedCosmeticRule {
+  raw: string;
+  isException: boolean;
+  domains: string[];
+  excludedDomains: string[];
+  selector: string;
+}
+
+export interface ParsedFilterList {
+  networkRules: ParsedNetworkRule[];
+  cosmeticRules: ParsedCosmeticRule[];
+  skippedCount: number;
+}
+
+const VALID_RESOURCE_TYPES = new Set<string>([
+  'script',
+  'image',
+  'stylesheet',
+  'xmlhttprequest',
+  'xhr',
+  'subdocument',
+  'media',
+  'font',
+  'ping',
+  'websocket',
+  'other'
+]);
+
+const MAX_LINE_LENGTH = 1024;
+
+function normalizeResourceType(token: string): FilterResourceType | null {
+  if (token === 'xhr') return 'xmlhttprequest';
+  if (VALID_RESOURCE_TYPES.has(token)) return token as FilterResourceType;
+  return null;
+}
+
+export function mapElectronResourceType(electronType: string): FilterResourceType {
+  switch (electronType) {
+    case 'script':
+      return 'script';
+    case 'image':
+      return 'image';
+    case 'stylesheet':
+      return 'stylesheet';
+    case 'xhr':
+      return 'xmlhttprequest';
+    case 'subFrame':
+      return 'subdocument';
+    case 'media':
+      return 'media';
+    case 'font':
+      return 'font';
+    case 'ping':
+      return 'ping';
+    case 'webSocket':
+      return 'websocket';
+    default:
+      return 'other';
+  }
+}
+
+export function isSafeCssSelector(selector: string): boolean {
+  const s = selector.trim();
+  if (!s || s.length > 300) return false;
+  // Disallow braces, angle brackets, JS URIs, CSS expressions, @-rules
+  if (/[{}<>]/.test(s)) return false;
+  const lower = s.toLowerCase();
+  if (
+    lower.includes('javascript:') ||
+    lower.includes('expression(') ||
+    lower.includes('@import') ||
+    lower.includes('url(')
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function escapeRegexLiteral(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function compilePatternToRegex(pattern: string): RegExp | null {
+  if (!pattern || pattern.length > 400) return null;
+  // Skip raw /regex/ rules to prevent ReDoS from untrusted filter lists
+  if (pattern.startsWith('/') && pattern.endsWith('/') && pattern.length > 2) {
+    return null;
+  }
+
+  let body = pattern;
+  let prefix = '';
+  let suffix = '';
+
+  if (body.startsWith('||')) {
+    body = body.slice(2);
+    prefix = '^https?:\\/\\/([^/]+\\.)?';
+  } else if (body.startsWith('|')) {
+    body = body.slice(1);
+    prefix = '^';
+  }
+
+  if (body.endsWith('|')) {
+    body = body.slice(0, -1);
+    suffix = '$';
+  }
+
+  let regexStr = '';
+  for (let i = 0; i < body.length; i++) {
+    const ch = body[i];
+    if (ch === '*') {
+      regexStr += '[^\\n]*';
+    } else if (ch === '^') {
+      regexStr += '(?:[/?#:&=]|$)';
+    } else {
+      regexStr += escapeRegexLiteral(ch);
+    }
+  }
+
+  try {
+    return new RegExp(prefix + regexStr + suffix, 'i');
+  } catch {
+    return null;
+  }
+}
+
+export function parseCosmeticRuleLine(rawLine: string): ParsedCosmeticRule | null {
+  const line = rawLine.trim();
+  if (!line || line.length > MAX_LINE_LENGTH) return null;
+
+  // Extended CSS / procedural cosmetic rules (`#?#`, `#$#`) are skipped safely
+  if (line.includes('#?#') || line.includes('#$#') || line.includes('#@$#')) {
+    return null;
+  }
+
+  let isException = false;
+  let sepIndex = line.indexOf('#@#');
+  let sepLen = 3;
+  if (sepIndex !== -1) {
+    isException = true;
+  } else {
+    sepIndex = line.indexOf('##');
+    sepLen = 2;
+  }
+  if (sepIndex === -1) return null;
+
+  const domainPart = line.slice(0, sepIndex).trim();
+  const selector = line.slice(sepIndex + sepLen).trim();
+  if (!isSafeCssSelector(selector)) return null;
+
+  const domains: string[] = [];
+  const excludedDomains: string[] = [];
+  if (domainPart) {
+    for (const rawDom of domainPart.split(',')) {
+      const d = rawDom.trim().toLowerCase();
+      if (!d) continue;
+      if (d.startsWith('~')) {
+        excludedDomains.push(d.slice(1));
+      } else {
+        domains.push(d);
+      }
+    }
+  }
+
+  return {
+    raw: line,
+    isException,
+    domains,
+    excludedDomains,
+    selector
+  };
+}
+
+export function parseNetworkRuleLine(rawLine: string): ParsedNetworkRule | null {
+  const line = rawLine.trim();
+  if (!line || line.length > MAX_LINE_LENGTH) return null;
+  if (line.startsWith('!') || line.startsWith('[') || (line.startsWith('#') && !line.startsWith('##') && !line.startsWith('#@#'))) return null;
+  if (line.includes('##') || line.includes('#@#') || line.includes('#?#')) return null;
+  // Skip raw /regex/ rules before splitting options on `$` to prevent ReDoS
+  if (/^\/.*\/[gimsuy]*$/.test(line) && line.length > 2) return null;
+
+  // Support hosts-file lines: "0.0.0.0 ad.example.com" or "127.0.0.1 tracker.net"
+  const hostsMatch = line.match(/^(?:0\.0\.0\.0|127\.0\.0\.1)\s+([a-z0-9.-]+\.[a-z]{2,})(?:\s+#.*)?$/i);
+  if (hostsMatch) {
+    const dom = hostsMatch[1].toLowerCase();
+    if (dom === 'localhost' || dom === 'localhost.localdomain') return null;
+    return {
+      raw: line,
+      isException: false,
+      domainAnchor: dom,
+      urlRegex: null,
+      thirdParty: null,
+      includeTypes: null,
+      excludeTypes: null,
+      includeDomains: null,
+      excludeDomains: null,
+      important: false
+    };
+  }
+
+  let body = line;
+  let isException = false;
+  if (body.startsWith('@@')) {
+    isException = true;
+    body = body.slice(2);
+  }
+
+  // Split options after `$` (ignoring `$` inside regexes, which we skip anyway)
+  let optionsPart = '';
+  const dollarIdx = body.lastIndexOf('$');
+  if (dollarIdx !== -1) {
+    optionsPart = body.slice(dollarIdx + 1).trim();
+    body = body.slice(0, dollarIdx).trim();
+  }
+
+  if (!body) return null;
+
+  let thirdParty: boolean | null = null;
+  let includeTypes: Set<FilterResourceType> | null = null;
+  let excludeTypes: Set<FilterResourceType> | null = null;
+  let includeDomains: string[] | null = null;
+  let excludeDomains: string[] | null = null;
+  let important = false;
+
+  if (optionsPart) {
+    for (const rawOpt of optionsPart.split(',')) {
+      const opt = rawOpt.trim().toLowerCase();
+      if (!opt) continue;
+      if (opt === 'third-party' || opt === '3p') {
+        thirdParty = true;
+      } else if (opt === '~third-party' || opt === '~3p' || opt === 'first-party' || opt === '1p') {
+        thirdParty = false;
+      } else if (opt === 'important') {
+        important = true;
+      } else if (opt.startsWith('domain=')) {
+        const domList = opt.slice(7).split('|').map((d) => d.trim()).filter(Boolean);
+        for (const d of domList) {
+          if (d.startsWith('~')) {
+            excludeDomains ??= [];
+            excludeDomains.push(d.slice(1));
+          } else {
+            includeDomains ??= [];
+            includeDomains.push(d);
+          }
+        }
+      } else if (opt.startsWith('~')) {
+        const mapped = normalizeResourceType(opt.slice(1));
+        if (mapped) {
+          excludeTypes ??= new Set();
+          excludeTypes.add(mapped);
+        }
+      } else {
+        const mapped = normalizeResourceType(opt);
+        if (mapped) {
+          includeTypes ??= new Set();
+          includeTypes.add(mapped);
+        }
+        // Unknown/unsupported modifiers (e.g. popup, csp=) -> skip rule if it's purely a modifier we can't enforce safely
+        else if (opt === 'popup' || opt.startsWith('csp=') || opt.startsWith('redirect=')) {
+          return null;
+        }
+      }
+    }
+  }
+
+  // Fast-path pure domain anchor: `||example.com^` or `||example.com`
+  const pureDomainMatch = body.match(/^\|\|([a-z0-9.-]+\.[a-z]{2,})\^?$/i);
+  if (pureDomainMatch) {
+    return {
+      raw: line,
+      isException,
+      domainAnchor: pureDomainMatch[1].toLowerCase(),
+      urlRegex: null,
+      thirdParty,
+      includeTypes,
+      excludeTypes,
+      includeDomains,
+      excludeDomains,
+      important
+    };
+  }
+
+  const urlRegex = compilePatternToRegex(body);
+  if (!urlRegex) return null;
+
+  return {
+    raw: line,
+    isException,
+    domainAnchor: null,
+    urlRegex,
+    thirdParty,
+    includeTypes,
+    excludeTypes,
+    includeDomains,
+    excludeDomains,
+    important
+  };
+}
+
+export function parseFilterListText(text: string, maxRules = 50_000): ParsedFilterList {
+  const networkRules: ParsedNetworkRule[] = [];
+  const cosmeticRules: ParsedCosmeticRule[] = [];
+  let skippedCount = 0;
+
+  const lines = text.split(/\r?\n/);
+  for (const raw of lines) {
+    if (networkRules.length + cosmeticRules.length >= maxRules) break;
+    const trimmed = raw.trim();
+    if (
+      !trimmed ||
+      trimmed.startsWith('!') ||
+      trimmed.startsWith('[') ||
+      (trimmed.startsWith('#') && !trimmed.startsWith('##') && !trimmed.startsWith('#@#'))
+    ) {
+      continue;
+    }
+
+    if (trimmed.includes('##') || trimmed.includes('#@#')) {
+      const cos = parseCosmeticRuleLine(trimmed);
+      if (cos) {
+        cosmeticRules.push(cos);
+      } else {
+        skippedCount += 1;
+      }
+      continue;
+    }
+
+    const net = parseNetworkRuleLine(trimmed);
+    if (net) {
+      networkRules.push(net);
+    } else {
+      skippedCount += 1;
+    }
+  }
+
+  return { networkRules, cosmeticRules, skippedCount };
+}
+
+export function hostMatchesDomain(host: string, domain: string): boolean {
+  return host === domain || host.endsWith(`.${domain}`);
+}
+
+export function matchesNetworkRule(
+  rule: ParsedNetworkRule,
+  ctx: {
+    requestUrl: string;
+    reqHost: string;
+    firstHost: string;
+    isThirdParty: boolean;
+    resourceType: FilterResourceType;
+  }
+): boolean {
+  if (rule.thirdParty !== null && rule.thirdParty !== ctx.isThirdParty) {
+    return false;
+  }
+
+  if (rule.includeTypes && !rule.includeTypes.has(ctx.resourceType)) {
+    return false;
+  }
+  if (rule.excludeTypes && rule.excludeTypes.has(ctx.resourceType)) {
+    return false;
+  }
+
+  if (rule.includeDomains && rule.includeDomains.length > 0) {
+    if (!ctx.firstHost || !rule.includeDomains.some((d) => hostMatchesDomain(ctx.firstHost, d))) {
+      return false;
+    }
+  }
+  if (rule.excludeDomains && rule.excludeDomains.length > 0) {
+    if (ctx.firstHost && rule.excludeDomains.some((d) => hostMatchesDomain(ctx.firstHost, d))) {
+      return false;
+    }
+  }
+
+  if (rule.domainAnchor) {
+    return hostMatchesDomain(ctx.reqHost, rule.domainAnchor);
+  }
+
+  if (rule.urlRegex) {
+    return rule.urlRegex.test(ctx.requestUrl);
+  }
+
+  return false;
+}

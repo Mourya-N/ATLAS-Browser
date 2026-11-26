@@ -100,6 +100,22 @@ export interface AtlasBridge {
   getAdBlockStats: () => Promise<AdBlockStats>;
   toggleAdBlockGlobal: (enabled: boolean) => Promise<AdBlockStats>;
   toggleAdBlockDomain: (domain: string, allow: boolean) => Promise<AdBlockStats>;
+  toggleAdBlockTempDomain: (domain: string, disabled: boolean) => Promise<AdBlockStats>;
+  toggleAdBlockCosmetic: (enabled: boolean) => Promise<AdBlockStats>;
+  toggleAdBlockCosmeticDomain: (domain: string, disabled: boolean) => Promise<AdBlockStats>;
+  addAdBlockRule: (rule: string) => Promise<{ added: boolean; stats: AdBlockStats }>;
+  removeAdBlockRule: (rule: string) => Promise<AdBlockStats>;
+  updateAdBlockFilterLists: () => Promise<AdBlockStats>;
+  toggleAdBlockFilterList: (listId: string, enabled: boolean) => Promise<AdBlockStats>;
+  reportAdBlockBrokenSite: (url: string, reason?: string) => Promise<AdBlockStats>;
+  analyzePageTrust: (tabId: string) => Promise<{
+    url: string;
+    hostname: string;
+    level: 'trusted' | 'caution' | 'warning';
+    signals: Array<{ id: string; severity: 'info' | 'caution' | 'warning'; title: string; detail: string }>;
+    checkedAt: number;
+    deterministicOnly: true;
+  }>;
 
   listConversations: () => Promise<AgentConversation[]>;
   createConversation: (title?: string) => Promise<AgentConversation>;

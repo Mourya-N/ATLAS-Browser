@@ -86,6 +86,20 @@ const atlasApi = {
   toggleAdBlockGlobal: (enabled: boolean) => invoke(IPC_CHANNELS.ADBLOCK_TOGGLE_GLOBAL, { enabled }),
   toggleAdBlockDomain: (domain: string, allow: boolean) =>
     invoke(IPC_CHANNELS.ADBLOCK_TOGGLE_DOMAIN, { domain, allow }),
+  toggleAdBlockTempDomain: (domain: string, disabled: boolean) =>
+    invoke(IPC_CHANNELS.ADBLOCK_TOGGLE_TEMP_DOMAIN, { domain, disabled }),
+  toggleAdBlockCosmetic: (enabled: boolean) => invoke(IPC_CHANNELS.ADBLOCK_TOGGLE_COSMETIC, { enabled }),
+  toggleAdBlockCosmeticDomain: (domain: string, disabled: boolean) =>
+    invoke(IPC_CHANNELS.ADBLOCK_TOGGLE_COSMETIC_DOMAIN, { domain, disabled }),
+  addAdBlockRule: (rule: string) => invoke(IPC_CHANNELS.ADBLOCK_ADD_RULE, { rule }),
+  removeAdBlockRule: (rule: string) => invoke(IPC_CHANNELS.ADBLOCK_REMOVE_RULE, { rule }),
+  updateAdBlockFilterLists: () => invoke(IPC_CHANNELS.ADBLOCK_UPDATE_LISTS),
+  toggleAdBlockFilterList: (listId: string, enabled: boolean) =>
+    invoke(IPC_CHANNELS.ADBLOCK_TOGGLE_LIST, { listId, enabled }),
+  reportAdBlockBrokenSite: (url: string, reason?: string) =>
+    invoke(IPC_CHANNELS.ADBLOCK_REPORT_BROKEN, { url, reason }),
+  analyzePageTrust: (tabId: string) =>
+    invoke(IPC_CHANNELS.SECURITY_ANALYZE_TRUST, { tabId }),
 
   // Agent
   listConversations: () => invoke(IPC_CHANNELS.AGENT_LIST_CONVERSATIONS),
