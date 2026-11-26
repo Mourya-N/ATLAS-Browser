@@ -156,12 +156,62 @@ const DEFAULT_FILTER_LISTS: FilterListStatus[] = [
   }
 ];
 
-const MAX_FILTER_LIST_BYTES = 8 * 1024 * 1024; // 8 MB safety cap
+const MAX_FILTER_LIST_BYTES = 12 * 1024 * 1024; // 12 MB streaming safety cap
 
 interface CompiledListCache {
-  networkRules: ParsedNetworkRule[];
+  networkRuleCount: number;
+  domainIndex: Map<string, ParsedNetworkRule[]>;
+  exceptionDomainIndex: Map<string, ParsedNetworkRule[]>;
+  patternRules: ParsedNetworkRule[];
+  exceptionPatternRules: ParsedNetworkRule[];
   cosmeticRules: ParsedCosmeticRule[];
   category: TrackerCategory;
+}
+
+function buildCompiledListCache(
+  networkRules: ParsedNetworkRule[],
+  cosmeticRules: ParsedCosmeticRule[],
+  category: TrackerCategory
+): CompiledListCache {
+  const domainIndex = new Map<string, ParsedNetworkRule[]>();
+  const exceptionDomainIndex = new Map<string, ParsedNetworkRule[]>();
+  const patternRules: ParsedNetworkRule[] = [];
+  const exceptionPatternRules: ParsedNetworkRule[] = [];
+
+  for (const rule of networkRules) {
+    if (rule.domainAnchor) {
+      const targetMap = rule.isException ? exceptionDomainIndex : domainIndex;
+      const arr = targetMap.get(rule.domainAnchor);
+      if (arr) {
+        arr.push(rule);
+      } else {
+        targetMap.set(rule.domainAnchor, [rule]);
+      }
+    } else if (rule.isException) {
+      exceptionPatternRules.push(rule);
+    } else {
+      patternRules.push(rule);
+    }
+  }
+
+  return {
+    networkRuleCount: networkRules.length,
+    domainIndex,
+    exceptionDomainIndex,
+    patternRules,
+    exceptionPatternRules,
+    cosmeticRules,
+    category
+  };
+}
+
+function sanitizeFilterListError(err: unknown): string {
+  const msg = err instanceof Error ? err.message : 'Filter list update failed';
+  // Never expose local filesystem paths or internal stack details
+  if (/[/\\](Users|home|var|tmp|etc|app)[/\\]/i.test(msg)) {
+    return 'Filter list update failed due to an internal I/O error';
+  }
+  return msg.slice(0, 180);
 }
 
 export class AdBlocker {
@@ -213,12 +263,11 @@ export class AdBlocker {
       const cachedText = repo.getSetting<string | null>(`adblock.listText.${list.id}`, null);
       if (cachedText) {
         const parsed = parseFilterListText(cachedText);
-        this.listCaches.set(list.id, {
-          networkRules: parsed.networkRules,
-          cosmeticRules: parsed.cosmeticRules,
-          category: list.category === 'advertising' ? 'advertising' : 'analytics'
-        });
+        const cat: TrackerCategory = list.category === 'advertising' ? 'advertising' : 'analytics';
+        this.listCaches.set(list.id, buildCompiledListCache(parsed.networkRules, parsed.cosmeticRules, cat));
         list.ruleCount = parsed.networkRules.length + parsed.cosmeticRules.length;
+        list.skippedCount = parsed.skippedCount;
+        list.skippedByReason = parsed.skippedByReason;
       }
     }
     this.syncCosmeticFilterListRules();
@@ -374,15 +423,44 @@ export class AdBlocker {
           throw new Error('Only HTTPS filter list URLs are allowed');
         }
         const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 15_000);
+        const timer = setTimeout(() => controller.abort(), 20_000);
         try {
           const res = await fetch(url, {
             method: 'GET',
+            redirect: 'follow',
             signal: controller.signal,
             headers: { 'User-Agent': 'AtlasBrowser/1.0 (+https://atlasbrowser.local)' }
           });
-          const text = await res.text();
-          return { ok: res.ok, status: res.status, text };
+          if (!res.ok) {
+            return { ok: false, status: res.status, text: '' };
+          }
+
+          // Enforce size limit while streaming chunks (before buffering entire response)
+          if (!res.body) {
+            const text = await res.text();
+            if (Buffer.byteLength(text, 'utf8') > MAX_FILTER_LIST_BYTES) {
+              throw new Error(`Filter list exceeds ${MAX_FILTER_LIST_BYTES / (1024 * 1024)} MB streaming limit`);
+            }
+            return { ok: true, status: res.status, text };
+          }
+
+          const reader = res.body.getReader();
+          const chunks: Uint8Array[] = [];
+          let totalBytes = 0;
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            if (value) {
+              totalBytes += value.byteLength;
+              if (totalBytes > MAX_FILTER_LIST_BYTES) {
+                await reader.cancel().catch(() => {});
+                throw new Error(`Filter list exceeds ${MAX_FILTER_LIST_BYTES / (1024 * 1024)} MB streaming limit`);
+              }
+              chunks.push(value);
+            }
+          }
+          const combined = Buffer.concat(chunks.map((c) => Buffer.from(c)));
+          return { ok: true, status: res.status, text: combined.toString('utf8') };
         } finally {
           clearTimeout(timer);
         }
@@ -426,21 +504,20 @@ export class AdBlocker {
         }
 
         // Atomic swap: only overwrite cache and metadata after successful parse
-        this.listCaches.set(list.id, {
-          networkRules: parsed.networkRules,
-          cosmeticRules: parsed.cosmeticRules,
-          category: list.category === 'advertising' ? 'advertising' : 'analytics'
-        });
-        // Persist bounded text if small enough for settings JSON (< 2 MB)
-        if (res.text.length < 2 * 1024 * 1024) {
+        const cat: TrackerCategory = list.category === 'advertising' ? 'advertising' : 'analytics';
+        this.listCaches.set(list.id, buildCompiledListCache(parsed.networkRules, parsed.cosmeticRules, cat));
+        // Persist bounded text if small enough for settings JSON (< 4 MB)
+        if (res.text.length < 4 * 1024 * 1024) {
           this.repo.setSetting(`adblock.listText.${list.id}`, res.text);
         }
         list.ruleCount = parsed.networkRules.length + parsed.cosmeticRules.length;
+        list.skippedCount = parsed.skippedCount;
+        list.skippedByReason = parsed.skippedByReason;
         list.lastUpdatedAt = Date.now();
         list.lastError = null;
       } catch (err) {
-        // Preserve previous valid ruleset on failure
-        list.lastError = err instanceof Error ? err.message : 'Filter list update failed';
+        // Preserve previous valid ruleset on failure and sanitize message
+        list.lastError = sanitizeFilterListError(err);
       }
     }
 
@@ -506,6 +583,13 @@ export class AdBlocker {
       resourceType: mappedType
     };
 
+    const parts = reqHost.split('.');
+    const hostCandidates: string[] = [];
+    for (let i = 0; i < parts.length - 1; i++) {
+      hostCandidates.push(parts.slice(i).join('.'));
+    }
+    if (hostCandidates.length === 0 && reqHost) hostCandidates.push(reqHost);
+
     // 1. Check user & filter-list exception (`@@`) rules first (allowlist precedence)
     for (const exRule of this.userExceptionRules) {
       if (matchesNetworkRule(exRule, matchCtx)) {
@@ -516,8 +600,16 @@ export class AdBlocker {
       if (!list.enabled) continue;
       const cache = this.listCaches.get(list.id);
       if (!cache) continue;
-      for (const rule of cache.networkRules) {
-        if (rule.isException && matchesNetworkRule(rule, matchCtx)) {
+      for (const candidate of hostCandidates) {
+        const exBucket = cache.exceptionDomainIndex.get(candidate);
+        if (exBucket) {
+          for (const rule of exBucket) {
+            if (matchesNetworkRule(rule, matchCtx)) return { block: false };
+          }
+        }
+      }
+      for (const rule of cache.exceptionPatternRules) {
+        if (matchesNetworkRule(rule, matchCtx)) {
           return { block: false };
         }
       }
@@ -536,9 +628,7 @@ export class AdBlocker {
     }
 
     // 3. Match request domain or any parent domain against built-in/custom domain blocklist
-    const parts = reqHost.split('.');
-    for (let i = 0; i < parts.length - 1; i++) {
-      const candidate = parts.slice(i).join('.');
+    for (const candidate of hostCandidates) {
       const category = this.domainRules.get(candidate);
       if (category) {
         return { block: true, category, matchedDomain: candidate };
@@ -554,17 +644,32 @@ export class AdBlocker {
       }
     }
 
-    // 5. Check compiled filter list blocking rules
+    // 5. Check compiled filter list blocking rules (O(labels) domain index + pattern rules)
     for (const list of this.filterLists) {
       if (!list.enabled) continue;
       const cache = this.listCaches.get(list.id);
       if (!cache) continue;
-      for (const rule of cache.networkRules) {
-        if (!rule.isException && matchesNetworkRule(rule, matchCtx)) {
+      for (const candidate of hostCandidates) {
+        const blockBucket = cache.domainIndex.get(candidate);
+        if (blockBucket) {
+          for (const rule of blockBucket) {
+            if (matchesNetworkRule(rule, matchCtx)) {
+              return {
+                block: true,
+                category: cache.category,
+                matchedDomain: rule.domainAnchor || reqHost,
+                matchedRule: rule.raw
+              };
+            }
+          }
+        }
+      }
+      for (const rule of cache.patternRules) {
+        if (matchesNetworkRule(rule, matchCtx)) {
           return {
             block: true,
             category: cache.category,
-            matchedDomain: rule.domainAnchor || reqHost,
+            matchedDomain: reqHost,
             matchedRule: rule.raw
           };
         }
@@ -630,7 +735,7 @@ export class AdBlocker {
     let listRuleCount = 0;
     for (const list of this.filterLists) {
       if (list.enabled) {
-        listRuleCount += this.listCaches.get(list.id)?.networkRules.length ?? 0;
+        listRuleCount += this.listCaches.get(list.id)?.networkRuleCount ?? 0;
       }
     }
     return {

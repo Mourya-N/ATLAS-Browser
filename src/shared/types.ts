@@ -106,6 +106,18 @@ export interface ReaderArticle {
   length: number;
 }
 
+export interface ReadingListItem {
+  id: string;
+  url: string;
+  title: string;
+  siteName: string | null;
+  excerpt: string | null;
+  status: 'unread' | 'reading' | 'read';
+  progress: number;
+  savedAt: number;
+  updatedAt: number;
+}
+
 export interface AdBlockSiteSetting {
   domain: string;
   enabled: boolean;
@@ -121,6 +133,15 @@ export interface FilterListStatus {
   attribution: string;
   enabled: boolean;
   ruleCount: number;
+  skippedCount?: number;
+  skippedByReason?: {
+    regex: number;
+    extendedCosmetic: number;
+    unsupportedModifier: number;
+    invalidCss: number;
+    tooLong: number;
+    other: number;
+  };
   lastUpdatedAt: number | null;
   lastError: string | null;
 }

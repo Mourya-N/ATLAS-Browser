@@ -89,6 +89,7 @@ export interface SearchSuggestion {
 }
 
 export interface SearchEvidencePassage {
+  documentId?: string;
   sourceUrl: string;
   sourceTitle: string;
   domain: string;
@@ -101,6 +102,8 @@ export interface SearchCitationClaim {
   id: string;
   statement: string;
   kind: 'fact' | 'interpretation';
+  documentId?: string;
+  passageIndex?: number;
   sourceUrl: string;
   sourceTitle: string;
   supportingQuote: string;
@@ -119,9 +122,10 @@ export interface AiCitedAnswer {
   status: 'ok' | 'insufficient_evidence' | 'unavailable' | 'failed';
   summary: string;
   claims: SearchCitationClaim[];
+  unsupportedClaimsCount?: number;
   contradictions: SearchContradiction[];
   passages: SearchEvidencePassage[];
-  citations: Array<{ index: number; url: string; title: string; domain: string }>;
+  citations: Array<{ index: number; documentId?: string; url: string; title: string; domain: string }>;
   model: string;
   provider: string;
   inputTokens: number;

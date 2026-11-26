@@ -76,6 +76,12 @@ const atlasApi = {
     invoke(IPC_CHANNELS.BOOKMARK_UPDATE, { id, ...patch }),
   deleteBookmark: (id: string) => invoke(IPC_CHANNELS.BOOKMARK_DELETE, { id }),
   createBookmarkFolder: (name: string) => invoke(IPC_CHANNELS.BOOKMARK_FOLDER_CREATE, { name }),
+  listReadingList: () => invoke(IPC_CHANNELS.READING_LIST_LIST),
+  saveReadingListItem: (input: { tabId?: string; url: string; title: string; siteName?: string | null; excerpt?: string | null; progress?: number }) =>
+    invoke(IPC_CHANNELS.READING_LIST_SAVE, input),
+  updateReadingListStatus: (id: string, patch: { status?: 'unread' | 'reading' | 'read'; progress?: number }) =>
+    invoke(IPC_CHANNELS.READING_LIST_UPDATE, { id, ...patch }),
+  deleteReadingListItem: (id: string) => invoke(IPC_CHANNELS.READING_LIST_DELETE, { id }),
 
   // Downloads & AdBlocker
   listDownloads: () => invoke(IPC_CHANNELS.DOWNLOAD_LIST),

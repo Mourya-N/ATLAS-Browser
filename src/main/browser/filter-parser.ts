@@ -39,10 +39,20 @@ export interface ParsedCosmeticRule {
   selector: string;
 }
 
+export interface SkippedRuleBreakdown {
+  regex: number;
+  extendedCosmetic: number;
+  unsupportedModifier: number;
+  invalidCss: number;
+  tooLong: number;
+  other: number;
+}
+
 export interface ParsedFilterList {
   networkRules: ParsedNetworkRule[];
   cosmeticRules: ParsedCosmeticRule[];
   skippedCount: number;
+  skippedByReason: SkippedRuleBreakdown;
 }
 
 const VALID_RESOURCE_TYPES = new Set<string>([
@@ -329,12 +339,22 @@ export function parseNetworkRuleLine(rawLine: string): ParsedNetworkRule | null 
   };
 }
 
-export function parseFilterListText(text: string, maxRules = 50_000): ParsedFilterList {
+export function parseFilterListText(text: string, maxRules = 100_000): ParsedFilterList {
   const networkRules: ParsedNetworkRule[] = [];
   const cosmeticRules: ParsedCosmeticRule[] = [];
   let skippedCount = 0;
+  const skippedByReason: SkippedRuleBreakdown = {
+    regex: 0,
+    extendedCosmetic: 0,
+    unsupportedModifier: 0,
+    invalidCss: 0,
+    tooLong: 0,
+    other: 0
+  };
 
-  const lines = text.split(/\r?\n/);
+  // Strip UTF-8 BOM if present
+  const cleanText = text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
+  const lines = cleanText.split(/\r?\n/);
   for (const raw of lines) {
     if (networkRules.length + cosmeticRules.length >= maxRules) break;
     const trimmed = raw.trim();
@@ -347,13 +367,32 @@ export function parseFilterListText(text: string, maxRules = 50_000): ParsedFilt
       continue;
     }
 
+    if (trimmed.length > MAX_LINE_LENGTH) {
+      skippedCount += 1;
+      skippedByReason.tooLong += 1;
+      continue;
+    }
+
+    if (trimmed.includes('#?#') || trimmed.includes('#$#') || trimmed.includes('#@$#')) {
+      skippedCount += 1;
+      skippedByReason.extendedCosmetic += 1;
+      continue;
+    }
+
     if (trimmed.includes('##') || trimmed.includes('#@#')) {
       const cos = parseCosmeticRuleLine(trimmed);
       if (cos) {
         cosmeticRules.push(cos);
       } else {
         skippedCount += 1;
+        skippedByReason.invalidCss += 1;
       }
+      continue;
+    }
+
+    if (/^\/.*\/[gimsuy]*$/.test(trimmed) && trimmed.length > 2) {
+      skippedCount += 1;
+      skippedByReason.regex += 1;
       continue;
     }
 
@@ -362,10 +401,15 @@ export function parseFilterListText(text: string, maxRules = 50_000): ParsedFilt
       networkRules.push(net);
     } else {
       skippedCount += 1;
+      if (/\$(?:.*)(?:popup|csp=|redirect=)/i.test(trimmed)) {
+        skippedByReason.unsupportedModifier += 1;
+      } else {
+        skippedByReason.other += 1;
+      }
     }
   }
 
-  return { networkRules, cosmeticRules, skippedCount };
+  return { networkRules, cosmeticRules, skippedCount, skippedByReason };
 }
 
 export function hostMatchesDomain(host: string, domain: string): boolean {

@@ -5,6 +5,7 @@ import type {
   BookmarkFolder,
   DownloadItem,
   HistoryEntry,
+  ReadingListItem,
   TabGroup,
   TabInfo
 } from '@shared/types';
@@ -324,5 +325,99 @@ export class BrowserRepository {
         lastActiveAt: Number(t.last_active_at)
       }))
     };
+  }
+
+  // --- Reading List ---
+  listReadingList(limit = 100): ReadingListItem[] {
+    const rows = this.db
+      .prepare('SELECT * FROM reading_list ORDER BY saved_at DESC LIMIT ?')
+      .all(limit) as Record<string, unknown>[];
+    return rows.map((r) => ({
+      id: String(r.id),
+      url: String(r.url),
+      title: String(r.title),
+      siteName: (r.site_name as string | null) ?? null,
+      excerpt: (r.excerpt as string | null) ?? null,
+      status: (r.status as ReadingListItem['status']) || 'unread',
+      progress: Number(r.progress ?? 0),
+      savedAt: Number(r.saved_at),
+      updatedAt: Number(r.updated_at)
+    }));
+  }
+
+  saveReadingListItem(input: {
+    url: string;
+    title: string;
+    siteName?: string | null;
+    excerpt?: string | null;
+    progress?: number;
+  }): ReadingListItem {
+    const now = Date.now();
+    const existing = this.db
+      .prepare('SELECT * FROM reading_list WHERE url = ?')
+      .get(input.url) as Record<string, unknown> | undefined;
+
+    if (existing) {
+      const progress = input.progress ?? Number(existing.progress ?? 0);
+      const status: ReadingListItem['status'] =
+        progress >= 95 ? 'read' : progress > 5 ? 'reading' : ((existing.status as ReadingListItem['status']) || 'unread');
+      this.db
+        .prepare('UPDATE reading_list SET title = ?, site_name = ?, excerpt = ?, status = ?, progress = ?, updated_at = ? WHERE id = ?')
+        .run(
+          input.title || String(existing.title),
+          input.siteName ?? existing.site_name ?? null,
+          input.excerpt ?? existing.excerpt ?? null,
+          status,
+          progress,
+          now,
+          existing.id
+        );
+      return {
+        id: String(existing.id),
+        url: input.url,
+        title: input.title || String(existing.title),
+        siteName: input.siteName ?? (existing.site_name as string | null) ?? null,
+        excerpt: input.excerpt ?? (existing.excerpt as string | null) ?? null,
+        status,
+        progress,
+        savedAt: Number(existing.saved_at),
+        updatedAt: now
+      };
+    }
+
+    const id = randomUUID();
+    const progress = input.progress ?? 0;
+    const status: ReadingListItem['status'] = progress >= 95 ? 'read' : progress > 5 ? 'reading' : 'unread';
+    this.db
+      .prepare(
+        'INSERT INTO reading_list (id, url, title, site_name, excerpt, status, progress, saved_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      )
+      .run(id, input.url, input.title || input.url, input.siteName ?? null, input.excerpt ?? null, status, progress, now, now);
+
+    return {
+      id,
+      url: input.url,
+      title: input.title || input.url,
+      siteName: input.siteName ?? null,
+      excerpt: input.excerpt ?? null,
+      status,
+      progress,
+      savedAt: now,
+      updatedAt: now
+    };
+  }
+
+  updateReadingListStatus(id: string, patch: { status?: ReadingListItem['status']; progress?: number }): void {
+    const existing = this.db.prepare('SELECT * FROM reading_list WHERE id = ?').get(id) as Record<string, unknown> | undefined;
+    if (!existing) return;
+    const progress = patch.progress ?? Number(existing.progress ?? 0);
+    const status = patch.status ?? (existing.status as ReadingListItem['status']);
+    this.db
+      .prepare('UPDATE reading_list SET status = ?, progress = ?, updated_at = ? WHERE id = ?')
+      .run(status, progress, Date.now(), id);
+  }
+
+  deleteReadingListItem(id: string): void {
+    this.db.prepare('DELETE FROM reading_list WHERE id = ?').run(id);
   }
 }

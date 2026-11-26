@@ -375,6 +375,27 @@ export function registerAllIpcHandlers(services: MainServices): void {
   handleTrusted(IPC_CHANNELS.BOOKMARK_FOLDER_CREATE, (_e, p: { name: string }) =>
     browserRepo.createBookmarkFolder(p.name)
   );
+  handleTrusted(IPC_CHANNELS.READING_LIST_LIST, () => browserRepo.listReadingList());
+  handleTrusted(
+    IPC_CHANNELS.READING_LIST_SAVE,
+    (_e, p: { tabId?: string; url: string; title: string; siteName?: string | null; excerpt?: string | null; progress?: number }) => {
+      if (p.tabId) {
+        const tab = tabManager.getTab(p.tabId);
+        if (tab?.info.isPrivate) {
+          throw new Error('Private browsing pages are not saved to the persistent Reading List');
+        }
+      }
+      return browserRepo.saveReadingListItem(p);
+    }
+  );
+  handleTrusted(
+    IPC_CHANNELS.READING_LIST_UPDATE,
+    (_e, p: { id: string; status?: 'unread' | 'reading' | 'read'; progress?: number }) =>
+      browserRepo.updateReadingListStatus(p.id, p)
+  );
+  handleTrusted(IPC_CHANNELS.READING_LIST_DELETE, (_e, p: { id: string }) =>
+    browserRepo.deleteReadingListItem(p.id)
+  );
 
   // --- Downloads & AdBlocker ---
   handleTrusted(IPC_CHANNELS.DOWNLOAD_LIST, () => downloadManager.listDownloads());

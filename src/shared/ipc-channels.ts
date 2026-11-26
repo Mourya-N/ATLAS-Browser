@@ -47,6 +47,10 @@ export const IPC_CHANNELS = {
   BOOKMARK_UPDATE: 'atlas:bookmark:update',
   BOOKMARK_DELETE: 'atlas:bookmark:delete',
   BOOKMARK_FOLDER_CREATE: 'atlas:bookmark-folder:create',
+  READING_LIST_LIST: 'atlas:reading-list:list',
+  READING_LIST_SAVE: 'atlas:reading-list:save',
+  READING_LIST_UPDATE: 'atlas:reading-list:update',
+  READING_LIST_DELETE: 'atlas:reading-list:delete',
 
   // Downloads
   DOWNLOAD_LIST: 'atlas:download:list',

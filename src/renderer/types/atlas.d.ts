@@ -93,6 +93,10 @@ export interface AtlasBridge {
   updateBookmark: (id: string, patch: { title?: string; url?: string; folderId?: string | null }) => Promise<void>;
   deleteBookmark: (id: string) => Promise<void>;
   createBookmarkFolder: (name: string) => Promise<BookmarkFolder>;
+  listReadingList: () => Promise<import('@shared/types').ReadingListItem[]>;
+  saveReadingListItem: (input: { tabId?: string; url: string; title: string; siteName?: string | null; excerpt?: string | null; progress?: number }) => Promise<import('@shared/types').ReadingListItem>;
+  updateReadingListStatus: (id: string, patch: { status?: 'unread' | 'reading' | 'read'; progress?: number }) => Promise<void>;
+  deleteReadingListItem: (id: string) => Promise<void>;
 
   listDownloads: () => Promise<DownloadItem[]>;
   downloadAction: (id: string, action: 'pause' | 'resume' | 'cancel' | 'open' | 'reveal') => Promise<boolean>;

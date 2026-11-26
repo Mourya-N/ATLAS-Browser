@@ -653,25 +653,49 @@ export const SearchView: React.FC = () => {
             <div className="space-y-4">
               {response.aiAnswer && (
                 <div className="rounded-xl border border-atlas-border bg-atlas-surface p-4 space-y-3">
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2 font-bold">
                       <Sparkles className="h-4 w-4 text-atlas-accent" />
-                      AI Grounded Answer
+                      {response.aiAnswer.status === 'ok'
+                        ? 'AI Grounded Answer'
+                        : response.aiAnswer.status === 'unavailable'
+                        ? 'AI Temporarily Unavailable'
+                        : response.aiAnswer.status === 'insufficient_evidence'
+                        ? 'Insufficient Indexed Evidence'
+                        : 'AI Synthesis Error'}
                     </div>
                     <span
                       className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
                         response.aiAnswer.status === 'ok'
                           ? 'bg-atlas-success/15 text-atlas-success'
+                          : response.aiAnswer.status === 'unavailable'
+                          ? 'bg-atlas-elevated text-atlas-muted'
                           : 'bg-atlas-warning/15 text-atlas-warning'
                       }`}
                     >
-                      {response.aiAnswer.status}
+                      {response.aiAnswer.status === 'ok'
+                        ? `Verified (${response.aiAnswer.claims.filter((c) => c.verifiedAgainstSource).length})`
+                        : response.aiAnswer.status}
                     </span>
                   </div>
 
+                  <div className="flex flex-wrap items-center gap-2 text-[10px] text-atlas-muted">
+                    <span>Model: {response.aiAnswer.model}</span>
+                    <span>• Provider: {response.aiAnswer.provider}</span>
+                    {response.aiAnswer.latencyMs > 0 && <span>• {response.aiAnswer.latencyMs} ms</span>}
+                  </div>
+
                   <p className="leading-relaxed text-atlas-text whitespace-pre-wrap">
-                    {response.aiAnswer.summary}
+                    {response.aiAnswer.status === 'unavailable'
+                      ? 'AI answers are temporarily unavailable (model offline or unconfigured). Search results remain fully functional.'
+                      : response.aiAnswer.summary}
                   </p>
+
+                  {(response.aiAnswer.unsupportedClaimsCount ?? 0) > 0 && (
+                    <div className="rounded-lg border border-atlas-border bg-atlas-bg px-2.5 py-1.5 text-[10px] text-atlas-muted">
+                      {response.aiAnswer.unsupportedClaimsCount} unsupported claim(s) omitted by strict passage verification.
+                    </div>
+                  )}
 
                   {response.aiAnswer.contradictions.length > 0 && (
                     <div className="rounded-lg border border-atlas-warning/40 bg-atlas-warning/10 p-2.5 space-y-1 text-[11px]">
@@ -686,41 +710,42 @@ export const SearchView: React.FC = () => {
                     </div>
                   )}
 
-                  {response.aiAnswer.claims.length > 0 && (
+                  {response.aiAnswer.claims.filter((c) => c.verifiedAgainstSource).length > 0 && (
                     <div className="space-y-2">
                       <div className="font-semibold text-[11px] uppercase tracking-wide text-atlas-muted">
                         Verified Claims & Evidence
                       </div>
-                      {response.aiAnswer.claims.map((c) => (
-                        <div
-                          key={c.id}
-                          className="rounded-lg border border-atlas-border bg-atlas-bg/60 p-2.5 space-y-1 text-[11px]"
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="rounded bg-atlas-elevated px-1.5 py-0.5 text-[10px] uppercase">
-                              {c.kind}
-                            </span>
-                            {c.verifiedAgainstSource && (
+                      {response.aiAnswer.claims
+                        .filter((c) => c.verifiedAgainstSource)
+                        .map((c) => (
+                          <div
+                            key={c.id}
+                            className="rounded-lg border border-atlas-border bg-atlas-bg/60 p-2.5 space-y-1 text-[11px]"
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="rounded bg-atlas-elevated px-1.5 py-0.5 text-[10px] uppercase">
+                                {c.kind}
+                                {c.passageIndex !== undefined ? ` • Passage #${c.passageIndex + 1}` : ''}
+                              </span>
                               <span className="flex items-center gap-1 text-atlas-success text-[10px]">
                                 <CheckCircle2 className="h-3 w-3" /> Source Verified
                               </span>
+                            </div>
+                            <div>{c.statement}</div>
+                            {c.supportingQuote && (
+                              <blockquote className="border-l-2 border-atlas-accent pl-2 italic text-atlas-muted">
+                                "{c.supportingQuote}"
+                              </blockquote>
                             )}
+                            <button
+                              type="button"
+                              onClick={() => void openInNewTab(c.sourceUrl)}
+                              className="text-atlas-accent hover:underline truncate block max-w-full"
+                            >
+                              {c.sourceTitle}
+                            </button>
                           </div>
-                          <div>{c.statement}</div>
-                          {c.supportingQuote && (
-                            <blockquote className="border-l-2 border-atlas-accent pl-2 italic text-atlas-muted">
-                              "{c.supportingQuote}"
-                            </blockquote>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => void openInNewTab(c.sourceUrl)}
-                            className="text-atlas-accent hover:underline truncate block max-w-full"
-                          >
-                            {c.sourceTitle}
-                          </button>
-                        </div>
-                      ))}
+                        ))}
                     </div>
                   )}
 
