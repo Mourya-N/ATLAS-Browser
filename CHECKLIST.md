@@ -1,4 +1,4 @@
-# Atlas Browser — Implementation Checklist
+# LAVRAY Browser — Implementation Checklist
 
 ## Stage 1 — Foundation
 - [x] `package.json`, `tsconfig.json`, TypeScript strict mode, Vite + Electron build setup

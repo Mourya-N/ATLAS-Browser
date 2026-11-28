@@ -1,9 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Search, X } from 'lucide-react';
-import { useAtlasStore } from '../store/useAtlasStore';
+import { useLavrayStore } from '../store/useLavrayStore';
 
 export const TabSearchModal: React.FC = () => {
-  const { tabSearchOpen, setTabSearchOpen, tabs, activeTabId } = useAtlasStore();
+  const { tabSearchOpen, setTabSearchOpen, tabs, activeTabId } = useLavrayStore();
   const [query, setQuery] = useState('');
   const dialogRef = useRef<HTMLDialogElement>(null);
 
@@ -35,10 +35,10 @@ export const TabSearchModal: React.FC = () => {
       onClick={(e) => {
         if (e.target === dialogRef.current) setTabSearchOpen(false);
       }}
-      className="atlas-glass w-full max-w-lg rounded-xl border border-atlas-border p-0 text-atlas-text shadow-atlas-float backdrop:bg-black/20"
+      className="lavray-glass w-full max-w-lg rounded-xl border border-lavray-border p-0 text-lavray-text shadow-lavray-float backdrop:bg-black/20"
     >
-      <div className="flex items-center gap-2.5 border-b border-atlas-border px-4 py-3">
-        <Search className="h-4 w-4 text-atlas-muted" strokeWidth={1.75} />
+      <div className="flex items-center gap-2.5 border-b border-lavray-border px-4 py-3">
+        <Search className="h-4 w-4 text-lavray-muted" strokeWidth={1.75} />
         <input
           autoFocus
           value={query}
@@ -49,7 +49,7 @@ export const TabSearchModal: React.FC = () => {
         <button
           type="button"
           onClick={() => setTabSearchOpen(false)}
-          className="rounded-lg p-1 text-atlas-muted hover:bg-atlas-shell hover:text-atlas-text"
+          className="rounded-lg p-1 text-lavray-muted hover:bg-lavray-shell hover:text-lavray-text"
           aria-label="Close"
         >
           <X className="h-4 w-4" />
@@ -61,25 +61,25 @@ export const TabSearchModal: React.FC = () => {
             key={tab.id}
             type="button"
             onClick={() => {
-              void window.atlas.activateTab(tab.id);
+              void window.lavray.activateTab(tab.id);
               setTabSearchOpen(false);
             }}
             className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs transition-colors ${
               tab.id === activeTabId
-                ? 'bg-atlas-accent/12 text-atlas-accent'
-                : 'hover:bg-atlas-shell text-atlas-text'
+                ? 'bg-lavray-accent/12 text-lavray-accent'
+                : 'hover:bg-lavray-shell text-lavray-text'
             }`}
           >
             <div className="min-w-0 flex-1">
               <div className="truncate font-medium">
-                {tab.customTitle || (tab.url === 'atlas://newtab' ? 'New Tab' : tab.title)}
+                {tab.customTitle || (tab.url === 'lavray://newtab' ? 'New Tab' : tab.title)}
               </div>
-              <div className="truncate text-[11px] text-atlas-muted">{tab.url}</div>
+              <div className="truncate text-[11px] text-lavray-muted">{tab.url}</div>
             </div>
           </button>
         ))}
         {filtered.length === 0 && (
-          <div className="py-8 text-center text-xs text-atlas-muted">No matching open tabs</div>
+          <div className="py-8 text-center text-xs text-lavray-muted">No matching open tabs</div>
         )}
       </div>
     </dialog>

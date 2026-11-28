@@ -66,7 +66,7 @@ export class ElementResolver {
   public async resolveTarget(
     tabId: string,
     webContents: WebContents,
-    target: { atlasId?: string; selector?: string; text?: string }
+    target: { lavrayId?: string; selector?: string; text?: string }
   ): Promise<ResolvedElementCheck> {
     const payload = JSON.stringify(target);
     const expr = `(() => {
@@ -91,8 +91,8 @@ export class ElementResolver {
       };
 
       let el = null;
-      if (target.atlasId) {
-        el = findDeep(document, (n) => n.getAttribute && n.getAttribute('data-atlas-id') === target.atlasId);
+      if (target.lavrayId) {
+        el = findDeep(document, (n) => n.getAttribute && n.getAttribute('data-lavray-id') === target.lavrayId);
       }
       if (!el && target.selector) {
         try {
@@ -188,7 +188,7 @@ export class ElementResolver {
         },
         isSensitiveField,
         isSensitiveAction,
-        confidence: (visible && !disabled && !coveredByOverlay ? 0.7 : 0.25) + (target.atlasId ? 0.25 : 0.15)
+        confidence: (visible && !disabled && !coveredByOverlay ? 0.7 : 0.25) + (target.lavrayId ? 0.25 : 0.15)
       };
     })()`;
 

@@ -1,9 +1,9 @@
--- Atlas Browser SQLite Migration 003
+-- LAVRAY Browser SQLite Migration 003
 -- Local-first First-Party Search Index (SQLite FTS5), Crawler Checkpoints & Local Search History
 
 PRAGMA foreign_keys = ON;
 
-CREATE TABLE IF NOT EXISTS atlas_index_documents (
+CREATE TABLE IF NOT EXISTS lavray_index_documents (
   id TEXT PRIMARY KEY,
   url TEXT NOT NULL,
   canonical_url TEXT NOT NULL UNIQUE,
@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS atlas_index_documents (
   embedding_json TEXT NOT NULL DEFAULT '[]'
 );
 
-CREATE VIRTUAL TABLE IF NOT EXISTS atlas_index_fts USING fts5(
+CREATE VIRTUAL TABLE IF NOT EXISTS lavray_index_fts USING fts5(
   canonical_url UNINDEXED,
   title,
   main_content,
@@ -31,8 +31,8 @@ CREATE VIRTUAL TABLE IF NOT EXISTS atlas_index_fts USING fts5(
   tokenize = 'porter unicode61'
 );
 
-CREATE INDEX IF NOT EXISTS idx_local_atlas_domain ON atlas_index_documents(source_domain);
-CREATE INDEX IF NOT EXISTS idx_local_atlas_hash ON atlas_index_documents(content_hash);
+CREATE INDEX IF NOT EXISTS idx_local_lavray_domain ON lavray_index_documents(source_domain);
+CREATE INDEX IF NOT EXISTS idx_local_lavray_hash ON lavray_index_documents(content_hash);
 
 CREATE TABLE IF NOT EXISTS crawl_checkpoints (
   id TEXT PRIMARY KEY,

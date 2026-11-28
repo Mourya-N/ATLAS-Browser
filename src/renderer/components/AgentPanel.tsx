@@ -28,8 +28,9 @@ import {
   XCircle
 } from 'lucide-react';
 import type { AgentMode, AgentStep } from '@shared/types';
-import { useAtlasStore } from '../store/useAtlasStore';
+import { useLavrayStore } from '../store/useLavrayStore';
 import { AgentMessageContent } from './AgentMessageContent';
+import { HayaMark } from './BrandMarks';
 
 const SLASH_HINTS = [
   { cmd: '/summarize', desc: 'Summarize active page' },
@@ -86,7 +87,7 @@ export const AgentPanel: React.FC = () => {
     setProactiveSuggestions,
     pushToast,
     setOverlayView
-  } = useAtlasStore();
+  } = useLavrayStore();
 
   const [goalInput, setGoalInput] = useState('');
   const [recording, setRecording] = useState(false);
@@ -148,7 +149,7 @@ export const AgentPanel: React.FC = () => {
     if (!activeRun) return;
     for (const step of activeRun.steps) {
       if (step.screenshotPath && !stepScreenshots[step.id]) {
-        void window.atlas.readScreenshotDataUrl(step.screenshotPath).then((url) => {
+        void window.lavray.readScreenshotDataUrl(step.screenshotPath).then((url) => {
           if (url) setStepScreenshots((prev) => ({ ...prev, [step.id]: url }));
         });
       }
@@ -158,7 +159,7 @@ export const AgentPanel: React.FC = () => {
   if (!agentPanelOpen) return null;
 
   const activeTab = tabs.find((t) => t.id === activeTabId) ?? null;
-  const isNewTab = !activeTab?.url || activeTab.url === 'about:blank' || activeTab.url === 'atlas://newtab';
+  const isNewTab = !activeTab?.url || activeTab.url === 'about:blank' || activeTab.url === 'lavray://newtab';
   const activeHost = (() => {
     if (isNewTab || !activeTab?.url) return '';
     try {
@@ -177,14 +178,14 @@ export const AgentPanel: React.FC = () => {
     if (!goal || !activeConversationId) return;
     window.speechSynthesis?.cancel();
     setSpeaking(false);
-    await window.atlas.startAgentRun({
+    await window.lavray.startAgentRun({
       conversationId: activeConversationId,
       tabId: activeTabId,
       goal,
       mode: overrideMode ?? agentMode,
       selectedTabIds: selectedContextTabIds.length > 0 ? selectedContextTabIds : undefined
     });
-    const refreshed = await window.atlas.getMessages(activeConversationId);
+    const refreshed = await window.lavray.getMessages(activeConversationId);
     setMessages(refreshed);
   };
 
@@ -225,7 +226,7 @@ export const AgentPanel: React.FC = () => {
           .join(' ')
           .trim();
         if (/^(stop|cancel|abort|halt)(\s+agent|\s+task)?$/i.test(transcript) && activeRun && isRunning) {
-          void window.atlas.stopAgentRun(activeRun.id);
+          void window.lavray.stopAgentRun(activeRun.id);
           rec.stop();
           setRecording(false);
           pushToast('Voice command stopped active run', 'warning');
@@ -249,13 +250,13 @@ export const AgentPanel: React.FC = () => {
 
   const handleSaveSkill = async () => {
     if (!activeRun) return;
-    const skill = await window.atlas.recordSkillFromRun(activeRun.id);
+    const skill = await window.lavray.recordSkillFromRun(activeRun.id);
     pushToast(`Saved skill "${skill.name}"`, 'success');
   };
 
   const handleNewConversation = async () => {
-    const conv = await window.atlas.createConversation(`Session ${conversations.length + 1}`);
-    const list = await window.atlas.listConversations();
+    const conv = await window.lavray.createConversation(`Session ${conversations.length + 1}`);
+    const list = await window.lavray.listConversations();
     setConversations(list);
     setActiveConversationId(conv.id);
     setMessages([]);
@@ -263,7 +264,7 @@ export const AgentPanel: React.FC = () => {
 
   const handleClear = async () => {
     if (!activeConversationId) return;
-    await window.atlas.clearConversation(activeConversationId);
+    await window.lavray.clearConversation(activeConversationId);
     setMessages([]);
   };
 
@@ -277,22 +278,22 @@ export const AgentPanel: React.FC = () => {
   );
 
   return (
-    <aside className="flex h-full w-[372px] shrink-0 flex-col border-l border-atlas-border bg-atlas-surface text-atlas-text select-text">
+    <aside className="flex h-full w-[372px] shrink-0 flex-col border-l border-lavray-border bg-lavray-surface text-lavray-text select-text">
       {/* Quiet Header */}
-      <div className="flex h-10 items-center justify-between border-b border-atlas-border px-3">
+      <div className="flex h-10 items-center justify-between border-b border-lavray-border px-3">
         <select
           aria-label="Active Agent Conversation"
           value={activeConversationId || ''}
           onChange={async (e) => {
             const id = e.target.value;
             setActiveConversationId(id);
-            const msgs = await window.atlas.getMessages(id);
+            const msgs = await window.lavray.getMessages(id);
             setMessages(msgs);
           }}
-          className="max-w-[210px] truncate rounded-md bg-transparent px-1 py-1 text-[12.5px] font-semibold text-atlas-text hover:bg-atlas-shell outline-none cursor-pointer transition-colors"
+          className="max-w-[210px] truncate rounded-md bg-transparent px-1 py-1 text-[12.5px] font-semibold text-lavray-text hover:bg-lavray-shell outline-none cursor-pointer transition-colors"
         >
           {conversations.map((c) => (
-            <option key={c.id} value={c.id} className="bg-atlas-surface text-atlas-text">
+            <option key={c.id} value={c.id} className="bg-lavray-surface text-lavray-text">
               {c.title}
             </option>
           ))}
@@ -304,7 +305,7 @@ export const AgentPanel: React.FC = () => {
             onClick={() => void handleNewConversation()}
             title="New Conversation"
             aria-label="New Conversation"
-            className="rounded-md p-1.5 text-atlas-muted hover:bg-atlas-shell hover:text-atlas-text transition-colors"
+            className="rounded-md p-1.5 text-lavray-muted hover:bg-lavray-shell hover:text-lavray-text transition-colors"
           >
             <Plus className="h-3.5 w-3.5" strokeWidth={1.75} />
           </button>
@@ -313,16 +314,16 @@ export const AgentPanel: React.FC = () => {
             onClick={() => void handleClear()}
             title="Clear Conversation"
             aria-label="Clear Conversation"
-            className="rounded-md p-1.5 text-atlas-muted hover:bg-atlas-shell hover:text-atlas-danger transition-colors"
+            className="rounded-md p-1.5 text-lavray-muted hover:bg-lavray-shell hover:text-lavray-danger transition-colors"
           >
             <Trash2 className="h-3.5 w-3.5" strokeWidth={1.75} />
           </button>
           <button
             type="button"
             onClick={() => setAgentPanelOpen(false)}
-            title="Close Assistant Panel"
-            aria-label="Close Assistant Panel"
-            className="rounded-md p-1.5 text-atlas-muted hover:bg-atlas-shell hover:text-atlas-text transition-colors"
+            title="Close HAYA Panel"
+            aria-label="Close HAYA Panel"
+            className="rounded-md p-1.5 text-lavray-muted hover:bg-lavray-shell hover:text-lavray-text transition-colors"
           >
             <X className="h-3.5 w-3.5" strokeWidth={1.75} />
           </button>
@@ -330,8 +331,8 @@ export const AgentPanel: React.FC = () => {
       </div>
 
       {/* Mode Tabs */}
-      <div className="border-b border-atlas-border px-3 pt-1.5 pb-2 space-y-1.5">
-        <div className="flex items-center gap-4 border-b border-atlas-border/80">
+      <div className="border-b border-lavray-border px-3 pt-1.5 pb-2 space-y-1.5">
+        <div className="flex items-center gap-4 border-b border-lavray-border/80">
           {(['ask', 'assist', 'agent', 'takeover'] as AgentMode[]).map((m) => {
             const active = agentMode === m;
             return (
@@ -342,48 +343,48 @@ export const AgentPanel: React.FC = () => {
                   setAgentMode(m);
                   if (activeRun && isRunning) {
                     if (m === 'takeover') {
-                      await window.atlas.takeoverAgentRun(activeRun.id);
+                      await window.lavray.takeoverAgentRun(activeRun.id);
                     } else {
-                      await window.atlas.setAgentMode(activeRun.id, m);
+                      await window.lavray.setAgentMode(activeRun.id, m);
                     }
                   }
                 }}
                 className={`relative pb-1.5 text-[12px] font-medium capitalize transition-colors ${
-                  active ? 'text-atlas-accent font-semibold' : 'text-atlas-muted hover:text-atlas-text'
+                  active ? 'text-lavray-accent font-semibold' : 'text-lavray-muted hover:text-lavray-text'
                 }`}
               >
                 {m}
                 {active && (
-                  <span className="absolute bottom-[-1px] left-0 right-0 h-[2px] rounded-full bg-atlas-accent" />
+                  <span className="absolute bottom-[-1px] left-0 right-0 h-[2px] rounded-full bg-lavray-accent" />
                 )}
               </button>
             );
           })}
         </div>
-        <div className="text-[11px] text-atlas-muted leading-snug">{MODE_DESCRIPTIONS[agentMode]}</div>
+        <div className="text-[11px] text-lavray-muted leading-snug">{MODE_DESCRIPTIONS[agentMode]}</div>
       </div>
 
       {/* Browser Context Strip */}
-      <div className="border-b border-atlas-border bg-atlas-shell/45 px-3 py-2 space-y-1.5">
+      <div className="border-b border-lavray-border bg-lavray-shell/45 px-3 py-2 space-y-1.5">
         <div className="flex items-center justify-between gap-2 text-[11.5px]">
           <div className="flex items-center gap-1.5 min-w-0">
             {activeTab?.isPrivate ? (
               <>
-                <Lock className="h-3 w-3 shrink-0 text-atlas-muted" strokeWidth={1.75} />
-                <span className="truncate font-medium text-atlas-secondary">Private tab — isolated</span>
+                <Lock className="h-3 w-3 shrink-0 text-lavray-muted" strokeWidth={1.75} />
+                <span className="truncate font-medium text-lavray-secondary">Private tab — isolated</span>
               </>
             ) : (
               <>
                 {activeTab?.favicon ? (
                   <img src={activeTab.favicon} alt="" className="h-3.5 w-3.5 shrink-0 rounded-[3px]" />
                 ) : (
-                  <Globe className="h-3.5 w-3.5 shrink-0 text-atlas-muted" strokeWidth={1.75} />
+                  <Globe className="h-3.5 w-3.5 shrink-0 text-lavray-muted" strokeWidth={1.75} />
                 )}
-                <span className="truncate font-medium text-atlas-text">
-                  {isNewTab ? 'Atlas Start Page' : activeTab?.title || activeHost}
+                <span className="truncate font-medium text-lavray-text">
+                  {isNewTab ? 'LAVRAY Start Page' : activeTab?.title || activeHost}
                 </span>
                 {activeHost && (
-                  <span className="shrink-0 font-mono text-[10.5px] text-atlas-muted">{activeHost}</span>
+                  <span className="shrink-0 font-mono text-[10.5px] text-lavray-muted">{activeHost}</span>
                 )}
               </>
             )}
@@ -391,7 +392,7 @@ export const AgentPanel: React.FC = () => {
           <button
             type="button"
             onClick={() => setOverlayView('intelligence')}
-            className="shrink-0 text-[11px] font-medium text-atlas-accent hover:underline"
+            className="shrink-0 text-[11px] font-medium text-lavray-accent hover:underline"
             title="Select tab context and open Research Workspace"
           >
             {scopeCount} {scopeCount === 1 ? 'tab' : 'tabs'}
@@ -430,27 +431,27 @@ export const AgentPanel: React.FC = () => {
 
       {/* Compact Execution Status Strip */}
       {activeRun && (
-        <div className="flex items-center justify-between gap-2 border-b border-atlas-border bg-atlas-bg/65 px-3 py-2 text-xs">
+        <div className="flex items-center justify-between gap-2 border-b border-lavray-border bg-lavray-bg/65 px-3 py-2 text-xs">
           <div className="flex items-center gap-2 min-w-0">
             <span
               className={`h-2 w-2 shrink-0 rounded-full ${
                 isRunning
-                  ? 'bg-atlas-accent animate-pulse'
+                  ? 'bg-lavray-accent animate-pulse'
                   : activeRun.status === 'completed'
-                  ? 'bg-atlas-success'
+                  ? 'bg-lavray-success'
                   : activeRun.status === 'failed'
-                  ? 'bg-atlas-danger'
-                  : 'bg-atlas-warning'
+                  ? 'bg-lavray-danger'
+                  : 'bg-lavray-warning'
               }`}
             />
-            <span className="text-[11.5px] font-semibold text-atlas-text truncate">
+            <span className="text-[11.5px] font-semibold text-lavray-text truncate">
               {activeRun.status === 'awaiting_confirmation' || activeRun.status === 'awaiting_hitl'
                 ? 'Awaiting approval'
                 : activeRun.status === 'paused'
                 ? 'Paused (Takeover)'
                 : activeRun.status.charAt(0).toUpperCase() + activeRun.status.slice(1).replace(/_/g, ' ')}
             </span>
-            <span className="text-[10.5px] text-atlas-muted">
+            <span className="text-[10.5px] text-lavray-muted">
               · {(activeRun.totalInputTokens + activeRun.totalOutputTokens).toLocaleString()} tok
             </span>
           </div>
@@ -459,9 +460,9 @@ export const AgentPanel: React.FC = () => {
             {isRunning && activeRun.status !== 'paused' && activeRun.status !== 'awaiting_hitl' && (
               <button
                 type="button"
-                onClick={() => void window.atlas.pauseAgentRun(activeRun.id)}
+                onClick={() => void window.lavray.pauseAgentRun(activeRun.id)}
                 title="Pause Run"
-                className="rounded-md border border-atlas-border bg-atlas-surface p-1 text-atlas-muted hover:text-atlas-text"
+                className="rounded-md border border-lavray-border bg-lavray-surface p-1 text-lavray-muted hover:text-lavray-text"
               >
                 <Pause className="h-3 w-3" />
               </button>
@@ -469,9 +470,9 @@ export const AgentPanel: React.FC = () => {
             {(activeRun.status === 'paused' || activeRun.status === 'awaiting_hitl') && (
               <button
                 type="button"
-                onClick={() => void window.atlas.resumeAgentRun(activeRun.id)}
+                onClick={() => void window.lavray.resumeAgentRun(activeRun.id)}
                 title="Resume Run"
-                className="rounded-md border border-atlas-success/40 bg-atlas-success/10 p-1 text-atlas-success"
+                className="rounded-md border border-lavray-success/40 bg-lavray-success/10 p-1 text-lavray-success"
               >
                 <Play className="h-3 w-3" />
               </button>
@@ -480,17 +481,17 @@ export const AgentPanel: React.FC = () => {
               <>
                 <button
                   type="button"
-                  onClick={() => void window.atlas.takeoverAgentRun(activeRun.id)}
+                  onClick={() => void window.lavray.takeoverAgentRun(activeRun.id)}
                   title="Take Manual Control"
-                  className="rounded-md border border-atlas-warning/40 bg-atlas-warning/10 p-1 text-atlas-warning"
+                  className="rounded-md border border-lavray-warning/40 bg-lavray-warning/10 p-1 text-lavray-warning"
                 >
                   <Hand className="h-3 w-3" />
                 </button>
                 <button
                   type="button"
-                  onClick={() => void window.atlas.stopAgentRun(activeRun.id)}
+                  onClick={() => void window.lavray.stopAgentRun(activeRun.id)}
                   title="Stop Agent"
-                  className="rounded-md border border-atlas-danger/40 bg-atlas-danger/10 p-1 text-atlas-danger"
+                  className="rounded-md border border-lavray-danger/40 bg-lavray-danger/10 p-1 text-lavray-danger"
                 >
                   <Square className="h-3 w-3" />
                 </button>
@@ -501,7 +502,7 @@ export const AgentPanel: React.FC = () => {
                 type="button"
                 onClick={() => void handleSaveSkill()}
                 title="Save as Skill"
-                className="flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium text-atlas-accent hover:bg-atlas-accent/10"
+                className="flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium text-lavray-accent hover:bg-lavray-accent/10"
               >
                 <Save className="h-3 w-3" /> Save Skill
               </button>
@@ -511,7 +512,7 @@ export const AgentPanel: React.FC = () => {
                 type="button"
                 onClick={() => void runGoal(activeRun.goal)}
                 title="Retry Task"
-                className="flex items-center gap-1 rounded-md border border-atlas-border bg-atlas-surface px-2 py-0.5 text-[11px] font-medium text-atlas-text hover:bg-atlas-shell"
+                className="flex items-center gap-1 rounded-md border border-lavray-border bg-lavray-surface px-2 py-0.5 text-[11px] font-medium text-lavray-text hover:bg-lavray-shell"
               >
                 <RefreshCw className="h-3 w-3" /> Retry
               </button>
@@ -523,21 +524,21 @@ export const AgentPanel: React.FC = () => {
       {/* Editorial Conversation & Progress Timeline */}
       <div className="flex-1 overflow-y-auto px-3.5 py-3 space-y-4">
         {activeRun && (activeRun.subgoals.length > 0 || subAgentList.length > 0) && (
-          <div className="space-y-1.5 border-b border-atlas-border pb-3">
+          <div className="space-y-1.5 border-b border-lavray-border pb-3">
             {activeRun.subgoals.map((sg) => (
               <div key={sg.id} className="flex items-start gap-1.5 text-[11.5px]">
                 {sg.status === 'completed' ? (
-                  <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-atlas-success mt-0.5" />
+                  <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-lavray-success mt-0.5" />
                 ) : sg.status === 'failed' ? (
-                  <XCircle className="h-3.5 w-3.5 shrink-0 text-atlas-danger mt-0.5" />
+                  <XCircle className="h-3.5 w-3.5 shrink-0 text-lavray-danger mt-0.5" />
                 ) : (
                   <span
                     className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${
-                      sg.status === 'in_progress' ? 'bg-atlas-accent animate-pulse' : 'bg-atlas-border-strong'
+                      sg.status === 'in_progress' ? 'bg-lavray-accent animate-pulse' : 'bg-lavray-border-strong'
                     }`}
                   />
                 )}
-                <span className={sg.status === 'completed' ? 'text-atlas-muted line-through' : 'text-atlas-text'}>
+                <span className={sg.status === 'completed' ? 'text-lavray-muted line-through' : 'text-lavray-text'}>
                   {sg.description}
                 </span>
               </div>
@@ -545,13 +546,13 @@ export const AgentPanel: React.FC = () => {
 
             {subAgentList.length > 0 && (
               <div className="pt-1.5 space-y-1">
-                <div className="text-[10px] font-semibold uppercase tracking-wider text-atlas-muted">
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-lavray-muted">
                   Parallel Sub-Tasks
                 </div>
                 {subAgentList.map((sa) => (
                   <div key={sa.subAgentId} className="flex items-center justify-between text-[11px]">
-                    <span className="truncate flex-1 text-atlas-secondary">{sa.task}</span>
-                    <span className="ml-2 shrink-0 font-mono text-[10px] text-atlas-muted uppercase">
+                    <span className="truncate flex-1 text-lavray-secondary">{sa.task}</span>
+                    <span className="ml-2 shrink-0 font-mono text-[10px] text-lavray-muted uppercase">
                       {sa.status}
                     </span>
                   </div>
@@ -562,10 +563,16 @@ export const AgentPanel: React.FC = () => {
         )}
         {messages.length === 0 && !activeRun && (
           <div className="py-6 space-y-3">
-            <p className="text-[12.5px] leading-relaxed text-atlas-secondary">
-              Ask questions grounded in open tabs, synthesize research reports, or instruct multi-step browser tasks with approval gates.
-            </p>
-            <div className="flex flex-wrap gap-x-3 gap-y-1.5 text-[12px] font-mono text-atlas-accent">
+            <div className="space-y-1">
+              <div className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-lavray-accent">
+                <HayaMark className="h-3.5 w-3.5" />
+                <span>HAYA · HAYAGRIVA</span>
+              </div>
+              <p className="text-[12.5px] leading-relaxed text-lavray-secondary">
+                Ask HAYA questions grounded in open tabs, synthesize research reports, or instruct multi-step browser tasks with approval gates.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-x-3 gap-y-1.5 text-[12px] font-mono text-lavray-accent">
               {['/summarize', '/extract', '/compare', '/research'].map((cmd) => (
                 <button
                   key={cmd}
@@ -583,14 +590,17 @@ export const AgentPanel: React.FC = () => {
         {messages.map((m) =>
           m.role === 'user' ? (
             <div key={m.id} className="flex justify-end">
-              <div className="max-w-[88%] rounded-xl border border-atlas-border bg-atlas-shell px-3 py-2 text-[13px] leading-relaxed text-atlas-text whitespace-pre-wrap [overflow-wrap:anywhere]">
+              <div className="max-w-[88%] rounded-xl border border-lavray-border bg-lavray-shell px-3 py-2 text-[13px] leading-relaxed text-lavray-text whitespace-pre-wrap [overflow-wrap:anywhere]">
                 {m.content}
               </div>
             </div>
           ) : (
-            <div key={m.id} className="space-y-1 border-l-2 border-atlas-border pl-3">
-              <div className="text-[10.5px] font-semibold uppercase tracking-wider text-atlas-muted">
-                Atlas
+            <div key={m.id} className="space-y-1 border-l-2 border-lavray-border pl-3">
+              <div
+                title="HAYAGRIVA AI Agent"
+                className="text-[10.5px] font-semibold uppercase tracking-wider text-lavray-muted"
+              >
+                HAYA
               </div>
               <AgentMessageContent content={m.content} />
             </div>
@@ -599,12 +609,12 @@ export const AgentPanel: React.FC = () => {
 
         {/* Collapsible Tool Execution Log */}
         {activeRun && activeRun.steps.length > 0 && (
-          <div className="border-t border-atlas-border pt-2.5">
+          <div className="border-t border-lavray-border pt-2.5">
             <div className="flex items-center justify-between">
               <button
                 type="button"
                 onClick={() => setTimelineCollapsed((c) => !c)}
-                className="flex items-center gap-1.5 text-[11px] font-semibold text-atlas-secondary hover:text-atlas-text"
+                className="flex items-center gap-1.5 text-[11px] font-semibold text-lavray-secondary hover:text-lavray-text"
               >
                 {timelineCollapsed ? (
                   <ChevronRight className="h-3.5 w-3.5" />
@@ -616,40 +626,40 @@ export const AgentPanel: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setOverlayView('runs', activeRun.id)}
-                className="text-[11px] font-medium text-atlas-accent hover:underline"
+                className="text-[11px] font-medium text-lavray-accent hover:underline"
               >
                 Replay
               </button>
             </div>
 
             {!timelineCollapsed && (
-              <div className="mt-2 space-y-2 border-l border-atlas-border pl-2.5">
+              <div className="mt-2 space-y-2 border-l border-lavray-border pl-2.5">
                 {activeRun.steps.map((step: AgentStep) => (
                   <div key={step.id} className="space-y-0.5 text-[11.5px]">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="font-mono text-[11px] font-medium text-atlas-text truncate">
+                      <span className="font-mono text-[11px] font-medium text-lavray-text truncate">
                         #{step.stepIndex} {step.summary}
                       </span>
                       <span
                         className={`shrink-0 text-[10px] font-semibold uppercase ${
                           step.verificationOutcome === 'passed'
-                            ? 'text-atlas-success'
+                            ? 'text-lavray-success'
                             : step.verificationOutcome === 'failed'
-                            ? 'text-atlas-danger'
-                            : 'text-atlas-muted'
+                            ? 'text-lavray-danger'
+                            : 'text-lavray-muted'
                         }`}
                       >
                         {step.verificationOutcome || step.phase}
                       </span>
                     </div>
-                    <p className="text-atlas-muted leading-snug [overflow-wrap:anywhere]">
+                    <p className="text-lavray-muted leading-snug [overflow-wrap:anywhere]">
                       {step.decisionExplanation}
                     </p>
                     {step.evidence && (
-                      <p className="font-mono text-[10.5px] text-atlas-muted/85 truncate">{step.evidence}</p>
+                      <p className="font-mono text-[10.5px] text-lavray-muted/85 truncate">{step.evidence}</p>
                     )}
                     {step.injectionWarnings.length > 0 && (
-                      <div className="flex items-center gap-1 text-[10.5px] text-atlas-warning">
+                      <div className="flex items-center gap-1 text-[10.5px] text-lavray-warning">
                         <ShieldAlert className="h-3 w-3 shrink-0" />
                         <span>Untrusted prompt text isolated</span>
                       </div>
@@ -658,7 +668,7 @@ export const AgentPanel: React.FC = () => {
                       <img
                         src={stepScreenshots[step.id]}
                         alt={`Step ${step.stepIndex}`}
-                        className="mt-1 max-h-24 w-full rounded-lg border border-atlas-border object-cover"
+                        className="mt-1 max-h-24 w-full rounded-lg border border-lavray-border object-cover"
                       />
                     )}
                   </div>
@@ -669,16 +679,16 @@ export const AgentPanel: React.FC = () => {
         )}
 
         {streamBuffer && (
-          <div className="space-y-1 border-l-2 border-atlas-accent pl-3">
-            <div className="text-[10.5px] font-semibold uppercase tracking-wider text-atlas-accent">
-              Atlas · Writing
+          <div className="space-y-1 border-l-2 border-lavray-accent pl-3">
+            <div className="text-[10.5px] font-semibold uppercase tracking-wider text-lavray-accent">
+              HAYA · Writing
             </div>
             <AgentMessageContent content={streamBuffer} />
           </div>
         )}
 
         {activeRun?.failureReason && activeRun.status !== 'completed' && (
-          <div className="flex items-start gap-2 rounded-lg border border-atlas-danger/35 bg-atlas-danger/8 p-2.5 text-[12px] text-atlas-danger [overflow-wrap:anywhere]">
+          <div className="flex items-start gap-2 rounded-lg border border-lavray-danger/35 bg-lavray-danger/8 p-2.5 text-[12px] text-lavray-danger [overflow-wrap:anywhere]">
             <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
             <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">{activeRun.failureReason}</span>
           </div>
@@ -688,7 +698,7 @@ export const AgentPanel: React.FC = () => {
       </div>
 
       {/* Focused Composer */}
-      <form onSubmit={(e) => void handleSubmit(e)} className="border-t border-atlas-border bg-atlas-shell/40 p-2.5 space-y-2">
+      <form onSubmit={(e) => void handleSubmit(e)} className="border-t border-lavray-border bg-lavray-shell/40 p-2.5 space-y-2">
         {goalInput.startsWith('/') && (
           <div className="flex flex-wrap gap-1">
             {SLASH_HINTS.filter((h) => h.cmd.startsWith(goalInput.split(' ')[0])).map((h) => (
@@ -696,7 +706,7 @@ export const AgentPanel: React.FC = () => {
                 key={h.cmd}
                 type="button"
                 onClick={() => setGoalInput(`${h.cmd} `)}
-                className="rounded-md border border-atlas-border bg-atlas-surface px-2 py-0.5 text-[11px] text-atlas-accent hover:bg-atlas-shell"
+                className="rounded-md border border-lavray-border bg-lavray-surface px-2 py-0.5 text-[11px] text-lavray-accent hover:bg-lavray-shell"
               >
                 {h.cmd}
               </button>
@@ -705,15 +715,15 @@ export const AgentPanel: React.FC = () => {
         )}
 
         {skillSuggestion && (
-          <div className="rounded-lg border border-atlas-border bg-atlas-surface p-2.5 text-xs space-y-1.5">
-            <div className="font-medium text-atlas-text">
+          <div className="rounded-lg border border-lavray-border bg-lavray-surface p-2.5 text-xs space-y-1.5">
+            <div className="font-medium text-lavray-text">
               Save &ldquo;{skillSuggestion.suggestedName}&rdquo; as reusable skill?
             </div>
             <div className="flex gap-2">
               <button
                 type="button"
                 onClick={async () => {
-                  const saved = await window.atlas.recordSkillFromRun(
+                  const saved = await window.lavray.recordSkillFromRun(
                     skillSuggestion.runId,
                     skillSuggestion.suggestedName,
                     skillSuggestion.description
@@ -721,14 +731,14 @@ export const AgentPanel: React.FC = () => {
                   setSkillSuggestion(null);
                   pushToast(`Saved skill "${saved.name}"`, 'success');
                 }}
-                className="rounded-md bg-atlas-accent px-2.5 py-1 text-[11px] font-medium text-atlas-accent-fg"
+                className="rounded-md bg-lavray-accent px-2.5 py-1 text-[11px] font-medium text-lavray-accent-fg"
               >
                 Save Skill
               </button>
               <button
                 type="button"
                 onClick={() => setSkillSuggestion(null)}
-                className="rounded-md border border-atlas-border px-2.5 py-1 text-[11px] text-atlas-secondary hover:bg-atlas-shell"
+                className="rounded-md border border-lavray-border px-2.5 py-1 text-[11px] text-lavray-secondary hover:bg-lavray-shell"
               >
                 Dismiss
               </button>
@@ -741,9 +751,9 @@ export const AgentPanel: React.FC = () => {
             {proactiveSuggestions.map((ps) => (
               <div
                 key={ps.id}
-                className="flex items-center justify-between gap-2 rounded-lg border border-atlas-border bg-atlas-surface px-2.5 py-1.5 text-[11px]"
+                className="flex items-center justify-between gap-2 rounded-lg border border-lavray-border bg-lavray-surface px-2.5 py-1.5 text-[11px]"
               >
-                <span className="truncate font-medium text-atlas-text">{ps.title}</span>
+                <span className="truncate font-medium text-lavray-text">{ps.title}</span>
                 <button
                   type="button"
                   onClick={async () => {
@@ -751,10 +761,10 @@ export const AgentPanel: React.FC = () => {
                     if (ps.payload.command && activeConversationId) {
                       await runGoal(String(ps.payload.command), 'ask');
                     } else if (ps.payload.runId) {
-                      await window.atlas.resumeCheckpoint(String(ps.payload.runId));
+                      await window.lavray.resumeCheckpoint(String(ps.payload.runId));
                     }
                   }}
-                  className="shrink-0 font-medium text-atlas-accent hover:underline"
+                  className="shrink-0 font-medium text-lavray-accent hover:underline"
                 >
                   {ps.actionLabel}
                 </button>
@@ -763,9 +773,9 @@ export const AgentPanel: React.FC = () => {
           </div>
         )}
 
-        {voiceError && <div className="text-[11px] text-atlas-warning px-1">{voiceError}</div>}
+        {voiceError && <div className="text-[11px] text-lavray-warning px-1">{voiceError}</div>}
 
-        <div className="rounded-xl border border-atlas-border bg-atlas-surface px-2.5 py-2 focus-within:border-atlas-accent/75 focus-within:ring-2 focus-within:ring-atlas-accent/15 transition-all">
+        <div className="rounded-xl border border-lavray-border bg-lavray-surface px-2.5 py-2 focus-within:border-lavray-accent/75 focus-within:ring-2 focus-within:ring-lavray-accent/15 transition-all">
           <textarea
             rows={2}
             value={goalInput}
@@ -776,31 +786,27 @@ export const AgentPanel: React.FC = () => {
                 void handleSubmit(e);
               }
             }}
-            placeholder={`Instruct Atlas (${agentMode}, / for commands)...`}
-            className="w-full resize-none bg-transparent text-[13px] leading-relaxed text-atlas-text placeholder:text-atlas-muted outline-none"
+            placeholder={`Ask HAYA (${agentMode}, / for commands)...`}
+            className="w-full resize-none bg-transparent text-[13px] leading-relaxed text-lavray-text placeholder:text-lavray-muted outline-none"
           />
-          <div className="mt-1 flex items-center justify-between pt-1.5 border-t border-atlas-border/70">
+          <div className="mt-1 flex items-center justify-between pt-1.5 border-t border-lavray-border/70">
             <button
               type="button"
               onClick={() => setOverlayView('settings')}
               title={providerStatus?.warning || 'AI Provider Settings'}
-              className="flex items-center gap-1.5 text-[11px] text-atlas-muted hover:text-atlas-text transition-colors"
+              className="flex items-center gap-1.5 text-[11px] text-lavray-muted hover:text-lavray-text transition-colors"
             >
               <span
                 className={`h-1.5 w-1.5 rounded-full ${
                   providerConfigured
                     ? providerStatus?.isLive
-                      ? 'bg-atlas-success'
-                      : 'bg-atlas-muted'
-                    : 'bg-atlas-warning'
+                      ? 'bg-lavray-success'
+                      : 'bg-lavray-muted'
+                    : 'bg-lavray-warning'
                 }`}
               />
               <span className="truncate max-w-[180px]">
-                {providerConfigured
-                  ? providerStatus?.isLive
-                    ? providerStatus.model
-                    : 'Offline Mock'
-                  : 'Configure Provider'}
+                {providerConfigured ? providerStatus?.model || 'qwen2.5:3b' : 'Configure Model'}
               </span>
             </button>
 
@@ -810,13 +816,13 @@ export const AgentPanel: React.FC = () => {
                   type="button"
                   onClick={stopSpeaking}
                   title="Stop speaking"
-                  className="rounded-md p-1 text-atlas-warning hover:bg-atlas-shell"
+                  className="rounded-md p-1 text-lavray-warning hover:bg-lavray-shell"
                 >
                   <VolumeX className="h-3.5 w-3.5" />
                 </button>
               )}
               {!speaking && settings?.voiceSpokenResponsesEnabled && (
-                <Volume2 className="h-3.5 w-3.5 text-atlas-muted mr-1" aria-label="Voice output active" />
+                <Volume2 className="h-3.5 w-3.5 text-lavray-muted mr-1" aria-label="Voice output active" />
               )}
               <button
                 type="button"
@@ -825,8 +831,8 @@ export const AgentPanel: React.FC = () => {
                 title={voiceSupported ? `Voice input (${micPermission})` : 'Voice input unsupported'}
                 className={`rounded-md p-1.5 transition-colors ${
                   recording
-                    ? 'bg-atlas-danger text-white'
-                    : 'text-atlas-muted hover:bg-atlas-shell hover:text-atlas-text disabled:opacity-30'
+                    ? 'bg-lavray-danger text-white'
+                    : 'text-lavray-muted hover:bg-lavray-shell hover:text-lavray-text disabled:opacity-30'
                 }`}
               >
                 {recording ? <MicOff className="h-3.5 w-3.5" /> : <Mic className="h-3.5 w-3.5" />}
@@ -834,8 +840,8 @@ export const AgentPanel: React.FC = () => {
               <button
                 type="submit"
                 disabled={!goalInput.trim()}
-                className="rounded-lg bg-atlas-accent p-1.5 text-atlas-accent-fg hover:opacity-90 disabled:opacity-30 transition-opacity"
-                aria-label="Send goal to Atlas"
+                className="rounded-lg bg-lavray-accent p-1.5 text-lavray-accent-fg hover:opacity-90 disabled:opacity-30 transition-opacity"
+                aria-label="Send goal to HAYA"
               >
                 <Send className="h-3.5 w-3.5" />
               </button>
@@ -857,9 +863,9 @@ const QuickActionLink: React.FC<{
     type="button"
     disabled={disabled}
     onClick={onClick}
-    className="inline-flex items-center gap-1 font-medium text-atlas-secondary hover:text-atlas-accent disabled:opacity-40 disabled:pointer-events-none transition-colors"
+    className="inline-flex items-center gap-1 font-medium text-lavray-secondary hover:text-lavray-accent disabled:opacity-40 disabled:pointer-events-none transition-colors"
   >
-    <span className="text-atlas-accent">{icon}</span>
+    <span className="text-lavray-accent">{icon}</span>
     <span>{label}</span>
   </button>
 );

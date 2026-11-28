@@ -57,7 +57,7 @@ export class AgentPlanner {
     const resp = await provider.generate({
       model: params.model,
       systemInstruction:
-        'You are the Atlas Browser Planner. Decompose the user goal into concise, verifiable subgoals. Never include private chain-of-thought. If the task naturally splits into independent parallel research tasks across multiple sources or tabs, list them in parallelSubtasks; otherwise leave parallelSubtasks empty.',
+        'You are the HAYAGRIVA (HAYA) Browser Planner for LAVRAY. Decompose the user goal into concise, verifiable subgoals. Never include private chain-of-thought. If the task naturally splits into independent parallel research tasks across multiple sources or tabs, list them in parallelSubtasks; otherwise leave parallelSubtasks empty.',
       messages: [
         {
           role: 'user',

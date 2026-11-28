@@ -1,12 +1,12 @@
 {
-  "name": "atlas-browser",
+  "name": "lavray-browser",
   "version": "1.0.0",
-  "description": "Atlas Browser — AI-Native Desktop Browser with Autonomous Agent Capabilities",
+  "description": "LAVRAY Browser — AI-Native Desktop Browser powered by HAYAGRIVA (HAYA) Autonomous Agent",
   "main": "dist/main/index.js",
   "engines": {
     "node": ">=22.12.0"
   },
-  "author": "Atlas Browser Team",
+  "author": "LAVRAY Browser Team",
   "license": "MIT",
   "scripts": {
     "dev": "node scripts/dev.mjs",
@@ -63,8 +63,8 @@
     "vitest": "^4.1.12"
   },
   "build": {
-    "appId": "com.atlasbrowser.app",
-    "productName": "Atlas Browser",
+    "appId": "com.lavraybrowser.app",
+    "productName": "LAVRAY Browser",
     "directories": {
       "output": "release"
     },
@@ -84,7 +84,7 @@
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
       "extendInfo": {
-        "NSMicrophoneUsageDescription": "Atlas Browser uses the microphone when you activate voice commands in the AI panel."
+        "NSMicrophoneUsageDescription": "LAVRAY Browser uses the microphone when you activate voice commands in the HAYA (HAYAGRIVA) AI panel."
       },
       "target": [
         {

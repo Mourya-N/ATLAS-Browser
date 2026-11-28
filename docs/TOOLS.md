@@ -14,4 +14,4 @@ All browser-agent tools are registered in `src/main/agent/tool-registry.ts` and 
 
 - **CDPManager**: Manages `webContents.debugger` (`1.3`) sessions per tab and detaches cleanly on tab close or emergency kill switch.
 - **PerceptionEngine**: Captures AXTree summaries, interactive DOM elements (including Shadow DOM and same-origin iframes), readable page text/headings/tables, and optional PNG screenshots with Set-of-Marks target boxes.
-- **ElementResolver**: Assigns session-scoped `data-atlas-id` markers and re-verifies existence, visibility, interactability, and `elementFromPoint` overlay clearance before every interaction.
+- **ElementResolver**: Assigns session-scoped `data-lavray-id` markers and re-verifies existence, visibility, interactability, and `elementFromPoint` overlay clearance before every interaction.

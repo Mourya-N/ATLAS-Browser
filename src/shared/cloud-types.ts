@@ -50,7 +50,7 @@ export interface SearchQueryUnderstanding {
 }
 
 export type SearchResultOrigin =
-  | 'atlas_index'
+  | 'lavray_index'
   | 'external_provider'
   | 'open_tab'
   | 'personal_knowledge';
@@ -194,7 +194,7 @@ export interface SearchResponse {
   sourceMode: 'cloud' | 'local_fallback' | 'hybrid';
 }
 
-export interface AtlasIndexDocument {
+export interface LavrayIndexDocument {
   id: string;
   url: string;
   canonicalUrl: string;
@@ -251,7 +251,7 @@ export interface CrawlCheckpoint {
   completedAt?: number | null;
 }
 
-export interface AtlasIndexStats {
+export interface LavrayIndexStats {
   totalDocuments: number;
   uniqueDomains: number;
   latestCrawlAt: number | null;

@@ -2,8 +2,8 @@ const REDACTION_PATTERNS: RegExp[] = [
   /AIza[0-9A-Za-z\-_]{20,}/g,
   /sk-[0-9A-Za-z\-_]{20,}/g,
   /Bearer\s+[0-9A-Za-z\-._~+/]+=*/gi,
-  /atlas_mcp_[0-9a-f]{16,}/gi,
-  /atlas_rt_[0-9a-f]{16,}/gi
+  /lavray_mcp_[0-9a-f]{16,}/gi,
+  /lavray_rt_[0-9a-f]{16,}/gi
 ];
 
 const SENSITIVE_MEMORY_PATTERNS: RegExp[] = [
@@ -14,8 +14,8 @@ const SENSITIVE_MEMORY_PATTERNS: RegExp[] = [
   /AIza[0-9A-Za-z\-_]{20,}/,
   /sk-[0-9A-Za-z\-_]{20,}/,
   /bearer\s+(?=[0-9a-z\-._~+/]*[\d._\-+/])[0-9a-z\-._~+/]{12,}=*/i,
-  /atlas_mcp_[0-9a-f]{16,}/i,
-  /atlas_rt_[0-9a-f]{16,}/i
+  /lavray_mcp_[0-9a-f]{16,}/i,
+  /lavray_rt_[0-9a-f]{16,}/i
 ];
 
 export function redactSecrets(input: string): string {

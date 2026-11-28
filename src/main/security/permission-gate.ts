@@ -50,7 +50,7 @@ const SENSITIVE_KEYWORDS = [
 
 export function extractDomain(url: string): string {
   try {
-    if (!url || url === 'about:blank' || url.startsWith('atlas://')) return 'internal';
+    if (!url || url === 'about:blank' || url.startsWith('lavray://')) return 'internal';
     const parsed = new URL(url);
     return parsed.hostname.toLowerCase();
   } catch {

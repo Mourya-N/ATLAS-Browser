@@ -12,8 +12,8 @@ export async function startEvalFixtureServer(): Promise<EvalServerHandle> {
 
     switch (reqUrl.pathname) {
       case '/':
-        res.end(`<!doctype html><html><head><title>Atlas Fixture Home</title></head><body>
-          <h1>Atlas Test Portal</h1>
+        res.end(`<!doctype html><html><head><title>LAVRAY Fixture Home</title></head><body>
+          <h1>LAVRAY Test Portal</h1>
           <form action="/search" method="get">
             <input id="search-input" name="q" placeholder="Search docs..." />
             <button id="search-btn" type="submit">Search</button>
@@ -57,13 +57,13 @@ export async function startEvalFixtureServer(): Promise<EvalServerHandle> {
         if (page === 1) {
           res.end(`<!doctype html><html><head><title>Catalog Page 1</title></head><body>
             <h1>Catalog - Page 1</h1>
-            <div class="product"><h2>Atlas Pro</h2><span class="price">199</span></div>
+            <div class="product"><h2>LAVRAY Pro</h2><span class="price">199</span></div>
             <a id="next-page" href="/catalog?page=2">Next Page</a>
           </body></html>`);
         } else {
           res.end(`<!doctype html><html><head><title>Catalog Page 2</title></head><body>
             <h1>Catalog - Page 2</h1>
-            <div class="product"><h2>Atlas Enterprise</h2><span class="price">499</span></div>
+            <div class="product"><h2>LAVRAY Enterprise</h2><span class="price">499</span></div>
           </body></html>`);
         }
         break;
@@ -71,7 +71,7 @@ export async function startEvalFixtureServer(): Promise<EvalServerHandle> {
 
       case '/register':
         res.end(`<!doctype html><html><head><title>Event Registration</title></head><body>
-          <h1>Register for Atlas Conf</h1>
+          <h1>Register for LAVRAY Conf</h1>
           <form id="reg-form">
             <input id="reg-name" name="fullName" placeholder="Full Name" />
             <input id="reg-email" name="email" type="email" placeholder="Email" />

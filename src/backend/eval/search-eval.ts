@@ -5,7 +5,7 @@ import type {
   ModelProvider
 } from '@main/agent/providers/model-provider';
 import { computeLocalEmbedding } from '@shared/text-utils';
-import type { AtlasIndexDocument, SearchEvalCaseResult, SearchEvalMetrics, SearchMode } from '@shared/types';
+import type { LavrayIndexDocument, SearchEvalCaseResult, SearchEvalMetrics, SearchMode } from '@shared/types';
 import { loadBackendConfig } from '../config';
 import { InMemoryCloudRepository } from '../db/memory-repository';
 import { MetricsRegistry } from '../observability/metrics';
@@ -88,7 +88,7 @@ const EVAL_INDEX_DOCS: Array<{
   },
   {
     title: 'Hybrid Search Architecture: BM25 Lexical + Dense Vector Similarity',
-    url: 'https://atlas-docs.example.org/hybrid-retrieval',
+    url: 'https://lavray-docs.example.org/hybrid-retrieval',
     snippet: 'Hybrid retrieval merges exact lexical token scoring with normalized vector cosine similarity to handle both exact identifiers and synonyms.',
     contentType: 'web',
     publishedAt: '2026-09-18T00:00:00Z'
@@ -116,7 +116,7 @@ const EVAL_INDEX_DOCS: Array<{
   },
   {
     title: 'Container Multi-Stage Builds & Non-Root Security',
-    url: 'https://atlas-docs.example.org/docker-non-root',
+    url: 'https://lavray-docs.example.org/docker-non-root',
     snippet: 'Multi-stage Docker builds exclude compiler toolchains, drop root privileges via USER directive, and expose HTTP health probes.',
     contentType: 'docs',
     publishedAt: '2026-08-20T00:00:00Z'
@@ -197,7 +197,7 @@ const EVAL_DATASET: EvalCaseSpec[] = [
     category: 'general_knowledge',
     query: 'Hybrid retrieval BM25 vector cosine similarity',
     mode: 'research',
-    relevantUrls: ['https://atlas-docs.example.org/hybrid-retrieval'],
+    relevantUrls: ['https://lavray-docs.example.org/hybrid-retrieval'],
     expectedClaimPhrase: 'cosine similarity'
   },
   {
@@ -239,7 +239,7 @@ const EVAL_DATASET: EvalCaseSpec[] = [
     category: 'ambiguous',
     query: 'containers health probes security root',
     mode: 'web',
-    relevantUrls: ['https://atlas-docs.example.org/docker-non-root'],
+    relevantUrls: ['https://lavray-docs.example.org/docker-non-root'],
     expectedClaimPhrase: 'non-root'
   },
   {
@@ -294,7 +294,7 @@ export async function runDeterministicSearchEvaluation(): Promise<SearchEvalMetr
   // Seed controlled offline first-party index corpus
   for (const item of EVAL_INDEX_DOCS) {
     const u = new URL(item.url);
-    const doc: AtlasIndexDocument = {
+    const doc: LavrayIndexDocument = {
       id: createHash('sha1').update(item.url).digest('hex').slice(0, 16),
       url: item.url,
       canonicalUrl: item.url.split('?')[0],
@@ -313,7 +313,7 @@ export async function runDeterministicSearchEvaluation(): Promise<SearchEvalMetr
       indexVersion: 'v1',
       embedding: computeLocalEmbedding(`${item.title} ${item.snippet}`)
     };
-    await repo.upsertAtlasIndexDocument(doc);
+    await repo.upsertLavrayIndexDocument(doc);
   }
 
   const evalAiProvider: ModelProvider = {

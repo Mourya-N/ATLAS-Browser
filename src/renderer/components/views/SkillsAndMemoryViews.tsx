@@ -14,7 +14,7 @@ import {
   X
 } from 'lucide-react';
 import type { ExtractionResult, MemoryCategory, MemoryItem, Skill } from '@shared/types';
-import { useAtlasStore } from '../../store/useAtlasStore';
+import { useLavrayStore } from '../../store/useLavrayStore';
 
 const ModalShell: React.FC<{ title: string; icon: React.ReactNode; onClose: () => void; actions?: React.ReactNode; children: React.ReactNode }> = ({
   title,
@@ -23,15 +23,15 @@ const ModalShell: React.FC<{ title: string; icon: React.ReactNode; onClose: () =
   actions,
   children
 }) => (
-  <div className="flex h-full flex-col bg-atlas-bg text-atlas-text select-text">
-    <div className="flex h-12 shrink-0 items-center justify-between border-b border-atlas-border bg-atlas-surface px-6">
+  <div className="flex h-full flex-col bg-lavray-bg text-lavray-text select-text">
+    <div className="flex h-12 shrink-0 items-center justify-between border-b border-lavray-border bg-lavray-surface px-6">
       <div className="flex items-center gap-2.5">
-        <span className="text-atlas-accent">{icon}</span>
+        <span className="text-lavray-accent">{icon}</span>
         <h1 className="text-[14px] font-semibold tracking-[-0.01em]">{title}</h1>
       </div>
       <div className="flex items-center gap-2">
         {actions}
-        <button type="button" onClick={onClose} className="rounded-lg p-1.5 text-atlas-muted hover:bg-atlas-elevated">
+        <button type="button" onClick={onClose} className="rounded-lg p-1.5 text-lavray-muted hover:bg-lavray-elevated">
           <X className="h-4 w-4" />
         </button>
       </div>
@@ -41,14 +41,14 @@ const ModalShell: React.FC<{ title: string; icon: React.ReactNode; onClose: () =
 );
 
 export const SkillsView: React.FC = () => {
-  const { setOverlayView, activeTabId, pushToast } = useAtlasStore();
+  const { setOverlayView, activeTabId, pushToast } = useLavrayStore();
   const [skills, setSkills] = useState<Skill[]>([]);
   const [selected, setSelected] = useState<Skill | null>(null);
   const [importText, setImportText] = useState('');
   const [showImport, setShowImport] = useState(false);
 
   const load = async () => {
-    const list = await window.atlas.listSkills();
+    const list = await window.lavray.listSkills();
     setSkills(list);
     if (selected) {
       setSelected(list.find((s) => s.id === selected.id) ?? null);
@@ -69,7 +69,7 @@ export const SkillsView: React.FC = () => {
           <button
             type="button"
             onClick={() => setShowImport((v) => !v)}
-            className="flex items-center gap-1 rounded-lg border border-atlas-border bg-atlas-elevated px-3 py-1.5 text-xs font-semibold"
+            className="flex items-center gap-1 rounded-lg border border-lavray-border bg-lavray-elevated px-3 py-1.5 text-xs font-semibold"
           >
             <Upload className="h-3.5 w-3.5" /> Import JSON
           </button>
@@ -103,11 +103,11 @@ export const SkillsView: React.FC = () => {
                 executionCount: 0,
                 successCount: 0
               };
-              const saved = await window.atlas.saveSkill(blank);
+              const saved = await window.lavray.saveSkill(blank);
               setSelected(saved);
               void load();
             }}
-            className="flex items-center gap-1 rounded-lg bg-atlas-accent px-3 py-1.5 text-xs font-semibold text-atlas-accent-fg"
+            className="flex items-center gap-1 rounded-lg bg-lavray-accent px-3 py-1.5 text-xs font-semibold text-lavray-accent-fg"
           >
             <Plus className="h-3.5 w-3.5" /> New Skill
           </button>
@@ -116,24 +116,24 @@ export const SkillsView: React.FC = () => {
     >
       <div className="mx-auto max-w-5xl space-y-4">
         {showImport && (
-          <div className="rounded-xl border border-atlas-border bg-atlas-surface p-4 space-y-2">
+          <div className="rounded-xl border border-lavray-border bg-lavray-surface p-4 space-y-2">
             <textarea
               rows={4}
               value={importText}
               onChange={(e) => setImportText(e.target.value)}
-              placeholder="Paste exported Atlas Skill JSON..."
-              className="w-full rounded-lg border border-atlas-border bg-atlas-bg p-2 text-xs font-mono outline-none"
+              placeholder="Paste exported LAVRAY Skill JSON..."
+              className="w-full rounded-lg border border-lavray-border bg-lavray-bg p-2 text-xs font-mono outline-none"
             />
             <button
               type="button"
               onClick={async () => {
-                await window.atlas.importSkill(importText);
+                await window.lavray.importSkill(importText);
                 setImportText('');
                 setShowImport(false);
                 pushToast('Skill imported', 'success');
                 void load();
               }}
-              className="rounded-lg bg-atlas-accent px-3 py-1.5 text-xs font-semibold text-atlas-accent-fg"
+              className="rounded-lg bg-lavray-accent px-3 py-1.5 text-xs font-semibold text-lavray-accent-fg"
             >
               Import Skill
             </button>
@@ -150,16 +150,16 @@ export const SkillsView: React.FC = () => {
                   onClick={() => setSelected(s)}
                   className={`cursor-pointer rounded-xl border p-3.5 text-xs space-y-1.5 ${
                     selected?.id === s.id
-                      ? 'border-atlas-accent bg-atlas-surface'
-                      : 'border-atlas-border bg-atlas-surface/60 hover:border-atlas-muted'
+                      ? 'border-lavray-accent bg-lavray-surface'
+                      : 'border-lavray-border bg-lavray-surface/60 hover:border-lavray-muted'
                   }`}
                 >
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-bold text-sm">{s.name}</span>
-                    <span className="rounded bg-atlas-elevated px-2 py-0.5 text-[10px]">v{s.version}</span>
+                    <span className="rounded bg-lavray-elevated px-2 py-0.5 text-[10px]">v{s.version}</span>
                   </div>
-                  <p className="text-atlas-muted line-clamp-2">{s.description}</p>
-                  <div className="flex items-center justify-between pt-1 text-[11px] text-atlas-muted">
+                  <p className="text-lavray-muted line-clamp-2">{s.description}</p>
+                  <div className="flex items-center justify-between pt-1 text-[11px] text-lavray-muted">
                     <span>{s.steps.length} steps • {s.executionCount} runs ({rate}% success)</span>
                     <div className="flex items-center gap-1">
                       <button
@@ -170,14 +170,14 @@ export const SkillsView: React.FC = () => {
                           for (const p of s.parameters) {
                             params[p.name] = p.defaultValue ?? '';
                           }
-                          const exec = await window.atlas.runSkill(s.id, params, activeTabId);
+                          const exec = await window.lavray.runSkill(s.id, params, activeTabId);
                           pushToast(
                             exec.status === 'completed' ? `Skill "${s.name}" completed` : `Skill failed: ${exec.error}`,
                             exec.status === 'completed' ? 'success' : 'danger'
                           );
                           void load();
                         }}
-                        className="flex items-center gap-1 rounded bg-atlas-accent px-2 py-1 text-[10px] font-semibold text-atlas-accent-fg"
+                        className="flex items-center gap-1 rounded bg-lavray-accent px-2 py-1 text-[10px] font-semibold text-lavray-accent-fg"
                       >
                         <Play className="h-3 w-3" /> Run
                       </button>
@@ -189,14 +189,14 @@ export const SkillsView: React.FC = () => {
                           for (const p of s.parameters) {
                             params[p.name] = p.defaultValue ?? '';
                           }
-                          const exec = await window.atlas.testSkill(s.id, params, activeTabId);
+                          const exec = await window.lavray.testSkill(s.id, params, activeTabId);
                           pushToast(
                             exec.status === 'completed' ? `Skill test passed` : `Skill test failed: ${exec.error}`,
                             exec.status === 'completed' ? 'success' : 'warning'
                           );
                           void load();
                         }}
-                        className="rounded border border-atlas-border bg-atlas-elevated px-2 py-1 text-[10px] font-semibold"
+                        className="rounded border border-lavray-border bg-lavray-elevated px-2 py-1 text-[10px] font-semibold"
                         title="Test skill with Assist confirmation"
                       >
                         Test
@@ -205,10 +205,10 @@ export const SkillsView: React.FC = () => {
                         type="button"
                         onClick={async (e) => {
                           e.stopPropagation();
-                          await window.atlas.duplicateSkill(s.id);
+                          await window.lavray.duplicateSkill(s.id);
                           void load();
                         }}
-                        className="rounded p-1 hover:bg-atlas-elevated"
+                        className="rounded p-1 hover:bg-lavray-elevated"
                         title="Duplicate"
                       >
                         <Copy className="h-3.5 w-3.5" />
@@ -217,11 +217,11 @@ export const SkillsView: React.FC = () => {
                         type="button"
                         onClick={async (e) => {
                           e.stopPropagation();
-                          await window.atlas.deleteSkill(s.id);
+                          await window.lavray.deleteSkill(s.id);
                           if (selected?.id === s.id) setSelected(null);
                           void load();
                         }}
-                        className="rounded p-1 hover:text-atlas-danger"
+                        className="rounded p-1 hover:text-lavray-danger"
                         title="Delete"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
@@ -232,28 +232,28 @@ export const SkillsView: React.FC = () => {
               );
             })}
             {skills.length === 0 && (
-              <div className="rounded-xl border border-dashed border-atlas-border p-8 text-center text-xs text-atlas-muted">
+              <div className="rounded-xl border border-dashed border-lavray-border p-8 text-center text-xs text-lavray-muted">
                 No skills saved yet. Complete an agent task and click "Save Skill" or create one above.
               </div>
             )}
           </div>
 
           {selected && (
-            <div className="rounded-xl border border-atlas-border bg-atlas-surface p-4 text-xs space-y-3">
+            <div className="rounded-xl border border-lavray-border bg-lavray-surface p-4 text-xs space-y-3">
               <div className="flex items-center justify-between">
                 <input
                   value={selected.name}
                   onChange={(e) => setSelected({ ...selected, name: e.target.value })}
-                  className="flex-1 bg-transparent text-sm font-bold outline-none border-b border-transparent focus:border-atlas-accent"
+                  className="flex-1 bg-transparent text-sm font-bold outline-none border-b border-transparent focus:border-lavray-accent"
                 />
                 <button
                   type="button"
                   onClick={async () => {
-                    const json = await window.atlas.exportSkill(selected.id);
+                    const json = await window.lavray.exportSkill(selected.id);
                     await navigator.clipboard.writeText(json);
                     pushToast('Skill JSON copied to clipboard', 'success');
                   }}
-                  className="flex items-center gap-1 rounded bg-atlas-elevated px-2 py-1 text-[11px]"
+                  className="flex items-center gap-1 rounded bg-lavray-elevated px-2 py-1 text-[11px]"
                 >
                   <Download className="h-3 w-3" /> Export JSON
                 </button>
@@ -262,19 +262,19 @@ export const SkillsView: React.FC = () => {
                 rows={2}
                 value={selected.description}
                 onChange={(e) => setSelected({ ...selected, description: e.target.value })}
-                className="w-full rounded-lg border border-atlas-border bg-atlas-bg p-2 outline-none"
+                className="w-full rounded-lg border border-lavray-border bg-lavray-bg p-2 outline-none"
               />
               <div>
-                <div className="font-semibold mb-1 text-atlas-muted uppercase text-[10px]">
+                <div className="font-semibold mb-1 text-lavray-muted uppercase text-[10px]">
                   Workflow Steps ({selected.steps.length})
                 </div>
                 <div className="space-y-1.5 max-h-64 overflow-y-auto">
                   {selected.steps.map((st) => (
-                    <div key={st.index} className="rounded-lg border border-atlas-border bg-atlas-bg/60 p-2">
+                    <div key={st.index} className="rounded-lg border border-lavray-border bg-lavray-bg/60 p-2">
                       <div className="font-semibold">
                         {st.index + 1}. {st.toolName} — {st.description}
                       </div>
-                      <div className="text-[11px] font-mono text-atlas-muted truncate">
+                      <div className="text-[11px] font-mono text-lavray-muted truncate">
                         {JSON.stringify(st.argsTemplate)}
                       </div>
                     </div>
@@ -284,7 +284,7 @@ export const SkillsView: React.FC = () => {
               <button
                 type="button"
                 onClick={async () => {
-                  const updated = await window.atlas.saveSkill({
+                  const updated = await window.lavray.saveSkill({
                     ...selected,
                     version: selected.version + 1,
                     updatedAt: Date.now()
@@ -293,7 +293,7 @@ export const SkillsView: React.FC = () => {
                   pushToast('Skill saved', 'success');
                   void load();
                 }}
-                className="rounded-lg bg-atlas-accent px-4 py-2 font-semibold text-atlas-accent-fg"
+                className="rounded-lg bg-lavray-accent px-4 py-2 font-semibold text-lavray-accent-fg"
               >
                 Save Changes
               </button>
@@ -306,7 +306,7 @@ export const SkillsView: React.FC = () => {
 };
 
 export const MemoryView: React.FC = () => {
-  const { setOverlayView, pushToast } = useAtlasStore();
+  const { setOverlayView, pushToast } = useLavrayStore();
   const [items, setItems] = useState<MemoryItem[]>([]);
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState<MemoryCategory>('user_preference');
@@ -315,7 +315,7 @@ export const MemoryView: React.FC = () => {
   const [content, setContent] = useState('');
 
   const load = async (q = query) => {
-    const res = q.trim() ? await window.atlas.searchMemory(q) : await window.atlas.listMemory();
+    const res = q.trim() ? await window.lavray.searchMemory(q) : await window.lavray.listMemory();
     setItems(res);
   };
 
@@ -333,21 +333,21 @@ export const MemoryView: React.FC = () => {
           <button
             type="button"
             onClick={async () => {
-              const json = await window.atlas.exportMemory();
+              const json = await window.lavray.exportMemory();
               await navigator.clipboard.writeText(json);
               pushToast('Memory exported to clipboard', 'success');
             }}
-            className="rounded-lg border border-atlas-border bg-atlas-elevated px-3 py-1.5 text-xs font-semibold"
+            className="rounded-lg border border-lavray-border bg-lavray-elevated px-3 py-1.5 text-xs font-semibold"
           >
             Export JSON
           </button>
           <button
             type="button"
             onClick={async () => {
-              await window.atlas.clearMemory();
+              await window.lavray.clearMemory();
               void load('');
             }}
-            className="rounded-lg border border-atlas-danger/40 bg-atlas-danger/10 px-3 py-1.5 text-xs font-semibold text-atlas-danger"
+            className="rounded-lg border border-lavray-danger/40 bg-lavray-danger/10 px-3 py-1.5 text-xs font-semibold text-lavray-danger"
           >
             Clear All
           </button>
@@ -355,8 +355,8 @@ export const MemoryView: React.FC = () => {
       }
     >
       <div className="mx-auto max-w-4xl space-y-5">
-        <div className="flex items-center gap-2 rounded-xl border border-atlas-border bg-atlas-surface px-3 py-2">
-          <Search className="h-4 w-4 text-atlas-muted" />
+        <div className="flex items-center gap-2 rounded-xl border border-lavray-border bg-lavray-surface px-3 py-2">
+          <Search className="h-4 w-4 text-lavray-muted" />
           <input
             value={query}
             onChange={(e) => {
@@ -373,7 +373,7 @@ export const MemoryView: React.FC = () => {
             e.preventDefault();
             if (!title.trim() || !content.trim()) return;
             try {
-              await window.atlas.saveMemory({
+              await window.lavray.saveMemory({
                 category,
                 domain: domain.trim() || null,
                 title: title.trim(),
@@ -387,14 +387,14 @@ export const MemoryView: React.FC = () => {
               pushToast(err instanceof Error ? err.message : 'Rejected sensitive memory', 'danger');
             }
           }}
-          className="rounded-xl border border-atlas-border bg-atlas-surface p-4 space-y-2.5 text-xs"
+          className="rounded-xl border border-lavray-border bg-lavray-surface p-4 space-y-2.5 text-xs"
         >
           <div className="font-semibold">Add Persistent Memory (Passwords/Tokens Automatically Blocked)</div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <select
               value={category}
               onChange={(e) => setCategory(e.target.value as MemoryCategory)}
-              className="rounded-lg border border-atlas-border bg-atlas-bg px-2.5 py-1.5"
+              className="rounded-lg border border-lavray-border bg-lavray-bg px-2.5 py-1.5"
             >
               <option value="user_preference">User Preference</option>
               <option value="site_preference">Site Preference</option>
@@ -406,13 +406,13 @@ export const MemoryView: React.FC = () => {
               value={domain}
               onChange={(e) => setDomain(e.target.value)}
               placeholder="Optional domain (e.g. docs.spring.io)"
-              className="rounded-lg border border-atlas-border bg-atlas-bg px-2.5 py-1.5"
+              className="rounded-lg border border-lavray-border bg-lavray-bg px-2.5 py-1.5"
             />
             <input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="Memory title"
-              className="rounded-lg border border-atlas-border bg-atlas-bg px-2.5 py-1.5"
+              className="rounded-lg border border-lavray-border bg-lavray-bg px-2.5 py-1.5"
             />
           </div>
           <textarea
@@ -420,35 +420,35 @@ export const MemoryView: React.FC = () => {
             value={content}
             onChange={(e) => setContent(e.target.value)}
             placeholder="Preference or reusable workflow detail..."
-            className="w-full rounded-lg border border-atlas-border bg-atlas-bg p-2"
+            className="w-full rounded-lg border border-lavray-border bg-lavray-bg p-2"
           />
-          <button type="submit" className="rounded-lg bg-atlas-accent px-4 py-1.5 font-semibold text-atlas-accent-fg">
+          <button type="submit" className="rounded-lg bg-lavray-accent px-4 py-1.5 font-semibold text-lavray-accent-fg">
             Save Memory
           </button>
         </form>
 
         <div className="space-y-2">
           {items.map((m) => (
-            <div key={m.id} className="rounded-xl border border-atlas-border bg-atlas-surface p-3.5 text-xs space-y-1">
+            <div key={m.id} className="rounded-xl border border-lavray-border bg-lavray-surface p-3.5 text-xs space-y-1">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="font-bold">{m.title}</span>
-                  <span className="rounded bg-atlas-elevated px-1.5 py-0.5 text-[10px]">{m.category}</span>
-                  {m.domain && <span className="text-[11px] text-atlas-accent">{m.domain}</span>}
+                  <span className="rounded bg-lavray-elevated px-1.5 py-0.5 text-[10px]">{m.category}</span>
+                  {m.domain && <span className="text-[11px] text-lavray-accent">{m.domain}</span>}
                 </div>
                 <button
                   type="button"
                   onClick={async () => {
-                    await window.atlas.deleteMemory(m.id);
+                    await window.lavray.deleteMemory(m.id);
                     void load();
                   }}
-                  className="text-atlas-muted hover:text-atlas-danger"
+                  className="text-lavray-muted hover:text-lavray-danger"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </button>
               </div>
-              <p className="text-atlas-muted">{m.content}</p>
-              <div className="text-[10px] text-atlas-muted/80">
+              <p className="text-lavray-muted">{m.content}</p>
+              <div className="text-[10px] text-lavray-muted/80">
                 Confidence {(m.confidence * 100).toFixed(0)}% • Used {m.useCount}x • Source: {m.source}
               </div>
             </div>
@@ -460,7 +460,7 @@ export const MemoryView: React.FC = () => {
 };
 
 export const ExtractionView: React.FC = () => {
-  const { setOverlayView, activeTabId, pushToast } = useAtlasStore();
+  const { setOverlayView, activeTabId, pushToast } = useLavrayStore();
   const [instructions, setInstructions] = useState('Extract item names, prices, and descriptions');
   const [schemaText, setSchemaText] = useState(
     JSON.stringify(
@@ -487,13 +487,13 @@ export const ExtractionView: React.FC = () => {
       onClose={() => setOverlayView(null)}
     >
       <div className="mx-auto max-w-4xl space-y-4 text-xs">
-        <div className="rounded-xl border border-atlas-border bg-atlas-surface p-4 space-y-3">
+        <div className="rounded-xl border border-lavray-border bg-lavray-surface p-4 space-y-3">
           <div>
             <label className="block font-semibold mb-1">Extraction Request</label>
             <input
               value={instructions}
               onChange={(e) => setInstructions(e.target.value)}
-              className="w-full rounded-lg border border-atlas-border bg-atlas-bg px-3 py-2 outline-none"
+              className="w-full rounded-lg border border-lavray-border bg-lavray-bg px-3 py-2 outline-none"
             />
           </div>
           <div>
@@ -502,7 +502,7 @@ export const ExtractionView: React.FC = () => {
               rows={8}
               value={schemaText}
               onChange={(e) => setSchemaText(e.target.value)}
-              className="w-full rounded-lg border border-atlas-border bg-atlas-bg p-3 font-mono outline-none"
+              className="w-full rounded-lg border border-lavray-border bg-lavray-bg p-3 font-mono outline-none"
             />
           </div>
           <button
@@ -512,7 +512,7 @@ export const ExtractionView: React.FC = () => {
               if (!activeTabId) return;
               setRunning(true);
               try {
-                const res = await window.atlas.extractStructured(activeTabId, schemaText, instructions);
+                const res = await window.lavray.extractStructured(activeTabId, schemaText, instructions);
                 setResult(res);
               } catch (err) {
                 pushToast(err instanceof Error ? err.message : 'Extraction failed', 'danger');
@@ -520,20 +520,20 @@ export const ExtractionView: React.FC = () => {
                 setRunning(false);
               }
             }}
-            className="flex items-center gap-1.5 rounded-lg bg-atlas-accent px-4 py-2 font-semibold text-atlas-accent-fg disabled:opacity-50"
+            className="flex items-center gap-1.5 rounded-lg bg-lavray-accent px-4 py-2 font-semibold text-lavray-accent-fg disabled:opacity-50"
           >
             <Sparkles className="h-3.5 w-3.5" /> {running ? 'Extracting & Validating...' : 'Extract from Active Tab'}
           </button>
         </div>
 
         {result && (
-          <div className="rounded-xl border border-atlas-border bg-atlas-surface p-4 space-y-3">
+          <div className="rounded-xl border border-lavray-border bg-lavray-surface p-4 space-y-3">
             <div className="flex items-center justify-between">
               <div>
-                <span className={`font-bold ${result.valid ? 'text-atlas-success' : 'text-atlas-warning'}`}>
+                <span className={`font-bold ${result.valid ? 'text-lavray-success' : 'text-lavray-warning'}`}>
                   {result.valid ? 'Schema Validated' : 'Validation Issues'}
                 </span>
-                <span className="ml-2 text-atlas-muted">
+                <span className="ml-2 text-lavray-muted">
                   ({result.records.length} records, {result.attempts} attempt(s))
                 </span>
               </div>
@@ -544,29 +544,29 @@ export const ExtractionView: React.FC = () => {
                     await navigator.clipboard.writeText(JSON.stringify(result.records, null, 2));
                     pushToast('JSON copied to clipboard', 'success');
                   }}
-                  className="rounded bg-atlas-elevated px-2.5 py-1 font-semibold"
+                  className="rounded bg-lavray-elevated px-2.5 py-1 font-semibold"
                 >
                   Copy JSON
                 </button>
                 <button
                   type="button"
                   onClick={async () => {
-                    const csv = await window.atlas.exportCsv(result.records);
+                    const csv = await window.lavray.exportCsv(result.records);
                     await navigator.clipboard.writeText(csv);
                     pushToast('CSV copied to clipboard', 'success');
                   }}
-                  className="rounded bg-atlas-elevated px-2.5 py-1 font-semibold"
+                  className="rounded bg-lavray-elevated px-2.5 py-1 font-semibold"
                 >
                   Copy CSV
                 </button>
               </div>
             </div>
             {result.validationErrors.length > 0 && (
-              <div className="rounded-lg bg-atlas-danger/10 p-2 text-atlas-danger">
+              <div className="rounded-lg bg-lavray-danger/10 p-2 text-lavray-danger">
                 {result.validationErrors.join('; ')}
               </div>
             )}
-            <pre className="max-h-80 overflow-auto rounded-lg bg-atlas-bg p-3 font-mono text-[11px]">
+            <pre className="max-h-80 overflow-auto rounded-lg bg-lavray-bg p-3 font-mono text-[11px]">
               {JSON.stringify(result.records, null, 2)}
             </pre>
           </div>

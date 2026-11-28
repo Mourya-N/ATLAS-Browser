@@ -21,12 +21,12 @@ describe('Live Gemini API Integration', () => {
     const streamRes = await provider.generate({
       model,
       systemInstruction: 'Reply concisely.',
-      messages: [{ role: 'user', parts: [{ text: 'Say "ATLAS_OK" and nothing else.' }] }],
+      messages: [{ role: 'user', parts: [{ text: 'Say "LAVRAY_OK" and nothing else.' }] }],
       onTextDelta: (d) => {
         streamed += d;
       }
     });
-    expect(streamRes.text).toContain('ATLAS_OK');
+    expect(streamRes.text).toContain('LAVRAY_OK');
     expect(streamed.length).toBeGreaterThan(0);
     expect(streamRes.usage.inputTokens).toBeGreaterThan(0);
     expect(streamRes.usage.outputTokens).toBeGreaterThan(0);

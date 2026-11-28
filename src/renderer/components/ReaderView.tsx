@@ -1,10 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { BookmarkPlus, BookOpen, List, Minus, Plus, Trash2, X } from 'lucide-react';
 import type { ReaderArticle, ReadingListItem } from '@shared/types';
-import { useAtlasStore } from '../store/useAtlasStore';
+import { useLavrayStore } from '../store/useLavrayStore';
 
 export const ReaderView: React.FC = () => {
-  const { activeTabId, tabs, settings, setOverlayView, pushToast } = useAtlasStore();
+  const { activeTabId, tabs, settings, setOverlayView, pushToast } = useLavrayStore();
   const activeTab = tabs.find((t) => t.id === activeTabId) ?? null;
   const appIsDark =
     settings?.theme === 'dark' ||
@@ -26,7 +26,7 @@ export const ReaderView: React.FC = () => {
 
   const loadList = async () => {
     try {
-      setReadingList(await window.atlas.listReadingList());
+      setReadingList(await window.lavray.listReadingList());
     } catch {
       // non-fatal
     }
@@ -39,7 +39,7 @@ export const ReaderView: React.FC = () => {
   useEffect(() => {
     if (!activeTabId) return;
     setLoading(true);
-    void window.atlas.extractReaderArticle(activeTabId).then((res) => {
+    void window.lavray.extractReaderArticle(activeTabId).then((res) => {
       setArticle(res);
       setLoading(false);
     });
@@ -65,12 +65,12 @@ export const ReaderView: React.FC = () => {
   return (
     <div className={`flex h-full flex-col ${surfaceStyles}`}>
       <div className="h-[2px] w-full bg-current/10">
-        <div className="h-full bg-atlas-accent transition-all" style={{ width: `${progress}%` }} />
+        <div className="h-full bg-lavray-accent transition-all" style={{ width: `${progress}%` }} />
       </div>
 
       <div className="flex h-12 shrink-0 items-center justify-between border-b border-current/10 px-6 text-xs">
         <div className="flex items-center gap-2 font-semibold">
-          <BookOpen className="h-4 w-4 text-atlas-accent" strokeWidth={1.75} />
+          <BookOpen className="h-4 w-4 text-lavray-accent" strokeWidth={1.75} />
           <span>Reading View</span>
           <span className="font-normal opacity-60">{progress}%</span>
         </div>
@@ -122,7 +122,7 @@ export const ReaderView: React.FC = () => {
             onClick={async () => {
               if (!article || !activeTab) return;
               try {
-                await window.atlas.saveReadingListItem({
+                await window.lavray.saveReadingListItem({
                   tabId: activeTab.id,
                   url: activeTab.url,
                   title: article.title,
@@ -174,7 +174,7 @@ export const ReaderView: React.FC = () => {
                     type="button"
                     onClick={async () => {
                       if (activeTabId) {
-                        await window.atlas.navigate(activeTabId, item.url);
+                        await window.lavray.navigate(activeTabId, item.url);
                         setShowList(false);
                       }
                     }}
@@ -188,7 +188,7 @@ export const ReaderView: React.FC = () => {
                   <button
                     type="button"
                     onClick={async () => {
-                      await window.atlas.deleteReadingListItem(item.id);
+                      await window.lavray.deleteReadingListItem(item.id);
                       await loadList();
                     }}
                     className="opacity-60 hover:opacity-100"

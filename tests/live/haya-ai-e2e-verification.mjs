@@ -1,16 +1,16 @@
 #!/usr/bin/env node
 /**
- * Atlas AI — Real Model Activation and Verified Search Answer E2E Test
+ * HAYA AI — Real Model Activation and Verified Search Answer E2E Test
  *
  * Workflow verified:
- *   Atlas's own indexed page → Atlas Search → real self-hosted model → grounded answer → verified citation
+ *   LAVRAY's own indexed page → LAVRAY Search → real self-hosted model → grounded answer → verified citation
  *
  * Requirements:
- *   - Docker Compose stack running (atlas-postgres, atlas-redis, atlas-backend)
+ *   - Docker Compose stack running (lavray-postgres, lavray-redis, lavray-backend)
  *   - Ollama running on host at 127.0.0.1:11434 with qwen2.5:3b model pulled
- *   - RFC 9309 page already crawled into atlas_index_documents (or we crawl it)
+ *   - RFC 9309 page already crawled into lavray_index_documents (or we crawl it)
  *
- * Run: node tests/live/atlas-ai-e2e-verification.mjs
+ * Run: node tests/live/haya-ai-e2e-verification.mjs
  */
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -19,7 +19,7 @@ const API = 'http://127.0.0.1:48080';
 const REPORT = {};
 
 async function main() {
-  console.log('=== ATLAS AI E2E: Real Self-Hosted Model + First-Party Index Verification ===\n');
+  console.log('=== HAYA AI (HAYAGRIVA) E2E: Real Self-Hosted Model + First-Party Index Verification ===\n');
 
   // ---- Step 0: Verify Ollama runtime is reachable from Docker backend ----
   const healthRes = await fetch(`${API}/health`);
@@ -67,12 +67,12 @@ async function main() {
   assert.equal(crawlRes.status, 200);
   const crawl = await crawlRes.json();
   assert.equal(crawl.checkpoint.indexedCount, 1, 'Expected RFC 9309 freshly indexed');
-  console.log(`[OK] Crawled RFC 9309 into Atlas first-party index (${crawl.checkpoint.indexedCount} doc)`);
+  console.log(`[OK] Crawled RFC 9309 into LAVRAY first-party index (${crawl.checkpoint.indexedCount} doc)`);
 
   // ---- Step 3: Flush Redis search cache so we get a cold Postgres FTS hit ----
   execFileSync('docker-compose', ['exec', '-T', 'redis', 'redis-cli', 'FLUSHDB']);
 
-  // ---- Step 4: Execute search query that ONLY uses atlas_first_party_index (no external providers) ----
+  // ---- Step 4: Execute search query that ONLY uses lavray_first_party_index (no external providers) ----
   const query = 'What does RFC 9309 define about the robots.txt specification?';
   REPORT.searchQuery = query;
 
@@ -85,20 +85,20 @@ async function main() {
   const search = await searchRes.json();
   const searchLatencyMs = Date.now() - searchStarted;
 
-  // Verify we got an atlas_index result
-  const atlasResult = search.results.find((r) => r.sourceOrigin === 'atlas_index');
-  assert.ok(atlasResult, 'Expected atlas_index result from first-party PostgreSQL index');
-  assert.ok(atlasResult.url.includes('rfc9309'), 'Expected RFC 9309 URL in result');
+  // Verify we got an lavray_index result
+  const lavrayResult = search.results.find((r) => r.sourceOrigin === 'lavray_index');
+  assert.ok(lavrayResult, 'Expected lavray_index result from first-party PostgreSQL index');
+  assert.ok(lavrayResult.url.includes('rfc9309'), 'Expected RFC 9309 URL in result');
 
   REPORT.searchLatencyMs = searchLatencyMs;
-  REPORT.retrievedDocumentId = atlasResult.id;
-  REPORT.retrievedSourceUrl = atlasResult.url;
-  REPORT.retrievedTitle = atlasResult.title;
-  REPORT.searchResultOrigin = atlasResult.sourceOrigin;
+  REPORT.retrievedDocumentId = lavrayResult.id;
+  REPORT.retrievedSourceUrl = lavrayResult.url;
+  REPORT.retrievedTitle = lavrayResult.title;
+  REPORT.searchResultOrigin = lavrayResult.sourceOrigin;
   REPORT.providersQueried = search.providersQueried;
   REPORT.cacheHit = search.cacheHit;
 
-  console.log(`[OK] Search returned atlas_index hit: "${atlasResult.title}" (${searchLatencyMs}ms)`);
+  console.log(`[OK] Search returned lavray_index hit: "${lavrayResult.title}" (${searchLatencyMs}ms)`);
   console.log(`     Providers queried: ${JSON.stringify(search.providersQueried)}`);
 
   // ---- Step 5: AI Answer verification ----
@@ -127,7 +127,7 @@ async function main() {
     // Make a direct AI grounded-answer request using the retrieved evidence
     console.log(`[INFO] Search aiAnswer status: ${aiAnswer.status} - making direct grounded completion...`);
 
-    const evidenceText = atlasResult.snippet;
+    const evidenceText = lavrayResult.snippet;
     const aiStarted = Date.now();
     const directSearchRes = await fetch(
       `${API}/api/v1/search?q=${encodeURIComponent(query)}&mode=docs&limit=5`,
@@ -165,12 +165,12 @@ async function main() {
         console.log(`     Summary (first 200 chars): ${aiResult.aiAnswer.summary.slice(0, 200)}`);
       }
     } else {
-      // Fallback: Call the Ollama endpoint directly with evidence from atlas index to prove the pipeline works
+      // Fallback: Call the Ollama endpoint directly with evidence from lavray index to prove the pipeline works
       console.log('[INFO] POST search endpoint returned ' + searchWithAi.status + ', testing direct Ollama integration...');
     }
   }
 
-  // ---- Step 6: Direct Ollama verification via Atlas SelfHostedOpenAiProvider path ----
+  // ---- Step 6: Direct Ollama verification via LAVRAY SelfHostedOpenAiProvider path ----
   // Verify model discovery through the backend's AI health endpoint
   const aiHealthRes = await fetch(`${API}/api/v1/observability/metrics`);
   assert.ok(aiHealthRes.ok);
@@ -218,14 +218,14 @@ async function main() {
   console.log('[OK] Cleaned up test account');
 
   // ---- Final Report ----
-  console.log('\n=== ATLAS AI E2E VERIFICATION REPORT ===');
+  console.log('\n=== HAYA AI E2E VERIFICATION REPORT ===');
   console.log(JSON.stringify(REPORT, null, 2));
 
   // ---- Assertions ----
   assert.ok(REPORT.runtimeReachable === true, 'Self-hosted runtime must be reachable');
   assert.ok(REPORT.runtimeModelAvailable === true, 'Configured model must be available on runtime');
   assert.ok(REPORT.retrievedSourceUrl?.includes('rfc9309'), 'Must retrieve RFC 9309 from own index');
-  assert.equal(REPORT.searchResultOrigin, 'atlas_index', 'Search result must come from atlas_index');
+  assert.equal(REPORT.searchResultOrigin, 'lavray_index', 'Search result must come from lavray_index');
   assert.equal(REPORT.realModelWeightsUsed, true, 'Must use real model weights, not fixture');
   assert.equal(REPORT.fixtureModelUsed, false, 'Must NOT use fixture model');
 
@@ -236,11 +236,11 @@ async function main() {
     assert.ok(REPORT.citationValidation?.answerGroundedInEvidence, 'Answer must be grounded in retrieved evidence');
   }
 
-  console.log('\n=== ATLAS AI E2E VERIFICATION PASSED ===');
+  console.log('\n=== HAYA AI E2E VERIFICATION PASSED ===');
 }
 
 main().catch((err) => {
-  console.error('ATLAS AI E2E VERIFICATION FAILED:', err);
+  console.error('HAYA AI E2E VERIFICATION FAILED:', err);
   console.log('\nPartial report:', JSON.stringify(REPORT, null, 2));
   process.exit(1);
 });

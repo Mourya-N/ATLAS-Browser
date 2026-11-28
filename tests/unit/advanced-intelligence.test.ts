@@ -1,6 +1,6 @@
 import { describe, expect, it, afterAll, beforeAll } from 'vitest';
 import http from 'node:http';
-import { AtlasDatabase } from '@main/db/database';
+import { LavrayDatabase } from '@main/db/database';
 import { AgentRepository } from '@main/db/repositories/agent-repo';
 import { PlatformRepository } from '@main/db/repositories/platform-repo';
 import { InjectionGuard } from '@main/security/injection-guard';
@@ -153,7 +153,7 @@ describe('Advanced AI Intelligence & Gemini HTTP Error/Retry Hardening', () => {
   });
 
   it('builds cited ResearchReports, filters fabricated URLs, and detects contradictions', async () => {
-    const db = new AtlasDatabase(':memory:');
+    const db = new LavrayDatabase(':memory:');
     const agentRepo = new AgentRepository(db.db);
     const mock = new MockModelProvider();
     mock.enqueue([
@@ -212,7 +212,7 @@ describe('Advanced AI Intelligence & Gemini HTTP Error/Retry Hardening', () => {
   });
 
   it('performs semantic page search, detects page changes, and computes cross-tab intelligence', () => {
-    const db = new AtlasDatabase(':memory:');
+    const db = new LavrayDatabase(':memory:');
     const platformRepo = new PlatformRepository(db.db);
     const guard = new InjectionGuard();
     const pageEngine = new PageUnderstandingEngine(() => new MockModelProvider(), platformRepo, guard);
@@ -263,7 +263,7 @@ describe('Advanced AI Intelligence & Gemini HTTP Error/Retry Hardening', () => {
   });
 
   it('supports semantic embeddings, profile scoping, expiration, checkpoints, and opt-in proactive suggestions', () => {
-    const db = new AtlasDatabase(':memory:');
+    const db = new LavrayDatabase(':memory:');
     const platformRepo = new PlatformRepository(db.db);
     const agentRepo = new AgentRepository(db.db);
     const mem = new MemoryService(platformRepo);

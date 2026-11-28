@@ -2,14 +2,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { redactSecrets } from '@main/security/secrets';
 
-export class AtlasLogger {
+export class LavrayLogger {
   private readonly logFile: string;
   private readonly maxBytes = 2 * 1024 * 1024;
 
   constructor(userDataDir: string) {
     const dir = path.join(userDataDir, 'logs');
     fs.mkdirSync(dir, { recursive: true });
-    this.logFile = path.join(dir, 'atlas.log');
+    this.logFile = path.join(dir, 'lavray.log');
   }
 
   public log(level: 'INFO' | 'WARN' | 'ERROR', scope: string, message: string, meta?: unknown): void {

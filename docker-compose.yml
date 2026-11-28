@@ -1,43 +1,43 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: atlas-postgres
+    container_name: lavray-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-atlas}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-atlas_dev_password}
-      POSTGRES_DB: ${POSTGRES_DB:-atlas_cloud}
+      POSTGRES_USER: ${POSTGRES_USER:-lavray}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lavray_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-lavray_cloud}
     volumes:
-      - atlas_postgres_data:/var/lib/postgresql/data
+      - lavray_postgres_data:/var/lib/postgresql/data
       - ./src/backend/db/migrations:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-atlas} -d ${POSTGRES_DB:-atlas_cloud}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-lavray} -d ${POSTGRES_DB:-lavray_cloud}"]
       interval: 5s
       timeout: 5s
       retries: 10
     networks:
-      - atlas_internal
+      - lavray_internal
 
   redis:
     image: redis:7-alpine
-    container_name: atlas-redis
+    container_name: lavray-redis
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
-      - atlas_redis_data:/data
+      - lavray_redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
       retries: 10
     networks:
-      - atlas_internal
+      - lavray_internal
 
-  atlas-backend:
+  lavray-backend:
     build:
       context: .
       dockerfile: Dockerfile.backend
-    container_name: atlas-cloud-backend
+    container_name: lavray-cloud-backend
     restart: unless-stopped
     depends_on:
       postgres:
@@ -46,23 +46,23 @@ services:
         condition: service_healthy
     environment:
       NODE_ENV: ${NODE_ENV:-development}
-      ATLAS_BACKEND_HOST: 0.0.0.0
-      ATLAS_BACKEND_PORT: 48080
-      DATABASE_URL: postgresql://${POSTGRES_USER:-atlas}:${POSTGRES_PASSWORD:-atlas_dev_password}@postgres:5432/${POSTGRES_DB:-atlas_cloud}
+      LAVRAY_BACKEND_HOST: 0.0.0.0
+      LAVRAY_BACKEND_PORT: 48080
+      DATABASE_URL: postgresql://${POSTGRES_USER:-lavray}:${POSTGRES_PASSWORD:-lavray_dev_password}@postgres:5432/${POSTGRES_DB:-lavray_cloud}
       REDIS_URL: redis://redis:6379
-      ATLAS_JWT_SECRET: ${ATLAS_JWT_SECRET:-dev-local-jwt-secret-replace-for-prod-32b}
-      ATLAS_AI_PROVIDER: ${ATLAS_AI_PROVIDER:-self_hosted}
-      ATLAS_SELF_HOSTED_URL: ${ATLAS_SELF_HOSTED_URL:-http://host.docker.internal:11434}
-      ATLAS_SELF_HOSTED_MODEL: ${ATLAS_SELF_HOSTED_MODEL:-qwen2.5:3b}
-      ATLAS_SELF_HOSTED_API_KEY: ${ATLAS_SELF_HOSTED_API_KEY:-}
+      LAVRAY_JWT_SECRET: ${LAVRAY_JWT_SECRET:-dev-local-jwt-secret-replace-for-prod-32b}
+      LAVRAY_AI_PROVIDER: ${LAVRAY_AI_PROVIDER:-self_hosted}
+      LAVRAY_SELF_HOSTED_URL: ${LAVRAY_SELF_HOSTED_URL:-http://host.docker.internal:11434}
+      LAVRAY_SELF_HOSTED_MODEL: ${LAVRAY_SELF_HOSTED_MODEL:-qwen2.5:3b}
+      LAVRAY_SELF_HOSTED_API_KEY: ${LAVRAY_SELF_HOSTED_API_KEY:-}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       BRAVE_SEARCH_API_KEY: ${BRAVE_SEARCH_API_KEY:-}
       GOOGLE_CSE_API_KEY: ${GOOGLE_CSE_API_KEY:-}
       GOOGLE_CSE_CX: ${GOOGLE_CSE_CX:-}
       BING_SEARCH_API_KEY: ${BING_SEARCH_API_KEY:-}
-      ATLAS_ALLOW_MOCK_SEARCH: ${ATLAS_ALLOW_MOCK_SEARCH:-false}
-      ATLAS_ALLOW_MOCK_AI: ${ATLAS_ALLOW_MOCK_AI:-false}
-      ATLAS_INLINE_WORKER: "false"
+      LAVRAY_ALLOW_MOCK_SEARCH: ${LAVRAY_ALLOW_MOCK_SEARCH:-false}
+      LAVRAY_ALLOW_MOCK_AI: ${LAVRAY_ALLOW_MOCK_AI:-false}
+      LAVRAY_INLINE_WORKER: "false"
     ports:
       - "127.0.0.1:48080:48080"
     healthcheck:
@@ -71,13 +71,13 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - atlas_internal
+      - lavray_internal
 
-  atlas-worker:
+  lavray-worker:
     build:
       context: .
       dockerfile: Dockerfile.worker
-    container_name: atlas-cloud-worker
+    container_name: lavray-cloud-worker
     restart: unless-stopped
     depends_on:
       postgres:
@@ -86,36 +86,36 @@ services:
         condition: service_healthy
     environment:
       NODE_ENV: ${NODE_ENV:-development}
-      DATABASE_URL: postgresql://${POSTGRES_USER:-atlas}:${POSTGRES_PASSWORD:-atlas_dev_password}@postgres:5432/${POSTGRES_DB:-atlas_cloud}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-lavray}:${POSTGRES_PASSWORD:-lavray_dev_password}@postgres:5432/${POSTGRES_DB:-lavray_cloud}
       REDIS_URL: redis://redis:6379
-      ATLAS_JWT_SECRET: ${ATLAS_JWT_SECRET:-dev-local-jwt-secret-replace-for-prod-32b}
-      ATLAS_AI_PROVIDER: ${ATLAS_AI_PROVIDER:-self_hosted}
-      ATLAS_SELF_HOSTED_URL: ${ATLAS_SELF_HOSTED_URL:-http://host.docker.internal:11434}
-      ATLAS_SELF_HOSTED_MODEL: ${ATLAS_SELF_HOSTED_MODEL:-qwen2.5:3b}
-      ATLAS_SELF_HOSTED_API_KEY: ${ATLAS_SELF_HOSTED_API_KEY:-}
+      LAVRAY_JWT_SECRET: ${LAVRAY_JWT_SECRET:-dev-local-jwt-secret-replace-for-prod-32b}
+      LAVRAY_AI_PROVIDER: ${LAVRAY_AI_PROVIDER:-self_hosted}
+      LAVRAY_SELF_HOSTED_URL: ${LAVRAY_SELF_HOSTED_URL:-http://host.docker.internal:11434}
+      LAVRAY_SELF_HOSTED_MODEL: ${LAVRAY_SELF_HOSTED_MODEL:-qwen2.5:3b}
+      LAVRAY_SELF_HOSTED_API_KEY: ${LAVRAY_SELF_HOSTED_API_KEY:-}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-      ATLAS_WORKER_POLL_MS: ${ATLAS_WORKER_POLL_MS:-2000}
+      LAVRAY_WORKER_POLL_MS: ${LAVRAY_WORKER_POLL_MS:-2000}
     networks:
-      - atlas_internal
+      - lavray_internal
 
   # Optional self-hosted LLM runtime container (opt-in via: docker compose --profile local-ai up)
-  atlas-ollama:
+  lavray-ollama:
     image: ollama/ollama:0.5.7
-    container_name: atlas-local-llm
+    container_name: lavray-local-llm
     profiles: ["local-ai"]
     restart: unless-stopped
     volumes:
-      - atlas_ollama_models:/root/.ollama
+      - lavray_ollama_models:/root/.ollama
     ports:
       - "127.0.0.1:11434:11434"
     networks:
-      - atlas_internal
+      - lavray_internal
 
 volumes:
-  atlas_postgres_data:
-  atlas_redis_data:
-  atlas_ollama_models:
+  lavray_postgres_data:
+  lavray_redis_data:
+  lavray_ollama_models:
 
 networks:
-  atlas_internal:
+  lavray_internal:
     driver: bridge

@@ -21,7 +21,7 @@ function subscribe<T = unknown>(channel: string, handler: (payload: T) => void):
   return () => ipcRenderer.removeListener(channel, listener);
 }
 
-const atlasApi = {
+const lavrayApi = {
   // Tabs & Window
   listTabs: () => invoke(IPC_CHANNELS.TAB_LIST),
   createTab: (opts: { url?: string; activate?: boolean; groupId?: string | null } = {}) =>
@@ -229,7 +229,7 @@ const atlasApi = {
     invoke(IPC_CHANNELS.SKILL_TEST, { skillId, params, tabId }),
   checkProactiveSuggestions: (tabId?: string | null) => invoke(IPC_CHANNELS.PROACTIVE_CHECK, { tabId }),
 
-  // Atlas Search & Cloud
+  // LAVRAY Search & Cloud
   executeSearch: (payload: {
     query: string;
     mode?: string;
@@ -274,4 +274,4 @@ const atlasApi = {
   ) => subscribe(IPC_CHANNELS.CONTENT_CONTEXT_ACTION, cb)
 };
 
-contextBridge.exposeInMainWorld('atlas', atlasApi);
+contextBridge.exposeInMainWorld('lavray', lavrayApi);

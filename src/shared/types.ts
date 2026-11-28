@@ -363,7 +363,7 @@ export interface AXNode {
 }
 
 export interface DOMElementInfo {
-  atlasId: string;
+  lavrayId: string;
   tag: string;
   role: string;
   type?: string;
@@ -397,7 +397,7 @@ export interface PagePerception {
   tablesSummary: string[];
   screenshotBase64?: string;
   screenshotPath?: string;
-  somTargets?: Array<{ atlasId: string; label: number; box: { x: number; y: number; width: number; height: number } }>;
+  somTargets?: Array<{ lavrayId: string; label: number; box: { x: number; y: number; width: number; height: number } }>;
   injectionWarnings: InjectionWarning[];
   hitlSignals: HitlPauseReason[];
 }

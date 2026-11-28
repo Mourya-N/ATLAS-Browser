@@ -443,7 +443,7 @@ export class AdBlocker {
             method: 'GET',
             redirect: 'follow',
             signal: controller.signal,
-            headers: { 'User-Agent': 'AtlasBrowser/1.0 (+https://atlasbrowser.local)' }
+            headers: { 'User-Agent': 'LavrayBrowser/1.0 (+https://lavraybrowser.local)' }
           });
           if (!res.ok) {
             return { ok: false, status: res.status, text: '' };

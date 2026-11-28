@@ -30,7 +30,7 @@ import { ResearchExtractorService } from './modules/research/research-extractor'
 import { HybridIndexService } from './modules/knowledge/hybrid-index-service';
 import { UserDataService } from './modules/userdata/user-data-service';
 import {
-  AtlasKnowledgeSearchAdapter,
+  LavrayKnowledgeSearchAdapter,
   BingSearchAdapter,
   BraveSearchAdapter,
   GoogleCseSearchAdapter,
@@ -42,7 +42,7 @@ import { CitationAnswerPipeline } from './modules/search/citation-pipeline';
 import { FirstPartyIndexProvider } from './modules/search/first-party-index-provider';
 import { QueryUnderstandingEngine } from './modules/search/query-understanding';
 import { SearchOrchestrator } from './modules/search/search-orchestrator';
-import { AtlasCrawler } from './modules/crawler/atlas-crawler';
+import { LavrayCrawler } from './modules/crawler/lavray-crawler';
 import { WorkerService } from './modules/worker/worker-service';
 import type { BackendServicesContainer } from './api/router';
 
@@ -53,7 +53,7 @@ export async function createBackendContainer(opts?: {
   aiOverrideProvider?: ModelProvider;
 }): Promise<{ services: BackendServicesContainer; redis: Redis | null }> {
   const config = opts?.config ?? loadBackendConfig();
-  const logger = new BackendLogger('atlas-cloud-backend');
+  const logger = new BackendLogger('lavray-cloud-backend');
   const metrics = new MetricsRegistry();
 
   let repo: CloudRepository;
@@ -100,9 +100,9 @@ export async function createBackendContainer(opts?: {
   const extractor = new ResearchExtractorService(ssrfGuard);
   const hybridIndex = new HybridIndexService(repo);
   const userData = new UserDataService(repo, hybridIndex);
-  const knowledgeAdapter = new AtlasKnowledgeSearchAdapter(hybridIndex);
+  const knowledgeAdapter = new LavrayKnowledgeSearchAdapter(hybridIndex);
   const firstPartyIndex = new FirstPartyIndexProvider(repo);
-  const crawler = new AtlasCrawler(repo, ssrfGuard, extractor);
+  const crawler = new LavrayCrawler(repo, ssrfGuard, extractor);
 
   const searchProviders: SearchProvider[] = opts?.searchProviders
     ? [firstPartyIndex, ...opts.searchProviders]

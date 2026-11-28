@@ -1,6 +1,6 @@
 import type {
-  AtlasIndexDocument,
-  AtlasIndexStats,
+  LavrayIndexDocument,
+  LavrayIndexStats,
   CloudBackgroundJob,
   CloudBookmarkRecord,
   CloudConsentSettings,
@@ -46,7 +46,7 @@ export class InMemoryCloudRepository implements CloudRepository {
   private readonly savedSources: SavedSourceRecord[] = [];
   private readonly memoryItems = new Map<string, { userId: string; profileId: string; item: MemoryItem }>();
   private readonly hybridDocs = new Map<string, HybridIndexDocument>();
-  private readonly atlasIndexDocs = new Map<string, AtlasIndexDocument>();
+  private readonly lavrayIndexDocs = new Map<string, LavrayIndexDocument>();
   private readonly crawlCheckpoints = new Map<string, CrawlCheckpoint>();
   private readonly jobs = new Map<string, CloudBackgroundJob>();
   private readonly audits: CloudAuditEventRecord[] = [];
@@ -344,45 +344,45 @@ export class InMemoryCloudRepository implements CloudRepository {
     this.audits.push(event);
   }
 
-  public async upsertAtlasIndexDocument(
-    doc: AtlasIndexDocument
+  public async upsertLavrayIndexDocument(
+    doc: LavrayIndexDocument
   ): Promise<{ inserted: boolean; updated: boolean }> {
-    const existing = this.atlasIndexDocs.get(doc.canonicalUrl);
+    const existing = this.lavrayIndexDocs.get(doc.canonicalUrl);
     if (!existing) {
-      this.atlasIndexDocs.set(doc.canonicalUrl, doc);
+      this.lavrayIndexDocs.set(doc.canonicalUrl, doc);
       return { inserted: true, updated: false };
     }
     const changed = existing.contentHash !== doc.contentHash || existing.title !== doc.title;
-    this.atlasIndexDocs.set(doc.canonicalUrl, doc);
+    this.lavrayIndexDocs.set(doc.canonicalUrl, doc);
     return { inserted: false, updated: changed };
   }
 
-  public async removeAtlasIndexDocument(canonicalUrl: string): Promise<boolean> {
-    return this.atlasIndexDocs.delete(canonicalUrl);
+  public async removeLavrayIndexDocument(canonicalUrl: string): Promise<boolean> {
+    return this.lavrayIndexDocs.delete(canonicalUrl);
   }
 
-  public async getAtlasIndexDocument(canonicalUrl: string): Promise<AtlasIndexDocument | null> {
-    return this.atlasIndexDocs.get(canonicalUrl) ?? null;
+  public async getLavrayIndexDocument(canonicalUrl: string): Promise<LavrayIndexDocument | null> {
+    return this.lavrayIndexDocs.get(canonicalUrl) ?? null;
   }
 
-  public async findAtlasDocumentByContentHash(contentHash: string): Promise<AtlasIndexDocument | null> {
-    for (const d of this.atlasIndexDocs.values()) {
+  public async findLavrayDocumentByContentHash(contentHash: string): Promise<LavrayIndexDocument | null> {
+    for (const d of this.lavrayIndexDocs.values()) {
       if (d.contentHash === contentHash) return d;
     }
     return null;
   }
 
-  public async searchAtlasIndex(params: {
+  public async searchLavrayIndex(params: {
     query: string;
     queryEmbedding: number[];
     domains?: string[];
     limit?: number;
-  }): Promise<Array<{ document: AtlasIndexDocument; lexicalScore: number; semanticScore: number }>> {
+  }): Promise<Array<{ document: LavrayIndexDocument; lexicalScore: number; semanticScore: number }>> {
     const queryTokens = Array.from(new Set(tokenize(params.query)));
     const domainFilters = params.domains?.map((d) => d.toLowerCase()) ?? [];
-    const results: Array<{ document: AtlasIndexDocument; lexicalScore: number; semanticScore: number }> = [];
+    const results: Array<{ document: LavrayIndexDocument; lexicalScore: number; semanticScore: number }> = [];
 
-    for (const doc of this.atlasIndexDocs.values()) {
+    for (const doc of this.lavrayIndexDocs.values()) {
       if (
         domainFilters.length > 0 &&
         !domainFilters.some((d) => doc.sourceDomain === d || doc.sourceDomain.endsWith(`.${d}`))
@@ -418,8 +418,8 @@ export class InMemoryCloudRepository implements CloudRepository {
       .slice(0, params.limit ?? 20);
   }
 
-  public async getAtlasIndexStats(): Promise<AtlasIndexStats> {
-    const docs = Array.from(this.atlasIndexDocs.values());
+  public async getLavrayIndexStats(): Promise<LavrayIndexStats> {
+    const docs = Array.from(this.lavrayIndexDocs.values());
     const domains = new Set(docs.map((d) => d.sourceDomain));
     const latestCrawlAt = docs.reduce<number | null>(
       (max, d) => (max === null || d.crawledAt > max ? d.crawledAt : max),
@@ -433,8 +433,8 @@ export class InMemoryCloudRepository implements CloudRepository {
       indexVersion: 'v1',
       limitedCoverage,
       notice: limitedCoverage
-        ? `Atlas Index currently contains ${docs.length} crawled document(s) across ${domains.size} domain(s) (controlled seed scope). External providers remain helpful for broad web queries.`
-        : `Atlas Index serving ${docs.length} documents across ${domains.size} domains.`
+        ? `LAVRAY Index currently contains ${docs.length} crawled document(s) across ${domains.size} domain(s) (controlled seed scope). External providers remain helpful for broad web queries.`
+        : `LAVRAY Index serving ${docs.length} documents across ${domains.size} domains.`
     };
   }
 

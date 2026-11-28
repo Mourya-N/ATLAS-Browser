@@ -244,7 +244,7 @@ export class SelfHostedOpenAiProvider implements ModelProvider {
     const baseUrl = normalizeV1BaseUrl(this.opts.getEndpointUrl());
     if (!baseUrl) {
       throw new GeminiApiError(
-        'Self-hosted model endpoint is not configured (set selfHostedEndpointUrl or ATLAS_SELF_HOSTED_URL).',
+        'Self-hosted model endpoint is not configured (set selfHostedEndpointUrl or LAVRAY_SELF_HOSTED_URL).',
         'missing_key'
       );
     }
@@ -277,7 +277,7 @@ export class SelfHostedOpenAiProvider implements ModelProvider {
       bodyPayload.response_format = {
         type: 'json_schema',
         json_schema: {
-          name: 'atlas_structured_output',
+          name: 'lavray_structured_output',
           strict: true,
           schema: request.responseSchema
         }

@@ -92,7 +92,7 @@ export class StructuredExtractionEngine {
       const resp = await provider.generate({
         model: params.model,
         systemInstruction:
-          'You are the Atlas Structured Extraction Engine. Extract ONLY facts present in the untrusted page content. Never fabricate missing values; use null when a field is absent or unavailable.',
+          'You are the HAYA (HAYAGRIVA) Structured Extraction Engine for LAVRAY. Extract ONLY facts present in the untrusted page content. Never fabricate missing values; use null when a field is absent or unavailable.',
         messages: [
           {
             role: 'user',

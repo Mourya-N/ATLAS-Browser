@@ -27,7 +27,7 @@ export class WindowManager {
   ) {}
 
   private getRendererEntry(): { devUrl?: string; filePath?: string } {
-    const devUrl = process.env.ATLAS_DEV_SERVER_URL;
+    const devUrl = process.env.LAVRAY_DEV_SERVER_URL;
     if (devUrl) return { devUrl };
     const candidates = [
       path.join(__dirname, '../renderer/index.html'),
@@ -54,6 +54,12 @@ export class WindowManager {
     const savedTheme = this.platformRepo.getSetting<'light' | 'dark' | 'system'>('ui.theme', 'light');
     const isDarkWindow = savedTheme === 'dark' || (savedTheme === 'system' && nativeTheme.shouldUseDarkColors);
 
+    const iconCandidates = [
+      path.join(app.getAppPath(), 'assets/icon.png'),
+      path.join(process.cwd(), 'assets/icon.png')
+    ];
+    const windowIconPath = iconCandidates.find((p) => fs.existsSync(p));
+
     const win = new BrowserWindow({
       width: savedBounds.width || 1440,
       height: savedBounds.height || 920,
@@ -61,8 +67,9 @@ export class WindowManager {
       y: savedBounds.y,
       minWidth: 960,
       minHeight: 620,
-      title: isPrivate ? 'Atlas Browser — Private' : 'Atlas Browser',
-      backgroundColor: isDarkWindow ? '#111214' : '#fafaf8',
+      title: isPrivate ? 'LAVRAY Browser — Private' : 'LAVRAY Browser',
+      icon: windowIconPath,
+      backgroundColor: isDarkWindow ? '#0f1016' : '#fafaf8',
       titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
       trafficLightPosition: process.platform === 'darwin' ? { x: 14, y: 14 } : undefined,
       webPreferences: {
@@ -81,7 +88,7 @@ export class WindowManager {
 
     // Strict navigation guard on the trusted UI shell window
     win.webContents.on('will-navigate', (event, url) => {
-      const devUrl = process.env.ATLAS_DEV_SERVER_URL;
+      const devUrl = process.env.LAVRAY_DEV_SERVER_URL;
       const isTrusted =
         url.startsWith('file://') || (devUrl ? url.startsWith(devUrl) : false);
       if (!isTrusted) {
@@ -132,7 +139,7 @@ export class WindowManager {
     // Restore previous tabs or open initial tab once UI finishes loading
     win.webContents.once('did-finish-load', () => {
       if (isPrivate) {
-        this.tabManager.createTab(win.id, { url: 'atlas://newtab', activate: true });
+        this.tabManager.createTab(win.id, { url: 'lavray://newtab', activate: true });
         return;
       }
       const restoreEnabled = this.platformRepo.getSetting<boolean>('browser.restoreSessionOnStart', true);

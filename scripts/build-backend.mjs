@@ -7,7 +7,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '..');
 
 async function main() {
-  console.log('[build-backend] Bundling Atlas Cloud API & Background Worker...');
+  console.log('[build-backend] Bundling LAVRAY Cloud API & Background Worker...');
   await esbuild.build({
     entryPoints: [
       path.join(rootDir, 'src/backend/api/server.ts'),

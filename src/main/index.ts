@@ -1,8 +1,8 @@
-import { app, crashReporter, globalShortcut, session } from 'electron';
+import { Menu, app, crashReporter, globalShortcut, session } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
-import { AtlasDatabase } from './db/database';
-import { AtlasLogger } from './utils/logger';
+import { LavrayDatabase } from './db/database';
+import { LavrayLogger } from './utils/logger';
 import { ResearchEngine } from './agent/research-engine';
 import { PageUnderstandingEngine } from './agent/page-understanding';
 import { CrossTabIntelligence } from './agent/cross-tab';
@@ -24,9 +24,7 @@ import { WindowManager, resolveUiPreloadPath } from './window-manager';
 import { CDPManager } from './cdp/cdp-manager';
 import { ElementResolver } from './cdp/element-resolver';
 import { PerceptionEngine } from './cdp/perception';
-import { GeminiProvider } from './agent/providers/gemini-provider';
 import { SelfHostedOpenAiProvider } from './agent/providers/self-hosted-provider';
-import { MockModelProvider } from './agent/providers/mock-provider';
 import type { ModelProvider } from './agent/providers/model-provider';
 import { LocalSearchIndexService } from './cloud/local-search-index';
 import { ToolRegistry } from './agent/tool-registry';
@@ -44,19 +42,25 @@ import { registerAllIpcHandlers } from './ipc/register-handlers';
 
 // Disable Electron remote module & enforce secure defaults
 app.enableSandbox();
+app.setName('LAVRAY Browser');
+app.setAboutPanelOptions({
+  applicationName: 'LAVRAY Browser',
+  applicationVersion: app.getVersion(),
+  copyright: 'Powered by HAYAGRIVA (HAYA) AI Agent'
+});
 
-if (process.env.ATLAS_USER_DATA_DIR) {
-  app.setPath('userData', process.env.ATLAS_USER_DATA_DIR);
+if (process.env.LAVRAY_USER_DATA_DIR) {
+  app.setPath('userData', process.env.LAVRAY_USER_DATA_DIR);
 }
 
 // Local-only crash dumps (telemetry upload disabled)
 crashReporter.start({
-  productName: 'Atlas Browser',
+  productName: 'LAVRAY Browser',
   uploadToServer: false,
   compress: true
 });
 
-let db: AtlasDatabase | null = null;
+let db: LavrayDatabase | null = null;
 let scheduler: JobScheduler | null = null;
 let mcpServer: LocalMcpServer | null = null;
 let sessionRestoreRef: SessionRestoreService | null = null;
@@ -78,12 +82,50 @@ function pruneOldScreenshots(screenshotsDir: string, retentionDays: number): voi
 }
 
 app.whenReady().then(async () => {
+  const iconCandidates = [
+    path.join(app.getAppPath(), 'assets/icon.png'),
+    path.join(process.cwd(), 'assets/icon.png')
+  ];
+  const appIconPath = iconCandidates.find((p) => fs.existsSync(p));
+  if (process.platform === 'darwin' && appIconPath && app.dock) {
+    try {
+      app.dock.setIcon(appIconPath);
+    } catch {
+      // Ignore dock icon errors in headless/CI environments
+    }
+  }
+
+  Menu.setApplicationMenu(
+    Menu.buildFromTemplate([
+      ...(process.platform === 'darwin'
+        ? [
+            {
+              label: 'LAVRAY Browser',
+              submenu: [
+                { role: 'about' as const, label: 'About LAVRAY Browser' },
+                { type: 'separator' as const },
+                { role: 'services' as const },
+                { type: 'separator' as const },
+                { role: 'hide' as const, label: 'Hide LAVRAY Browser' },
+                { role: 'hideOthers' as const },
+                { role: 'unhide' as const },
+                { type: 'separator' as const },
+                { role: 'quit' as const, label: 'Quit LAVRAY Browser' }
+              ]
+            }
+          ]
+        : []),
+      { role: 'editMenu' as const },
+      { role: 'windowMenu' as const }
+    ])
+  );
+
   const userDataDir = app.getPath('userData');
   const screenshotsDir = path.join(userDataDir, 'screenshots');
   fs.mkdirSync(screenshotsDir, { recursive: true });
 
   // Enforce strict Content Security Policy on the UI shell session (non-dev)
-  if (!process.env.ATLAS_DEV_SERVER_URL) {
+  if (!process.env.LAVRAY_DEV_SERVER_URL) {
     session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
       if (details.url.startsWith('file://')) {
         callback({
@@ -100,23 +142,23 @@ app.whenReady().then(async () => {
     });
   }
 
-  const logger = new AtlasLogger(userDataDir);
+  const logger = new LavrayLogger(userDataDir);
   process.on('uncaughtException', (err) => {
     logger.log('ERROR', 'main', `Uncaught exception: ${err.stack || err.message}`);
   });
   process.on('unhandledRejection', (reason) => {
     logger.log('ERROR', 'main', `Unhandled rejection: ${String(reason)}`);
   });
-  logger.log('INFO', 'main', 'Atlas Browser starting');
+  logger.log('INFO', 'main', 'LAVRAY Browser starting');
 
-  db = new AtlasDatabase(path.join(userDataDir, 'atlas.db'));
+  db = new LavrayDatabase(path.join(userDataDir, 'lavray.db'));
   const browserRepo = new BrowserRepository(db.db);
   const agentRepo = new AgentRepository(db.db);
   const platformRepo = new PlatformRepository(db.db);
 
   // Ensure default conversation exists
   if (agentRepo.listConversations(1).length === 0) {
-    agentRepo.createConversation('Atlas Assistant');
+    agentRepo.createConversation('HAYA (HAYAGRIVA)');
   }
 
   const retentionDays = platformRepo.getSetting<number>('agent.screenshotRetentionDays', 14);
@@ -163,22 +205,12 @@ app.whenReady().then(async () => {
   const toolRegistry = new ToolRegistry(permissionGate, auditLogger);
   registerAllBrowserTools(toolRegistry);
 
-  const geminiProvider = new GeminiProvider(() => vault.getGeminiApiKey());
   const selfHostedProvider = new SelfHostedOpenAiProvider({
     getEndpointUrl: () => platformRepo.getSetting<string>('agent.selfHostedEndpointUrl', 'http://127.0.0.1:11434/v1'),
     getApiKey: () => vault.getCustomApiKey()
   });
-  const mockProvider = new MockModelProvider();
-  const getProvider = (): ModelProvider => {
-    // Never silently fall back from Gemini/Self-Hosted to Mock when selected
-    const selected = platformRepo.getSetting<'gemini' | 'self_hosted' | 'custom_openai_compatible' | 'mock'>(
-      'agent.defaultProvider',
-      'gemini'
-    );
-    if (selected === 'mock') return mockProvider;
-    if (selected === 'self_hosted' || selected === 'custom_openai_compatible') return selfHostedProvider;
-    return geminiProvider;
-  };
+  // Route all AI inference strictly to the user's configured self-hosted model
+  const getProvider = (): ModelProvider => selfHostedProvider;
 
   const costTracker = new CostTracker(agentRepo);
   const memoryService = new MemoryService(platformRepo);
@@ -283,7 +315,6 @@ app.whenReady().then(async () => {
     pageUnderstanding,
     crossTab,
     proactiveAssistant,
-    geminiProvider,
     selfHostedProvider,
     cloudClient,
     scheduler,

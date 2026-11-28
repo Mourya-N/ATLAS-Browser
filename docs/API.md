@@ -1,7 +1,7 @@
-# Atlas Cloud Backend API v1 Reference
+# LAVRAY Cloud Backend API v1 Reference
 
 Base URL (local development): `http://127.0.0.1:48080`
-Every response includes `X-Request-Id` and `X-Atlas-API-Version: v1`. Protected endpoints require `Authorization: Bearer <accessToken>`.
+Every response includes `X-Request-Id` and `X-Lavray-API-Version: v1`. Protected endpoints require `Authorization: Bearer <accessToken>`.
 
 ---
 
@@ -11,10 +11,10 @@ Every response includes `X-Request-Id` and `X-Atlas-API-Version: v1`. Protected 
 | :--- | :--- | :--- | :--- |
 | `GET` | `/health`, `/api/v1/health` | Public | DB connectivity, storage mode (`postgres`/`in_memory`), AI runtime status, index stats, provider health. |
 | `GET` | `/api/v1/ai/status` | Public | Live reachability & model discovery diagnostics for Self-Hosted (Ollama/vLLM/llama.cpp) or Gemini runtime. |
-| `GET` | `/api/v1/index/stats` | Public | Document/domain count, coverage notice, and recent crawl checkpoints for Atlas's first-party index. |
+| `GET` | `/api/v1/index/stats` | Public | Document/domain count, coverage notice, and recent crawl checkpoints for LAVRAY's first-party index. |
 | `POST` | `/api/v1/index/crawl` | JWT | Starts controlled incremental crawl (`seedUrls`, `allowedDomains`, `maxDepth`, `maxPages`, `respectRobotsTxt`). |
-| `DELETE` | `/api/v1/index/documents` | JWT | Removes a document by `canonicalUrl` from Atlas's first-party index. |
-| `GET` | `/metrics` | Public | Prometheus exposition metrics (`atlas_http_requests_total`, `atlas_http_latency_p95_ms`, `atlas_search_total`, `atlas_ai_tokens_total`, `atlas_worker_queue_depth`). |
+| `DELETE` | `/api/v1/index/documents` | JWT | Removes a document by `canonicalUrl` from LAVRAY's first-party index. |
+| `GET` | `/metrics` | Public | Prometheus exposition metrics (`lavray_http_requests_total`, `lavray_http_latency_p95_ms`, `lavray_search_total`, `lavray_ai_tokens_total`, `lavray_worker_queue_depth`). |
 | `GET` | `/api/v1/observability/metrics` | Public | Structured JSON observability snapshot. |
 
 ## Identity & Consent

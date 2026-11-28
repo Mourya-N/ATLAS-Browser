@@ -113,7 +113,7 @@ export class CrossTabIntelligence {
     const resp = await provider.generate({
       model: params.model,
       systemInstruction:
-        'You are the Atlas Cross-Tab Intelligence Engine. Compare the provided tabs objectively based on actual content, include a Markdown comparison table with source URLs, and note any missing attributes explicitly.',
+        'You are the LAVRAY Cross-Tab Intelligence Engine. Compare the provided tabs objectively based on actual content, include a Markdown comparison table with source URLs, and note any missing attributes explicitly.',
       messages: [
         {
           role: 'user',

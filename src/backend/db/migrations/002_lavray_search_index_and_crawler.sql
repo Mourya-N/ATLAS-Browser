@@ -1,7 +1,7 @@
--- Atlas Cloud PostgreSQL Migration 002
+-- LAVRAY Cloud PostgreSQL Migration 002
 -- Independent First-Party Web Index & Incremental Resumable Crawler State
 
-CREATE TABLE IF NOT EXISTS atlas_index_documents (
+CREATE TABLE IF NOT EXISTS lavray_index_documents (
   id TEXT PRIMARY KEY,
   url TEXT NOT NULL,
   canonical_url TEXT NOT NULL UNIQUE,
@@ -25,10 +25,10 @@ CREATE TABLE IF NOT EXISTS atlas_index_documents (
   ) STORED
 );
 
-CREATE INDEX IF NOT EXISTS idx_atlas_index_tsv ON atlas_index_documents USING GIN(tsv);
-CREATE INDEX IF NOT EXISTS idx_atlas_index_domain ON atlas_index_documents(source_domain);
-CREATE INDEX IF NOT EXISTS idx_atlas_index_hash ON atlas_index_documents(content_hash);
-CREATE INDEX IF NOT EXISTS idx_atlas_index_crawled ON atlas_index_documents(crawled_at DESC);
+CREATE INDEX IF NOT EXISTS idx_lavray_index_tsv ON lavray_index_documents USING GIN(tsv);
+CREATE INDEX IF NOT EXISTS idx_lavray_index_domain ON lavray_index_documents(source_domain);
+CREATE INDEX IF NOT EXISTS idx_lavray_index_hash ON lavray_index_documents(content_hash);
+CREATE INDEX IF NOT EXISTS idx_lavray_index_crawled ON lavray_index_documents(crawled_at DESC);
 
 CREATE TABLE IF NOT EXISTS crawl_checkpoints (
   id TEXT PRIMARY KEY,

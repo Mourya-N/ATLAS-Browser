@@ -234,9 +234,9 @@ export class BingSearchAdapter implements SearchProvider {
   }
 }
 
-export class AtlasKnowledgeSearchAdapter implements SearchProvider {
-  public readonly id = 'atlas_knowledge';
-  public readonly name = 'Atlas Personal Knowledge Hybrid Index';
+export class LavrayKnowledgeSearchAdapter implements SearchProvider {
+  public readonly id = 'lavray_knowledge';
+  public readonly name = 'LAVRAY Personal Knowledge Hybrid Index';
   public readonly isMock = false;
 
   constructor(private readonly hybridIndex: HybridIndexService) {}
@@ -268,7 +268,7 @@ export class AtlasKnowledgeSearchAdapter implements SearchProvider {
     });
     return hits.map((h, idx) => ({
       title: h.document.title,
-      url: h.document.url || `atlas://knowledge/${h.document.sourceType}/${h.document.sourceId}`,
+      url: h.document.url || `lavray://knowledge/${h.document.sourceType}/${h.document.sourceId}`,
       snippet: h.document.content.slice(0, 320),
       sourceProvider: this.id,
       publishedAt: new Date(h.document.updatedAt).toISOString(),
@@ -381,7 +381,7 @@ const DEFAULT_MOCK_CORPUS: DeterministicSearchFixture[] = [
   },
   {
     title: 'Hybrid Search Architecture: Combining BM25 and Dense Vector Retrieval',
-    url: 'https://atlas-docs.example.org/hybrid-search-bm25-vectors',
+    url: 'https://lavray-docs.example.org/hybrid-search-bm25-vectors',
     snippet: 'Combining lexical exact matching (BM25/tsvector) with vector cosine similarity improves recall on synonyms while preserving exact identifier precision.',
     contentType: 'research',
     publishedAt: '2026-09-20T00:00:00Z'

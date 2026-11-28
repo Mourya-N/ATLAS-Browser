@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type {
-  AtlasIndexDocument,
+  LavrayIndexDocument,
   CrawlCheckpoint,
   CrawlSeedConfig
 } from '@shared/types';
@@ -39,7 +39,7 @@ export function computeExplainableAuthority(params: {
   };
 }
 
-export class AtlasCrawler {
+export class LavrayCrawler {
   private readonly robotsCache = new Map<string, ParsedRobots>();
   private readonly lastDomainFetch = new Map<string, number>();
 
@@ -49,7 +49,7 @@ export class AtlasCrawler {
     private readonly extractor: ResearchExtractorService
   ) {}
 
-  public parseRobotsTxt(raw: string, userAgent = 'AtlasBot'): ParsedRobots {
+  public parseRobotsTxt(raw: string, userAgent = 'LavrayBot'): ParsedRobots {
     const lines = raw.split(/\r?\n/).map((l) => l.trim());
     let matchesUa = false;
     let genericSection = false;
@@ -322,7 +322,7 @@ export class AtlasCrawler {
           .update(`${doc.title}\n${doc.textContent}`)
           .digest('hex');
 
-        const dupHashDoc = await this.repo.findAtlasDocumentByContentHash(contentHash);
+        const dupHashDoc = await this.repo.findLavrayDocumentByContentHash(contentHash);
         if (dupHashDoc && dupHashDoc.canonicalUrl !== canonicalUrl) {
           cp.duplicateCount += 1;
           await this.persistProgress(cp, visited);
@@ -338,7 +338,7 @@ export class AtlasCrawler {
           contentLength: doc.textContent.length
         });
 
-        const indexDoc: AtlasIndexDocument = {
+        const indexDoc: LavrayIndexDocument = {
           id: createHash('sha1').update(canonicalUrl).digest('hex').slice(0, 20),
           url: res.finalUrl,
           canonicalUrl,
@@ -358,7 +358,7 @@ export class AtlasCrawler {
           embedding: computeLocalEmbedding(`${doc.title} ${doc.headings.join(' ')} ${doc.textContent.slice(0, 2000)}`)
         };
 
-        const outcome = await this.repo.upsertAtlasIndexDocument(indexDoc);
+        const outcome = await this.repo.upsertLavrayIndexDocument(indexDoc);
         if (outcome.inserted) cp.indexedCount += 1;
         else if (outcome.updated) cp.updatedCount += 1;
         else cp.skippedCount += 1;

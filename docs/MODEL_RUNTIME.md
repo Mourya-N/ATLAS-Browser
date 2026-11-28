@@ -1,8 +1,8 @@
-# Atlas AI — Self-Hosted Model Runtime & Evolution Strategy
+# HAYA AI — Self-Hosted Model Runtime & Evolution Strategy
 
-Atlas AI separates **model serving** from **Atlas Search**. Both the desktop app (`SelfHostedOpenAiProvider` in `src/main/agent/providers/self-hosted-provider.ts`) and the cloud backend (`AiOrchestrator` in `src/backend/modules/ai/ai-orchestrator.ts`) speak the standard **OpenAI-compatible `/v1/chat/completions` & `/v1/models` protocol** so operators can run Ollama, vLLM, or llama.cpp without vendor lock-in.
+HAYA AI separates **model serving** from **LAVRAY Search**. Both the desktop app (`SelfHostedOpenAiProvider` in `src/main/agent/providers/self-hosted-provider.ts`) and the cloud backend (`AiOrchestrator` in `src/backend/modules/ai/ai-orchestrator.ts`) speak the standard **OpenAI-compatible `/v1/chat/completions` & `/v1/models` protocol** so operators can run Ollama, vLLM, or llama.cpp without vendor lock-in.
 
-> **Strict Honesty Policy**: Neither production backend nor desktop UI silently falls back to a mock model. When a self-hosted endpoint is unreachable or missing a requested model, Atlas surfaces clear setup diagnostics while keeping conventional search functional. Weights are never auto-downloaded without explicit user action.
+> **Strict Honesty Policy**: Neither production backend nor desktop UI silently falls back to a mock model. When a self-hosted endpoint is unreachable or missing a requested model, LAVRAY surfaces clear setup diagnostics while keeping conventional search functional. Weights are never auto-downloaded without explicit user action.
 
 ---
 
@@ -33,12 +33,12 @@ Before commercial deployment, verify the exact model tag's license in the upstre
 
 ### A. Apple Silicon Local Development (e.g., Apple M4 16 GB Unified Memory)
 ```bash
-# Install Ollama on macOS (manual user step; Atlas never auto-downloads weights)
+# Install Ollama on macOS (manual user step; LAVRAY never auto-downloads weights)
 brew install ollama
 ollama serve &
 ollama pull qwen2.5:7b-instruct
 
-# Point Atlas Settings -> AI Provider -> Self-Hosted Runtime:
+# Point LAVRAY Settings -> AI Provider -> Self-Hosted Runtime:
 # Endpoint URL: http://127.0.0.1:11434/v1
 # Model ID:     qwen2.5:7b-instruct
 ```
@@ -48,14 +48,14 @@ ollama pull qwen2.5:7b-instruct
 vllm serve Qwen/Qwen2.5-7B-Instruct \
   --host 127.0.0.1 \
   --port 8000 \
-  --api-key "${ATLAS_SELF_HOSTED_API_KEY}" \
+  --api-key "${LAVRAY_SELF_HOSTED_API_KEY}" \
   --enable-auto-tool-choice \
   --tool-call-parser hermes
 
 # Backend .env:
-ATLAS_AI_PROVIDER=self_hosted
-ATLAS_SELF_HOSTED_URL=http://127.0.0.1:8000/v1
-ATLAS_SELF_HOSTED_MODEL=Qwen/Qwen2.5-7B-Instruct
+LAVRAY_AI_PROVIDER=self_hosted
+LAVRAY_SELF_HOSTED_URL=http://127.0.0.1:8000/v1
+LAVRAY_SELF_HOSTED_MODEL=Qwen/Qwen2.5-7B-Instruct
 ```
 
 ### C. CPU-Only Fallback (`llama.cpp llama-server`)
@@ -69,13 +69,13 @@ llama-server -m ./models/Mistral-7B-Instruct-v0.3.Q4_K_M.gguf \
 
 ---
 
-## 4. Atlas Model Evolution & Fine-Tuning Pipeline
+## 4. LAVRAY Model Evolution & Fine-Tuning Pipeline
 
 implemented utility: [`src/main/agent/training/dataset-exporter.ts`](../src/main/agent/training/dataset-exporter.ts) (`exportConsentedTrainingExamples`, `serializeToJsonl`).
 
 1. **Consented Data Collection**: Requires `explicitUserConsent === true`. Strictly filters out `isPrivate === true` runs and runs `redactSecrets()` across goals, traces, and answers.
 2. **Pre-Training Baseline Evaluation**: Record NDCG@5, Citation Accuracy, Groundedness, and 27-scenario Browser Agent evaluation scores before any fine-tuning.
-3. **LoRA / QLoRA Fine-Tuning**: Train targeted adapter weights (`atlas-qwen2.5-7b-lora-vX`) using QLoRA (4-bit NF4 base + bf16 rank-16 LoRA adapters) on JSON citation formatting and deterministic browser tool-use traces — rather than full pretraining.
+3. **LoRA / QLoRA Fine-Tuning**: Train targeted adapter weights (`haya-qwen2.5-7b-lora-vX`) using QLoRA (4-bit NF4 base + bf16 rank-16 LoRA adapters) on JSON citation formatting and deterministic browser tool-use traces — rather than full pretraining.
 4. **Model Versioning & Regression Gate**: Promote adapter version only if offline evaluation shows zero safety violations, >= baseline Citation Accuracy (100%), and latency within SLA.
-5. **Instant Rollback**: Because model IDs are cleanly configured per endpoint (`ATLAS_SELF_HOSTED_MODEL`), rollback swaps the versioned adapter tag with zero schema or client changes.
-6. **Future From-Scratch Small Model (Research Horizon)**: Would require curated public-domain web text + permissively licensed code corpora, tokenizer training, 1B–3B dense transformer pretraining on multi-node H100 clusters, followed by SFT/DPO alignment; Atlas has **not** trained a foundation model in this codebase.
+5. **Instant Rollback**: Because model IDs are cleanly configured per endpoint (`LAVRAY_SELF_HOSTED_MODEL`), rollback swaps the versioned adapter tag with zero schema or client changes.
+6. **Future From-Scratch Small Model (Research Horizon)**: Would require curated public-domain web text + permissively licensed code corpora, tokenizer training, 1B–3B dense transformer pretraining on multi-node H100 clusters, followed by SFT/DPO alignment; LAVRAY has **not** trained a foundation model in this codebase.

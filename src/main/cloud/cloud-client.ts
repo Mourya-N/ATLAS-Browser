@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type {
   AiCitedAnswer,
-  AtlasIndexStats,
+  LavrayIndexStats,
   CloudAuthSession,
   CloudConnectionStatus,
   CloudConsentSettings,
@@ -134,7 +134,7 @@ export class CloudClientService {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         ...input,
-        deviceName: process.env.HOSTNAME || 'Atlas Desktop',
+        deviceName: process.env.HOSTNAME || 'LAVRAY Desktop',
         platform: process.platform,
         appVersion: '1.0.0'
       })
@@ -161,7 +161,7 @@ export class CloudClientService {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         ...input,
-        deviceName: process.env.HOSTNAME || 'Atlas Desktop',
+        deviceName: process.env.HOSTNAME || 'LAVRAY Desktop',
         platform: process.platform,
         appVersion: '1.0.0'
       })
@@ -218,7 +218,7 @@ export class CloudClientService {
     const synced: Record<string, number> = {};
 
     if (!this.isCloudEnabled()) {
-      throw new Error('Enable Atlas Cloud mode before syncing');
+      throw new Error('Enable LAVRAY Cloud mode before syncing');
     }
 
     // Bookmarks (only if explicit opt-in)
@@ -289,7 +289,7 @@ export class CloudClientService {
   }
 
   /**
-   * Executes Atlas Intelligent Search:
+   * Executes LAVRAY Intelligent Search:
    * - Uses cloud backend when enabled + consented + reachable.
    * - Automatically includes authorized non-private tabs & local knowledge when requested.
    * - Degrades seamlessly to local-first search & citation synthesis when cloud is off or unreachable.
@@ -372,7 +372,7 @@ export class CloudClientService {
       for (const m of mems) {
         localCandidates.push({
           title: m.title,
-          url: m.sourceUrl || `atlas://memory/${m.id}`,
+          url: m.sourceUrl || `lavray://memory/${m.id}`,
           snippet: m.content.slice(0, 260),
           sourceProvider: 'local_memory',
           contentType: 'knowledge',
@@ -386,7 +386,7 @@ export class CloudClientService {
         if (rep.query.toLowerCase().includes(params.query.toLowerCase().split(' ')[0] || '')) {
           localCandidates.push({
             title: `Research: ${rep.query}`,
-            url: rep.sources[0]?.url || `atlas://research/${rep.id}`,
+            url: rep.sources[0]?.url || `lavray://research/${rep.id}`,
             snippet: rep.summary.slice(0, 260),
             sourceProvider: 'local_research',
             contentType: 'research',
@@ -440,7 +440,7 @@ export class CloudClientService {
             providersQueried: Array.from(
               new Set([
                 ...cloudResp.providersQueried,
-                ...(this.localIndex ? ['atlas_first_party_index'] : []),
+                ...(this.localIndex ? ['lavray_first_party_index'] : []),
                 'local_bookmarks',
                 'local_memory'
               ])
@@ -475,7 +475,7 @@ export class CloudClientService {
       candidates: localCandidates,
       understanding,
       filters: params.filters,
-      allowLocalTestUrls: process.env.ATLAS_ALLOW_LOCALHOST_SEARCH_TEST === 'true'
+      allowLocalTestUrls: process.env.LAVRAY_ALLOW_LOCALHOST_SEARCH_TEST === 'true'
     });
     const reranked = await this.ranking.rerankCandidates(understanding.originalQuery, ranked.results);
     const totalResults = reranked.results.length;
@@ -492,7 +492,7 @@ export class CloudClientService {
       .filter((q) => q !== params.query)
       .map((q) => ({ text: q, kind: 'refinement' }));
 
-    const indexStats: AtlasIndexStats = this.localIndex
+    const indexStats: LavrayIndexStats = this.localIndex
       ? this.localIndex.getStats()
       : {
           totalDocuments: 0,
@@ -500,7 +500,7 @@ export class CloudClientService {
           latestCrawlAt: null,
           indexVersion: 'v1',
           limitedCoverage: true,
-          notice: 'Local Atlas Index empty.'
+          notice: 'Local LAVRAY Index empty.'
         };
 
     // Record local search history only if no active window is exclusively private
@@ -533,7 +533,7 @@ export class CloudClientService {
       ],
       aiAnswer,
       providersQueried: [
-        ...(this.localIndex ? ['atlas_first_party_index'] : []),
+        ...(this.localIndex ? ['lavray_first_party_index'] : []),
         'local_bookmarks',
         'local_memory',
         'local_research',
@@ -554,48 +554,27 @@ export class CloudClientService {
   }
 
   public async getLocalRuntimeStatus(): Promise<SelfHostedRuntimeStatus> {
-    const provider = this.platformRepo.getSetting<'gemini' | 'self_hosted' | 'custom_openai_compatible' | 'mock'>(
-      'agent.defaultProvider',
-      'gemini'
-    );
-    const model =
-      provider === 'self_hosted' || provider === 'custom_openai_compatible'
-        ? this.platformRepo.getSetting<string>('agent.selfHostedModel', 'qwen2.5:7b-instruct')
-        : this.platformRepo.getSetting<string>('agent.defaultModel', 'gemini-2.5-flash');
+    const rawModel =
+      this.platformRepo.getSetting<string>('agent.selfHostedModel', 'qwen2.5:3b') ||
+      this.platformRepo.getSetting<string>('agent.defaultModel', 'qwen2.5:3b');
+    const model = /^(gemini|mock)/i.test(rawModel.trim()) ? 'qwen2.5:3b' : rawModel.trim();
 
-    if ((provider === 'self_hosted' || provider === 'custom_openai_compatible') && this.selfHostedProvider) {
+    if (this.selfHostedProvider) {
       return this.selfHostedProvider.getRuntimeStatus(model);
     }
 
-    if (provider === 'gemini') {
-      const hasKey = Boolean(this.vault.getGeminiApiKey());
-      return {
-        backendKind: 'gemini',
-        endpointUrl: 'https://generativelanguage.googleapis.com/v1beta',
-        configuredModel: model,
-        reachable: hasKey,
-        modelAvailable: hasKey,
-        availableModels: hasKey ? [model] : [],
-        latencyMs: 0,
-        supportsStreaming: true,
-        supportsTools: true,
-        supportsStructuredOutput: true,
-        statusMessage: hasKey ? 'Gemini API configured' : 'Gemini selected but GEMINI_API_KEY is not set'
-      };
-    }
-
     return {
-      backendKind: 'mock',
-      endpointUrl: '',
-      configuredModel: 'mock-deterministic',
-      reachable: true,
-      modelAvailable: true,
-      availableModels: ['mock-deterministic'],
+      backendKind: 'unconfigured',
+      endpointUrl: this.platformRepo.getSetting<string>('agent.selfHostedEndpointUrl', 'http://127.0.0.1:11434/v1'),
+      configuredModel: model,
+      reachable: false,
+      modelAvailable: false,
+      availableModels: [],
       latencyMs: 0,
       supportsStreaming: true,
       supportsTools: true,
       supportsStructuredOutput: true,
-      statusMessage: 'Deterministic Mock provider active (dev/test only)'
+      statusMessage: 'Self-hosted model runtime not initialized'
     };
   }
 
@@ -610,12 +589,12 @@ export class CloudClientService {
     }
   }
 
-  public async getIndexStats(): Promise<AtlasIndexStats> {
+  public async getIndexStats(): Promise<LavrayIndexStats> {
     if (this.isCloudEnabled() && this.getConsent().allowCloudSearch) {
       try {
         const res = await fetch(`${this.getEndpointUrl()}/api/v1/index/stats`);
         if (res.ok) {
-          const data = (await res.json()) as { stats?: AtlasIndexStats };
+          const data = (await res.json()) as { stats?: LavrayIndexStats };
           if (data.stats) return data.stats;
         }
       } catch {
@@ -630,7 +609,7 @@ export class CloudClientService {
           latestCrawlAt: null,
           indexVersion: 'v1',
           limitedCoverage: true,
-          notice: 'Local Atlas Index empty.'
+          notice: 'Local LAVRAY Index empty.'
         };
   }
 
@@ -648,23 +627,6 @@ export class CloudClientService {
   ): Promise<AiCitedAnswer> {
     const started = Date.now();
     const provider = this.getLocalModelProvider();
-    const hasGeminiKey = Boolean(this.vault.getGeminiApiKey());
-    if (provider.id === 'gemini' && !hasGeminiKey) {
-      return {
-        status: 'unavailable',
-        summary: 'Local AI summary unavailable (configure GEMINI_API_KEY in Settings). Local search results shown below.',
-        claims: [],
-        contradictions: [],
-        passages: [],
-        citations: [],
-        model: 'none',
-        provider: 'unconfigured',
-        inputTokens: 0,
-        outputTokens: 0,
-        estimatedCostUsd: 0,
-        latencyMs: Date.now() - started
-      };
-    }
 
     const ctxMap = new Map(tabContexts.map((t) => [t.url, t.text]));
     const passages = results.slice(0, 4).map((r, idx) => ({
@@ -687,11 +649,10 @@ export class CloudClientService {
       .join('\n\n');
 
     try {
-      const configuredProvider = this.platformRepo.getSetting<string>('agent.defaultProvider', 'gemini');
-      const model =
-        configuredProvider === 'self_hosted' || configuredProvider === 'custom_openai_compatible'
-          ? this.platformRepo.getSetting<string>('agent.selfHostedModel', 'qwen2.5:7b-instruct')
-          : this.platformRepo.getSetting<string>('agent.defaultModel', 'gemini-2.5-flash');
+      const rawModel =
+        this.platformRepo.getSetting<string>('agent.selfHostedModel', 'qwen2.5:3b') ||
+        this.platformRepo.getSetting<string>('agent.defaultModel', 'qwen2.5:3b');
+      const model = /^(gemini|mock)/i.test(rawModel.trim()) ? 'qwen2.5:3b' : rawModel.trim();
       const resp = await provider.generate({
         model,
         systemInstruction:

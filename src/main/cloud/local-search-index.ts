@@ -1,15 +1,15 @@
 import type Database from 'better-sqlite3';
 import { createHash } from 'node:crypto';
 import type {
-  AtlasIndexDocument,
-  AtlasIndexStats,
+  LavrayIndexDocument,
+  LavrayIndexStats,
   CloudSearchHistoryRecord,
   CrawlCheckpoint,
   CrawlSeedConfig,
   SearchMode
 } from '@shared/types';
 import { computeLocalEmbedding, cosineSimilarity } from '@main/memory/memory-service';
-import { AtlasCrawler, computeExplainableAuthority } from '../../backend/modules/crawler/atlas-crawler';
+import { LavrayCrawler, computeExplainableAuthority } from '../../backend/modules/crawler/lavray-crawler';
 import { SsrfGuard } from '../../backend/security/ssrf-guard';
 import { ResearchExtractorService } from '../../backend/modules/research/research-extractor';
 import type { CloudRepository } from '../../backend/db/repository';
@@ -18,7 +18,7 @@ import { randomUUID } from 'node:crypto';
 
 /**
  * Local desktop SQLite FTS5 + Embedding Search Index & Crawler Service.
- * Ensures Atlas can crawl permitted seed URLs, update/remove documents,
+ * Ensures LAVRAY can crawl permitted seed URLs, update/remove documents,
  * query its own FTS5 index, and manage search history strictly offline.
  */
 export class LocalSearchIndexService {
@@ -27,15 +27,15 @@ export class LocalSearchIndexService {
 
   constructor(private readonly db: Database.Database) {}
 
-  public upsertDocument(doc: AtlasIndexDocument): { inserted: boolean; updated: boolean } {
+  public upsertDocument(doc: LavrayIndexDocument): { inserted: boolean; updated: boolean } {
     const existing = this.db
-      .prepare('SELECT content_hash FROM atlas_index_documents WHERE canonical_url = ?')
+      .prepare('SELECT content_hash FROM lavray_index_documents WHERE canonical_url = ?')
       .get(doc.canonicalUrl) as { content_hash: string } | undefined;
 
     const tx = this.db.transaction(() => {
       this.db
         .prepare(
-          `INSERT INTO atlas_index_documents
+          `INSERT INTO lavray_index_documents
             (id, url, canonical_url, title, main_content, snippet, headings_json, language, source_domain, content_type, content_hash, authority_score, authority_method, published_at, crawled_at, index_version, embedding_json)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(canonical_url) DO UPDATE SET
@@ -66,9 +66,9 @@ export class LocalSearchIndexService {
           JSON.stringify(doc.embedding)
         );
 
-      this.db.prepare('DELETE FROM atlas_index_fts WHERE canonical_url = ?').run(doc.canonicalUrl);
+      this.db.prepare('DELETE FROM lavray_index_fts WHERE canonical_url = ?').run(doc.canonicalUrl);
       this.db
-        .prepare('INSERT INTO atlas_index_fts (canonical_url, title, main_content, headings) VALUES (?, ?, ?, ?)')
+        .prepare('INSERT INTO lavray_index_fts (canonical_url, title, main_content, headings) VALUES (?, ?, ?, ?)')
         .run(doc.canonicalUrl, doc.title, doc.mainContent, doc.headings.join(' '));
     });
     tx();
@@ -80,9 +80,9 @@ export class LocalSearchIndexService {
   public removeDocument(canonicalUrl: string): boolean {
     let deleted = false;
     const tx = this.db.transaction(() => {
-      this.db.prepare('DELETE FROM atlas_index_fts WHERE canonical_url = ?').run(canonicalUrl);
+      this.db.prepare('DELETE FROM lavray_index_fts WHERE canonical_url = ?').run(canonicalUrl);
       const info = this.db
-        .prepare('DELETE FROM atlas_index_documents WHERE canonical_url = ?')
+        .prepare('DELETE FROM lavray_index_documents WHERE canonical_url = ?')
         .run(canonicalUrl);
       deleted = info.changes > 0;
     });
@@ -103,10 +103,10 @@ export class LocalSearchIndexService {
 
     const rows = this.db
       .prepare(
-        `SELECT d.*, bm25(atlas_index_fts) AS fts_score
-         FROM atlas_index_fts f
-         JOIN atlas_index_documents d ON d.canonical_url = f.canonical_url
-         WHERE atlas_index_fts MATCH ?
+        `SELECT d.*, bm25(lavray_index_fts) AS fts_score
+         FROM lavray_index_fts f
+         JOIN lavray_index_documents d ON d.canonical_url = f.canonical_url
+         WHERE lavray_index_fts MATCH ?
          ORDER BY fts_score ASC
          LIMIT ?`
       )
@@ -125,7 +125,7 @@ export class LocalSearchIndexService {
           title: String(r.title),
           url: String(r.canonical_url),
           snippet: String(r.snippet),
-          sourceProvider: 'atlas_first_party_index',
+          sourceProvider: 'lavray_first_party_index',
           publishedAt: r.published_at ? String(r.published_at) : null,
           contentType: (r.content_type as 'web' | 'news' | 'docs') || 'web',
           language: String(r.language || 'en'),
@@ -138,10 +138,10 @@ export class LocalSearchIndexService {
     return scored.sort((a, b) => b.score - a.score).slice(0, limit).map((s) => s.candidate);
   }
 
-  public getStats(): AtlasIndexStats {
+  public getStats(): LavrayIndexStats {
     const row = this.db
       .prepare(
-        'SELECT COUNT(*) AS total, COUNT(DISTINCT source_domain) AS domains, MAX(crawled_at) AS latest FROM atlas_index_documents'
+        'SELECT COUNT(*) AS total, COUNT(DISTINCT source_domain) AS domains, MAX(crawled_at) AS latest FROM lavray_index_documents'
       )
       .get() as { total: number; domains: number; latest: number | null };
     const total = Number(row?.total ?? 0);
@@ -154,8 +154,8 @@ export class LocalSearchIndexService {
       indexVersion: 'v1-sqlite-fts5',
       limitedCoverage,
       notice: limitedCoverage
-        ? `Local Atlas Index contains ${total} document(s) across ${domains} domain(s) (controlled seed scope).`
-        : `Local Atlas Index serving ${total} documents across ${domains} domains.`
+        ? `Local LAVRAY Index contains ${total} document(s) across ${domains} domain(s) (controlled seed scope).`
+        : `Local LAVRAY Index serving ${total} documents across ${domains} domains.`
     };
   }
 
@@ -187,12 +187,12 @@ export class LocalSearchIndexService {
 
   public async crawlSeeds(config: CrawlSeedConfig): Promise<CrawlCheckpoint> {
     const self = this;
-    // Lightweight adapter wrapping SQLite persistence to satisfy AtlasCrawler's CloudRepository slice
+    // Lightweight adapter wrapping SQLite persistence to satisfy LavrayCrawler's CloudRepository slice
     const sqliteRepoShim = {
-      upsertAtlasIndexDocument: async (doc: AtlasIndexDocument) => self.upsertDocument(doc),
-      findAtlasDocumentByContentHash: async (hash: string) => {
+      upsertLavrayIndexDocument: async (doc: LavrayIndexDocument) => self.upsertDocument(doc),
+      findLavrayDocumentByContentHash: async (hash: string) => {
         const r = self.db
-          .prepare('SELECT canonical_url FROM atlas_index_documents WHERE content_hash = ? LIMIT 1')
+          .prepare('SELECT canonical_url FROM lavray_index_documents WHERE content_hash = ? LIMIT 1')
           .get(hash) as { canonical_url: string } | undefined;
         if (!r) return null;
         return {
@@ -231,7 +231,7 @@ export class LocalSearchIndexService {
       }
     } as unknown as CloudRepository;
 
-    const crawler = new AtlasCrawler(sqliteRepoShim, this.ssrfGuard, this.extractor);
+    const crawler = new LavrayCrawler(sqliteRepoShim, this.ssrfGuard, this.extractor);
     return crawler.startCrawl(config);
   }
 

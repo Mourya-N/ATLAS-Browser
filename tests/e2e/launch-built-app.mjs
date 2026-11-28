@@ -6,9 +6,9 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '../..');
-const tempUserData = fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-launch-smoke-'));
+const tempUserData = fs.mkdtempSync(path.join(os.tmpdir(), 'lavray-launch-smoke-'));
 
-const env = { ...process.env, ATLAS_USER_DATA_DIR: tempUserData };
+const env = { ...process.env, LAVRAY_USER_DATA_DIR: tempUserData };
 delete env.ELECTRON_RUN_AS_NODE;
 
 const electronBin = path.join(rootDir, 'node_modules/.bin/electron');
@@ -45,12 +45,12 @@ async function pollTargets() {
     }
     await new Promise((r) => setTimeout(r, 250));
   }
-  throw new Error(`Timed out waiting for built Atlas Browser targets.\nstdout: ${stdout}\nstderr: ${stderr}`);
+  throw new Error(`Timed out waiting for built LAVRAY Browser targets.\nstdout: ${stdout}\nstderr: ${stderr}`);
 }
 
 try {
   const targets = await pollTargets();
-  console.log('[launch-smoke] Built Atlas Browser launched cleanly with targets:');
+  console.log('[launch-smoke] Built LAVRAY Browser launched cleanly with targets:');
   for (const t of targets) {
     console.log(`  - [${t.type}] ${t.title || '(untitled)'} -> ${t.url}`);
   }

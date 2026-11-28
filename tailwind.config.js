@@ -5,22 +5,22 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        atlas: {
-          bg: 'rgb(var(--atlas-bg) / <alpha-value>)',
-          shell: 'rgb(var(--atlas-shell) / <alpha-value>)',
-          surface: 'rgb(var(--atlas-surface) / <alpha-value>)',
-          elevated: 'rgb(var(--atlas-elevated) / <alpha-value>)',
-          hover: 'rgb(var(--atlas-hover) / <alpha-value>)',
-          border: 'rgb(var(--atlas-border) / <alpha-value>)',
-          'border-strong': 'rgb(var(--atlas-border-strong) / <alpha-value>)',
-          text: 'rgb(var(--atlas-text) / <alpha-value>)',
-          secondary: 'rgb(var(--atlas-secondary) / <alpha-value>)',
-          muted: 'rgb(var(--atlas-muted) / <alpha-value>)',
-          accent: 'rgb(var(--atlas-accent) / <alpha-value>)',
-          'accent-fg': 'rgb(var(--atlas-accent-fg) / <alpha-value>)',
-          danger: 'rgb(var(--atlas-danger) / <alpha-value>)',
-          warning: 'rgb(var(--atlas-warning) / <alpha-value>)',
-          success: 'rgb(var(--atlas-success) / <alpha-value>)'
+        lavray: {
+          bg: 'rgb(var(--lavray-bg) / <alpha-value>)',
+          shell: 'rgb(var(--lavray-shell) / <alpha-value>)',
+          surface: 'rgb(var(--lavray-surface) / <alpha-value>)',
+          elevated: 'rgb(var(--lavray-elevated) / <alpha-value>)',
+          hover: 'rgb(var(--lavray-hover) / <alpha-value>)',
+          border: 'rgb(var(--lavray-border) / <alpha-value>)',
+          'border-strong': 'rgb(var(--lavray-border-strong) / <alpha-value>)',
+          text: 'rgb(var(--lavray-text) / <alpha-value>)',
+          secondary: 'rgb(var(--lavray-secondary) / <alpha-value>)',
+          muted: 'rgb(var(--lavray-muted) / <alpha-value>)',
+          accent: 'rgb(var(--lavray-accent) / <alpha-value>)',
+          'accent-fg': 'rgb(var(--lavray-accent-fg) / <alpha-value>)',
+          danger: 'rgb(var(--lavray-danger) / <alpha-value>)',
+          warning: 'rgb(var(--lavray-warning) / <alpha-value>)',
+          success: 'rgb(var(--lavray-success) / <alpha-value>)'
         }
       },
       fontFamily: {
@@ -37,12 +37,12 @@ module.exports = {
         mono: ['"SF Mono"', '"JetBrains Mono"', '"Fira Code"', 'ui-monospace', 'monospace']
       },
       boxShadow: {
-        'atlas-sm': 'var(--atlas-shadow-sm)',
-        'atlas-tab': 'var(--atlas-shadow-tab)',
-        'atlas-float': 'var(--atlas-shadow-float)'
+        'lavray-sm': 'var(--lavray-shadow-sm)',
+        'lavray-tab': 'var(--lavray-shadow-tab)',
+        'lavray-float': 'var(--lavray-shadow-float)'
       },
       transitionTimingFunction: {
-        atlas: 'cubic-bezier(0.2, 0, 0, 1)'
+        lavray: 'cubic-bezier(0.2, 0, 0, 1)'
       }
     }
   },

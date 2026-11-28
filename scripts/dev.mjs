@@ -27,7 +27,7 @@ async function main() {
   });
   await server.listen();
   const port = server.config.server.port ?? 5173;
-  process.env.ATLAS_DEV_SERVER_URL = `http://localhost:${port}`;
+  process.env.LAVRAY_DEV_SERVER_URL = `http://localhost:${port}`;
 
   copyMigrations();
 
@@ -66,7 +66,7 @@ async function main() {
   const electronBin = path.join(rootDir, 'node_modules/.bin/electron');
   const env = { ...process.env };
   delete env.ELECTRON_RUN_AS_NODE;
-  env.ATLAS_DEV_SERVER_URL = process.env.ATLAS_DEV_SERVER_URL;
+  env.LAVRAY_DEV_SERVER_URL = process.env.LAVRAY_DEV_SERVER_URL;
 
   const child = spawn(electronBin, ['.'], {
     cwd: rootDir,

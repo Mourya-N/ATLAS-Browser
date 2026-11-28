@@ -1,4 +1,4 @@
-# Contributing to Atlas Browser
+# Contributing to LAVRAY Browser
 
 ## Development Workflow
 

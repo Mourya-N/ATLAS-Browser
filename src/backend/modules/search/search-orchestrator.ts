@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type {
-  AtlasIndexStats,
+  LavrayIndexStats,
   SearchFilterOptions,
   SearchMode,
   SearchProviderHealth,
@@ -10,7 +10,7 @@ import type {
 } from '@shared/types';
 import type { MetricsRegistry } from '../../observability/metrics';
 import type { UserDataService } from '../userdata/user-data-service';
-import type { AtlasKnowledgeSearchAdapter } from './adapters';
+import type { LavrayKnowledgeSearchAdapter } from './adapters';
 import { SearchCache } from './cache';
 import { CitationAnswerPipeline, type ApprovedPageContextInput } from './citation-pipeline';
 import type { FirstPartyIndexProvider } from './first-party-index-provider';
@@ -42,7 +42,7 @@ export class SearchOrchestrator {
 
   constructor(
     private readonly providers: SearchProvider[],
-    private readonly knowledgeAdapter: AtlasKnowledgeSearchAdapter | null,
+    private readonly knowledgeAdapter: LavrayKnowledgeSearchAdapter | null,
     private readonly queryUnderstanding: QueryUnderstandingEngine,
     private readonly citationPipeline: CitationAnswerPipeline,
     private readonly cache: SearchCache,
@@ -242,7 +242,7 @@ export class SearchOrchestrator {
       });
     }
 
-    const indexStats: AtlasIndexStats = this.firstPartyIndex
+    const indexStats: LavrayIndexStats = this.firstPartyIndex
       ? await this.firstPartyIndex.getStats()
       : {
           totalDocuments: 0,
@@ -250,7 +250,7 @@ export class SearchOrchestrator {
           latestCrawlAt: null,
           indexVersion: 'v1',
           limitedCoverage: true,
-          notice: 'First-party Atlas index not attached to this search instance.'
+          notice: 'First-party LAVRAY index not attached to this search instance.'
         };
     const aiRuntimeStatus = this.getAiStatus ? await this.getAiStatus() : undefined;
 

@@ -1,6 +1,6 @@
 # Agent Architecture (`Planner → Executor → Verifier`)
 
-Atlas Browser implements an evidence-driven autonomous agent loop in `src/main/agent/`.
+LAVRAY Browser implements an evidence-driven autonomous agent loop in `src/main/agent/`.
 
 ## Execution Loop (`src/main/agent/orchestrator.ts`)
 

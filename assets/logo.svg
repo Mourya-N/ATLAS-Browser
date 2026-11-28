@@ -1,0 +1,113 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="none">
+  <defs>
+    <!-- Obsidian Iris Squircle Base -->
+    <radialGradient id="lavray-tile-bg" cx="34%" cy="22%" r="86%">
+      <stop offset="0%" stop-color="#292252" />
+      <stop offset="48%" stop-color="#151429" />
+      <stop offset="100%" stop-color="#0C0D16" />
+    </radialGradient>
+
+    <!-- Subtle Specular Glass Rim -->
+    <linearGradient id="lavray-tile-rim" x1="84" y1="84" x2="940" y2="940" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.26" />
+      <stop offset="45%" stop-color="#C4B5FD" stop-opacity="0.11" />
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0.03" />
+    </linearGradient>
+
+    <!-- Ambient Inner Glow behind Prism Apex -->
+    <radialGradient id="lavray-core-glow" cx="62%" cy="38%" r="48%">
+      <stop offset="0%" stop-color="#9B8CFF" stop-opacity="0.34" />
+      <stop offset="55%" stop-color="#6D5DF6" stop-opacity="0.10" />
+      <stop offset="100%" stop-color="#6D5DF6" stop-opacity="0" />
+    </radialGradient>
+
+    <!-- Vertical Pillar of the L -->
+    <linearGradient id="lavray-pillar" x1="328" y1="264" x2="412" y2="716" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FAF8FF" />
+      <stop offset="48%" stop-color="#C9BCFD" />
+      <stop offset="100%" stop-color="#7B6BF0" />
+    </linearGradient>
+
+    <!-- Horizontal Horizon Bar of the L -->
+    <linearGradient id="lavray-base" x1="330" y1="680" x2="704" y2="680" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#7261EC" />
+      <stop offset="100%" stop-color="#5847D8" />
+    </linearGradient>
+
+    <!-- Forward Prismatic Light Ray -->
+    <linearGradient id="lavray-ray-bright" x1="378" y1="668" x2="742" y2="278" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#B09BFF" />
+      <stop offset="52%" stop-color="#E3DCFF" />
+      <stop offset="100%" stop-color="#FFFFFF" />
+    </linearGradient>
+
+    <linearGradient id="lavray-ray-shadow" x1="396" y1="688" x2="742" y2="278" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#4D3EC2" />
+      <stop offset="65%" stop-color="#8675F9" />
+      <stop offset="100%" stop-color="#C9BCFD" />
+    </linearGradient>
+
+    <!-- Horizon Aperture Arc -->
+    <linearGradient id="lavray-arc" x1="210" y1="210" x2="814" y2="814" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#C4B5FD" stop-opacity="0.72" />
+      <stop offset="50%" stop-color="#7C6CF0" stop-opacity="0.30" />
+      <stop offset="100%" stop-color="#6D5DF6" stop-opacity="0.72" />
+    </linearGradient>
+
+    <clipPath id="lavray-l-clip">
+      <path d="M 328 296 C 328 272 348 252 372 252 L 392 252 C 403 252 412 261 412 272 L 412 638 L 686 638 C 697 638 706 647 706 658 L 706 680 C 706 704 686 724 662 724 L 374 724 C 348 724 328 704 328 678 Z" />
+    </clipPath>
+
+    <filter id="lavray-soft-shadow" x="40" y="54" width="944" height="944" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#05060C" flood-opacity="0.45" />
+    </filter>
+  </defs>
+
+  <!-- Squircle Tile -->
+  <g filter="url(#lavray-soft-shadow)">
+    <rect x="84" y="84" width="856" height="856" rx="196" fill="url(#lavray-tile-bg)" />
+    <rect x="84" y="84" width="856" height="856" rx="196" fill="url(#lavray-core-glow)" />
+    <rect x="86" y="86" width="852" height="852" rx="194" stroke="url(#lavray-tile-rim)" stroke-width="4" />
+  </g>
+
+  <!-- Open Browser Meridian Aperture Arcs -->
+  <path
+    d="M 556 232 A 284 284 0 1 0 792 470"
+    stroke="url(#lavray-arc)"
+    stroke-width="24"
+    stroke-linecap="round"
+    fill="none"
+  />
+  <path
+    d="M 366 312 A 224 224 0 0 0 712 660"
+    stroke="#A78BFA"
+    stroke-opacity="0.16"
+    stroke-width="9"
+    stroke-linecap="round"
+    fill="none"
+  />
+
+  <!-- Unified Rounded Architectural "L" -->
+  <g clip-path="url(#lavray-l-clip)">
+    <rect x="328" y="252" width="380" height="472" fill="url(#lavray-base)" />
+    <polygon points="328,252 412,252 412,638 328,724" fill="url(#lavray-pillar)" />
+  </g>
+
+  <!-- Ascending Prismatic Ray emerging cleanly from inside the L vertex -->
+  <polygon
+    points="360,694 406,642 746,276 642,482 406,714"
+    fill="url(#lavray-ray-shadow)"
+    opacity="0.96"
+  />
+  <polygon
+    points="356,662 404,598 746,276 498,568 386,690"
+    fill="url(#lavray-ray-bright)"
+  />
+
+  <!-- Soft corner highlight cap so the vertex curves seamlessly -->
+  <circle cx="378" cy="672" r="34" fill="#B8A7FF" opacity="0.24" />
+
+  <!-- Crisp Apex Starpoint -->
+  <circle cx="746" cy="276" r="17" fill="#FFFFFF" opacity="0.98" />
+  <circle cx="746" cy="276" r="40" fill="#DDD6FE" opacity="0.28" />
+</svg>

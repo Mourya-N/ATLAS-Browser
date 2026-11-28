@@ -105,7 +105,7 @@ export class ResearchEngine {
     const resp = await provider.generate({
       model: params.model,
       systemInstruction:
-        'You are the Atlas Research & Evidence Engine. Synthesize findings ONLY from the provided sources. Never fabricate URLs or quotes. Distinguish factual claims ("fact") directly supported by a quote from synthesis ("analysis"). Highlight any contradictions between sources.',
+        'You are the HAYA (HAYAGRIVA) Research & Evidence Engine for LAVRAY. Synthesize findings ONLY from the provided sources. Never fabricate URLs or quotes. Distinguish factual claims ("fact") directly supported by a quote from synthesis ("analysis"). Highlight any contradictions between sources.',
       messages: [
         {
           role: 'user',

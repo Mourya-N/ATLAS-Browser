@@ -85,7 +85,7 @@ export class SkillRunner {
         if (!result.outcome.success && step.recoveryStrategy === 'ax_fallback' && step.targetHints?.text) {
           const fallbackArgs = { ...concreteArgs };
           delete fallbackArgs.selector;
-          delete fallbackArgs.atlasId;
+          delete fallbackArgs.lavrayId;
           fallbackArgs.text = step.targetHints.text;
           result = await this.toolRegistry.invoke(step.toolName, fallbackArgs, ctx);
         }

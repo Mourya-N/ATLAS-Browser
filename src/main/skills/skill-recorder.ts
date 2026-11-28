@@ -75,7 +75,7 @@ export class SkillRecorder {
     if (!skill) throw new Error(`Skill not found: ${skillId}`);
     return JSON.stringify(
       {
-        schemaVersion: 'atlas-skill-v1',
+        schemaVersion: 'lavray-skill-v1',
         exportedAt: new Date().toISOString(),
         skill
       },
@@ -88,7 +88,7 @@ export class SkillRecorder {
     const parsed = JSON.parse(rawJson) as { schemaVersion?: string; skill?: Skill } | Skill;
     const candidate = 'skill' in parsed && parsed.skill ? parsed.skill : (parsed as Skill);
     if (!candidate.name || !Array.isArray(candidate.steps)) {
-      throw new Error('Invalid Atlas skill JSON payload');
+      throw new Error('Invalid LAVRAY skill JSON payload');
     }
     const now = Date.now();
     const imported: Skill = {

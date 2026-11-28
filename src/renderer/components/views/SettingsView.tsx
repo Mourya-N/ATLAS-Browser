@@ -24,7 +24,7 @@ import type {
   SelfHostedRuntimeStatus,
   ThemeMode
 } from '@shared/types';
-import { useAtlasStore } from '../../store/useAtlasStore';
+import { useLavrayStore } from '../../store/useLavrayStore';
 
 type SettingsSection =
   | 'appearance'
@@ -40,17 +40,16 @@ const SECTIONS: Array<{ id: SettingsSection; label: string; icon: React.ReactNod
   { id: 'browser', label: 'Browser & Tabs', icon: <Compass className="h-4 w-4" /> },
   { id: 'privacy', label: 'Privacy & Security', icon: <Shield className="h-4 w-4" /> },
   { id: 'adblock', label: 'Ad Blocking', icon: <Globe className="h-4 w-4" /> },
-  { id: 'ai', label: 'AI & Agent', icon: <Cpu className="h-4 w-4" /> },
+  { id: 'ai', label: 'HAYA Agent', icon: <Cpu className="h-4 w-4" /> },
   { id: 'research', label: 'Search & Cloud', icon: <Cloud className="h-4 w-4" /> },
   { id: 'advanced', label: 'Advanced', icon: <SlidersHorizontal className="h-4 w-4" /> }
 ];
 
 export const SettingsView: React.FC = () => {
   const { settings, setSettings, setVerticalTabs, setOverlayView, setProviderStatus, pushToast } =
-    useAtlasStore();
+    useLavrayStore();
   const [section, setSection] = useState<SettingsSection>('appearance');
   const [local, setLocal] = useState<AppSettings | null>(settings);
-  const [apiKeyInput, setApiKeyInput] = useState('');
   const [selfHostedKeyInput, setSelfHostedKeyInput] = useState('');
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<ProviderTestResult | null>(null);
@@ -61,39 +60,39 @@ export const SettingsView: React.FC = () => {
   const [cloudBusy, setCloudBusy] = useState(false);
 
   useEffect(() => {
-    void window.atlas.getSettings().then((s) => {
+    void window.lavray.getSettings().then((s) => {
       setSettings(s);
       setLocal(s);
     });
-    void window.atlas.getCloudStatus().then(setCloudStatus);
+    void window.lavray.getCloudStatus().then(setCloudStatus);
   }, []);
 
   if (!local) return null;
 
   const update = async (patch: Partial<AppSettings>) => {
-    const updated = await window.atlas.updateSettings(patch);
+    const updated = await window.lavray.updateSettings(patch);
     setSettings(updated);
     setLocal(updated);
     if (patch.verticalTabs !== undefined) {
       setVerticalTabs(updated.verticalTabs);
     }
-    const st = await window.atlas.getProviderStatus();
+    const st = await window.lavray.getProviderStatus();
     setProviderStatus(st);
     pushToast('Preferences saved', 'success');
   };
 
   return (
-    <div className="flex h-full flex-col bg-atlas-bg text-atlas-text select-text">
+    <div className="flex h-full flex-col bg-lavray-bg text-lavray-text select-text">
       {/* Top Bar */}
-      <div className="flex h-12 shrink-0 items-center justify-between border-b border-atlas-border bg-atlas-surface px-6">
+      <div className="flex h-12 shrink-0 items-center justify-between border-b border-lavray-border bg-lavray-surface px-6">
         <div className="flex items-center gap-2.5">
-          <SettingsIcon className="h-4 w-4 text-atlas-accent" strokeWidth={1.75} />
+          <SettingsIcon className="h-4 w-4 text-lavray-accent" strokeWidth={1.75} />
           <h1 className="text-[14px] font-semibold tracking-[-0.01em]">Settings</h1>
         </div>
         <button
           type="button"
           onClick={() => setOverlayView(null)}
-          className="rounded-lg p-1.5 text-atlas-muted hover:bg-atlas-shell hover:text-atlas-text transition-colors"
+          className="rounded-lg p-1.5 text-lavray-muted hover:bg-lavray-shell hover:text-lavray-text transition-colors"
           aria-label="Close Settings"
         >
           <X className="h-4 w-4" strokeWidth={1.75} />
@@ -103,7 +102,7 @@ export const SettingsView: React.FC = () => {
       {/* Two-Pane Settings Layout */}
       <div className="flex flex-1 min-h-0">
         {/* Left Navigation Rail */}
-        <aside className="w-52 shrink-0 border-r border-atlas-border bg-atlas-shell/55 p-3 space-y-0.5 select-none">
+        <aside className="w-52 shrink-0 border-r border-lavray-border bg-lavray-shell/55 p-3 space-y-0.5 select-none">
           {SECTIONS.map((s) => {
             const active = section === s.id;
             return (
@@ -113,11 +112,11 @@ export const SettingsView: React.FC = () => {
                 onClick={() => setSection(s.id)}
                 className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-[12.5px] font-medium transition-colors ${
                   active
-                    ? 'bg-atlas-surface text-atlas-accent border border-atlas-border shadow-atlas-sm'
-                    : 'text-atlas-secondary hover:bg-atlas-elevated/70 hover:text-atlas-text'
+                    ? 'bg-lavray-surface text-lavray-accent border border-lavray-border shadow-lavray-sm'
+                    : 'text-lavray-secondary hover:bg-lavray-elevated/70 hover:text-lavray-text'
                 }`}
               >
-                <span className={active ? 'text-atlas-accent' : 'text-atlas-muted'}>{s.icon}</span>
+                <span className={active ? 'text-lavray-accent' : 'text-lavray-muted'}>{s.icon}</span>
                 <span>{s.label}</span>
               </button>
             );
@@ -131,13 +130,13 @@ export const SettingsView: React.FC = () => {
               <div className="space-y-6">
                 <div>
                   <h2 className="text-[15px] font-semibold tracking-[-0.01em]">Appearance</h2>
-                  <p className="mt-0.5 text-[12px] text-atlas-muted">
-                    Choose how Atlas looks across browser chrome, workspace panels, dialogs, and reader view.
+                  <p className="mt-0.5 text-[12px] text-lavray-muted">
+                    Choose how LAVRAY looks across browser chrome, workspace panels, dialogs, and reader view.
                   </p>
                 </div>
 
                 <div className="space-y-2.5">
-                  <label className="block text-[12px] font-medium text-atlas-secondary">Theme</label>
+                  <label className="block text-[12px] font-medium text-lavray-secondary">Theme</label>
                   <div className="grid grid-cols-3 gap-3">
                     {(
                       [
@@ -188,12 +187,12 @@ export const SettingsView: React.FC = () => {
                           onClick={() => void update({ theme: opt.id })}
                           className={`group rounded-xl border p-3 text-left transition-all ${
                             active
-                              ? 'border-atlas-accent bg-atlas-surface ring-2 ring-atlas-accent/15'
-                              : 'border-atlas-border bg-atlas-surface hover:border-atlas-border-strong'
+                              ? 'border-lavray-accent bg-lavray-surface ring-2 ring-lavray-accent/15'
+                              : 'border-lavray-border bg-lavray-surface hover:border-lavray-border-strong'
                           }`}
                         >
                           {opt.split ? (
-                            <div className="mb-2.5 flex h-12 w-full overflow-hidden rounded-lg border border-atlas-border/80">
+                            <div className="mb-2.5 flex h-12 w-full overflow-hidden rounded-lg border border-lavray-border/80">
                               <div className="w-1/2 bg-[#fafaf8] p-1.5 pr-0.5">
                                 <div className="h-2.5 w-full rounded-l-sm border-y border-l border-[#ddddd7] bg-[#f2f2ef]" />
                               </div>
@@ -203,25 +202,25 @@ export const SettingsView: React.FC = () => {
                             </div>
                           ) : (
                             <div
-                              className={`mb-2.5 h-12 w-full rounded-lg border border-atlas-border/80 p-1.5 ${opt.previewBg}`}
+                              className={`mb-2.5 h-12 w-full rounded-lg border border-lavray-border/80 p-1.5 ${opt.previewBg}`}
                             >
                               <div className={`h-2.5 w-full rounded-sm border ${opt.previewChrome}`} />
                             </div>
                           )}
                           <div className="flex items-center justify-between">
-                            <span className="font-semibold text-[12.5px] text-atlas-text">{opt.title}</span>
-                            <span className={active ? 'text-atlas-accent' : 'text-atlas-muted'}>
+                            <span className="font-semibold text-[12.5px] text-lavray-text">{opt.title}</span>
+                            <span className={active ? 'text-lavray-accent' : 'text-lavray-muted'}>
                               {opt.icon}
                             </span>
                           </div>
-                          <div className="text-[11px] text-atlas-muted mt-0.5">{opt.desc}</div>
+                          <div className="text-[11px] text-lavray-muted mt-0.5">{opt.desc}</div>
                         </button>
                       );
                     })}
                   </div>
                 </div>
 
-                <div className="border-t border-atlas-border pt-4 space-y-1">
+                <div className="border-t border-lavray-border pt-4 space-y-1">
                   <ToggleRow
                     label="Vertical tab strip on left sidebar"
                     description="Moves tabs into a collapsible vertical list and streamlines the top bar"
@@ -236,20 +235,20 @@ export const SettingsView: React.FC = () => {
               <div className="space-y-6">
                 <div>
                   <h2 className="text-[15px] font-semibold tracking-[-0.01em]">Browser & Tabs</h2>
-                  <p className="mt-0.5 text-[12px] text-atlas-muted">
+                  <p className="mt-0.5 text-[12px] text-lavray-muted">
                     Configure default navigation, start page, and session continuity.
                   </p>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-[12px] font-medium text-atlas-secondary mb-1.5">
+                    <label className="block text-[12px] font-medium text-lavray-secondary mb-1.5">
                       Default Web Search Engine
                     </label>
                     <select
                       value={local.searchEngine}
                       onChange={(e) => void update({ searchEngine: e.target.value as SearchEngineId })}
-                      className="w-full rounded-lg border border-atlas-border bg-atlas-surface px-3 py-2 text-[12.5px] outline-none focus:border-atlas-accent"
+                      className="w-full rounded-lg border border-lavray-border bg-lavray-surface px-3 py-2 text-[12.5px] outline-none focus:border-lavray-accent"
                     >
                       <option value="google">Google</option>
                       <option value="duckduckgo">DuckDuckGo</option>
@@ -259,19 +258,19 @@ export const SettingsView: React.FC = () => {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-[12px] font-medium text-atlas-secondary mb-1.5">
+                    <label className="block text-[12px] font-medium text-lavray-secondary mb-1.5">
                       Home / Start Page URL
                     </label>
                     <input
-                      defaultValue={local.homeUrl || 'atlas://newtab'}
-                      onBlur={(e) => void update({ homeUrl: e.target.value.trim() || 'atlas://newtab' })}
-                      placeholder="atlas://newtab"
-                      className="w-full rounded-lg border border-atlas-border bg-atlas-surface px-3 py-2 text-[12.5px] outline-none focus:border-atlas-accent"
+                      defaultValue={local.homeUrl || 'lavray://newtab'}
+                      onBlur={(e) => void update({ homeUrl: e.target.value.trim() || 'lavray://newtab' })}
+                      placeholder="lavray://newtab"
+                      className="w-full rounded-lg border border-lavray-border bg-lavray-surface px-3 py-2 text-[12.5px] outline-none focus:border-lavray-accent"
                     />
                   </div>
                 </div>
 
-                <div className="border-t border-atlas-border pt-4 space-y-1">
+                <div className="border-t border-lavray-border pt-4 space-y-1">
                   <ToggleRow
                     label="Restore previous session tabs on startup"
                     description="Non-private tabs and tab groups reopen where you left off"
@@ -291,12 +290,12 @@ export const SettingsView: React.FC = () => {
               <div className="space-y-6">
                 <div>
                   <h2 className="text-[15px] font-semibold tracking-[-0.01em]">Privacy & Security</h2>
-                  <p className="mt-0.5 text-[12px] text-atlas-muted">
+                  <p className="mt-0.5 text-[12px] text-lavray-muted">
                     Local-first data boundaries, telemetry controls, and domain permissions.
                   </p>
                 </div>
 
-                <div className="border-t border-atlas-border pt-3 space-y-1">
+                <div className="border-t border-lavray-border pt-3 space-y-1">
                   <ToggleRow
                     label="Retain agent step screenshots on disk"
                     description="Used for activity timeline replay; automatically pruned by retention window"
@@ -317,17 +316,17 @@ export const SettingsView: React.FC = () => {
                   />
                 </div>
 
-                <div className="border-t border-atlas-border pt-4 flex items-center justify-between">
+                <div className="border-t border-lavray-border pt-4 flex items-center justify-between">
                   <div>
-                    <div className="font-medium text-atlas-text">Domain Permission Rules & Audit Log</div>
-                    <div className="text-[11.5px] text-atlas-muted">
+                    <div className="font-medium text-lavray-text">Domain Permission Rules & Audit Log</div>
+                    <div className="text-[11.5px] text-lavray-muted">
                       Inspect allow/deny rules and security audit events
                     </div>
                   </div>
                   <button
                     type="button"
                     onClick={() => setOverlayView('audit')}
-                    className="rounded-lg border border-atlas-border bg-atlas-surface px-3 py-1.5 text-[12px] font-medium hover:bg-atlas-shell transition-colors"
+                    className="rounded-lg border border-lavray-border bg-lavray-surface px-3 py-1.5 text-[12px] font-medium hover:bg-lavray-shell transition-colors"
                   >
                     Open Privacy & Audit
                   </button>
@@ -339,31 +338,31 @@ export const SettingsView: React.FC = () => {
               <div className="space-y-6">
                 <div>
                   <h2 className="text-[15px] font-semibold tracking-[-0.01em]">Ad & Tracker Blocking</h2>
-                  <p className="mt-0.5 text-[12px] text-atlas-muted">
+                  <p className="mt-0.5 text-[12px] text-lavray-muted">
                     Native Chromium network request filtering and cosmetic element hiding.
                   </p>
                 </div>
 
-                <div className="border-t border-atlas-border pt-3 space-y-1">
+                <div className="border-t border-lavray-border pt-3 space-y-1">
                   <ToggleRow
-                    label="Enable Atlas Shield globally"
+                    label="Enable LAVRAY Shield globally"
                     description="Intercepts matching ad and tracking requests across normal and private tabs"
                     checked={local.adBlockEnabled}
                     onChange={(v) => void update({ adBlockEnabled: v })}
                   />
                 </div>
 
-                <div className="border-t border-atlas-border pt-4 flex items-center justify-between">
+                <div className="border-t border-lavray-border pt-4 flex items-center justify-between">
                   <div>
-                    <div className="font-medium text-atlas-text">Filter Lists & Broken-Site Reports</div>
-                    <div className="text-[11.5px] text-atlas-muted">
+                    <div className="font-medium text-lavray-text">Filter Lists & Broken-Site Reports</div>
+                    <div className="text-[11.5px] text-lavray-muted">
                       Manage EasyList, EasyPrivacy, Malware lists, and custom rules
                     </div>
                   </div>
                   <button
                     type="button"
                     onClick={() => setOverlayView('audit')}
-                    className="rounded-lg border border-atlas-border bg-atlas-surface px-3 py-1.5 text-[12px] font-medium hover:bg-atlas-shell transition-colors"
+                    className="rounded-lg border border-lavray-border bg-lavray-surface px-3 py-1.5 text-[12px] font-medium hover:bg-lavray-shell transition-colors"
                   >
                     Manage Filter Lists
                   </button>
@@ -374,192 +373,78 @@ export const SettingsView: React.FC = () => {
             {section === 'ai' && (
               <div className="space-y-6">
                 <div>
-                  <h2 className="text-[15px] font-semibold tracking-[-0.01em]">AI Providers & Agent</h2>
-                  <p className="mt-0.5 text-[12px] text-atlas-muted">
-                    Configure self-hosted or cloud inference models, encrypted credentials, and execution safety limits.
+                  <h2 className="text-[15px] font-semibold tracking-[-0.01em]">HAYAGRIVA (HAYA) — AI Model &amp; Agent</h2>
+                  <p className="mt-0.5 text-[12px] text-lavray-muted">
+                    Configure the local or self-hosted OpenAI-compatible runtime powering HAYA (Ollama, vLLM, llama.cpp) and execution limits.
                   </p>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-[12px] font-medium text-atlas-secondary mb-1.5">Provider</label>
-                    <select
-                      value={local.defaultProvider}
-                      onChange={(e) =>
-                        void update({ defaultProvider: e.target.value as AppSettings['defaultProvider'] })
-                      }
-                      className="w-full rounded-lg border border-atlas-border bg-atlas-surface px-3 py-2 text-[12.5px] outline-none focus:border-atlas-accent"
-                    >
-                      <option value="gemini">Google Gemini API</option>
-                      <option value="self_hosted">Self-Hosted (Ollama / vLLM / llama.cpp)</option>
-                      <option value="mock">Deterministic Mock (Test Only)</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-[12px] font-medium text-atlas-secondary mb-1.5">
-                      {local.defaultProvider === 'self_hosted' ? 'Self-Hosted Model ID' : 'Default Model'}
-                    </label>
-                    {local.defaultProvider === 'self_hosted' ? (
+                <div className="rounded-xl border border-lavray-border bg-lavray-surface p-4 space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-[12px] font-medium text-lavray-secondary mb-1.5">
+                        Model ID
+                      </label>
                       <input
-                        defaultValue={local.selfHostedModel || 'qwen2.5:7b-instruct'}
-                        onBlur={(e) => void update({ selfHostedModel: e.target.value.trim() })}
-                        placeholder="e.g. qwen2.5:3b, llama3.2:3b"
-                        className="w-full rounded-lg border border-atlas-border bg-atlas-surface px-3 py-2 text-[12.5px] outline-none focus:border-atlas-accent"
-                      />
-                    ) : (
-                      <select
-                        value={local.defaultModel}
-                        onChange={(e) => void update({ defaultModel: e.target.value })}
-                        className="w-full rounded-lg border border-atlas-border bg-atlas-surface px-3 py-2 text-[12.5px] outline-none focus:border-atlas-accent"
-                      >
-                        <option value="gemini-2.5-flash">gemini-2.5-flash</option>
-                        <option value="gemini-2.5-pro">gemini-2.5-pro</option>
-                        <option value="gemini-2.0-flash">gemini-2.0-flash</option>
-                        <option value="gemini-1.5-pro">gemini-1.5-pro</option>
-                      </select>
-                    )}
-                  </div>
-                </div>
-
-                {local.defaultProvider === 'self_hosted' && (
-                  <div className="rounded-xl border border-atlas-border bg-atlas-surface p-4 space-y-3">
-                    <div className="text-[12.5px] font-semibold">Self-Hosted Runtime (OpenAI-Compatible)</div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-[11.5px] text-atlas-muted mb-1">Base URL</label>
-                        <input
-                          defaultValue={local.selfHostedEndpointUrl || 'http://127.0.0.1:11434/v1'}
-                          onBlur={(e) => void update({ selfHostedEndpointUrl: e.target.value.trim() })}
-                          placeholder="http://127.0.0.1:11434/v1"
-                          className="w-full rounded-lg border border-atlas-border bg-atlas-bg px-3 py-1.5 text-[12px] outline-none"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[11.5px] text-atlas-muted mb-1">Bearer Key (Optional)</label>
-                        <div className="flex gap-1.5">
-                          <input
-                            type="password"
-                            value={selfHostedKeyInput}
-                            onChange={(e) => setSelfHostedKeyInput(e.target.value)}
-                            placeholder={local.hasSelfHostedApiKey ? 'Configured (rotate)' : 'Optional'}
-                            className="flex-1 rounded-lg border border-atlas-border bg-atlas-bg px-3 py-1.5 text-[12px] outline-none"
-                          />
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              if (!selfHostedKeyInput.trim()) return;
-                              const next = await window.atlas.setApiKey('self_hosted', selfHostedKeyInput.trim());
-                              setSettings(next);
-                              setLocal(next);
-                              setSelfHostedKeyInput('');
-                              pushToast('Runtime key encrypted & saved', 'success');
-                            }}
-                            className="rounded-lg bg-atlas-accent px-3 py-1.5 text-[12px] font-medium text-atlas-accent-fg"
-                          >
-                            Save
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={async () => setRuntimeStatus(await window.atlas.discoverSelfHostedModels())}
-                        className="rounded-lg border border-atlas-border bg-atlas-shell px-3 py-1.5 text-[12px] font-medium hover:bg-atlas-elevated"
-                      >
-                        Discover Installed Models
-                      </button>
-                      <button
-                        type="button"
-                        disabled={testing}
-                        onClick={async () => {
-                          setTesting(true);
-                          try {
-                            setTestResult(await window.atlas.testProvider(local.selfHostedModel));
-                          } finally {
-                            setTesting(false);
-                          }
+                        key={local.selfHostedModel}
+                        defaultValue={local.selfHostedModel || 'qwen2.5:3b'}
+                        onBlur={(e) => {
+                          const model = e.target.value.trim() || 'qwen2.5:3b';
+                          void update({ selfHostedModel: model, defaultModel: model });
                         }}
-                        className="rounded-lg bg-atlas-accent px-3 py-1.5 text-[12px] font-medium text-atlas-accent-fg disabled:opacity-50"
-                      >
-                        {testing ? 'Checking...' : 'Verify Model'}
-                      </button>
+                        placeholder="e.g. qwen2.5:3b"
+                        className="w-full rounded-lg border border-lavray-border bg-lavray-bg px-3 py-2 text-[12.5px] outline-none focus:border-lavray-accent"
+                      />
                     </div>
-
-                    {runtimeStatus && (
-                      <div
-                        className={`rounded-lg border p-2.5 text-[11.5px] space-y-1.5 ${
-                          runtimeStatus.reachable && runtimeStatus.modelAvailable
-                            ? 'border-atlas-success/35 bg-atlas-success/10 text-atlas-success'
-                            : 'border-atlas-warning/35 bg-atlas-warning/10 text-atlas-warning'
-                        }`}
-                      >
-                        <div className="font-medium">{runtimeStatus.statusMessage}</div>
-                        {runtimeStatus.availableModels.length > 0 && (
-                          <div className="flex flex-wrap gap-1.5 pt-0.5">
-                            {runtimeStatus.availableModels.map((m) => (
-                              <button
-                                key={m}
-                                type="button"
-                                onClick={() => void update({ selfHostedModel: m, defaultModel: m })}
-                                className="rounded-md bg-atlas-surface px-2 py-0.5 text-atlas-text border border-atlas-border hover:border-atlas-accent"
-                              >
-                                Use {m}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
+                    <div>
+                      <label className="block text-[12px] font-medium text-lavray-secondary mb-1.5">
+                        Inference Server Base URL
+                      </label>
+                      <input
+                        defaultValue={local.selfHostedEndpointUrl || 'http://127.0.0.1:11434/v1'}
+                        onBlur={(e) => void update({ selfHostedEndpointUrl: e.target.value.trim() })}
+                        placeholder="http://127.0.0.1:11434/v1"
+                        className="w-full rounded-lg border border-lavray-border bg-lavray-bg px-3 py-2 text-[12.5px] outline-none focus:border-lavray-accent"
+                      />
+                    </div>
                   </div>
-                )}
 
-                {/* Gemini Key Management */}
-                <div className="border-t border-atlas-border pt-4 space-y-2.5">
-                  <div className="flex items-center justify-between text-[12px]">
-                    <span className="font-medium text-atlas-secondary">
-                      Gemini API Key:{' '}
-                      <span className={local.hasGeminiApiKey ? 'text-atlas-success font-semibold' : 'text-atlas-muted'}>
-                        {local.hasGeminiApiKey ? 'Encrypted in Keychain / safeStorage' : 'Not configured'}
-                      </span>
-                    </span>
-                    {local.hasGeminiApiKey && (
+                  <div>
+                    <label className="block text-[11.5px] text-lavray-muted mb-1">
+                      Optional Server Bearer Key (Encrypted)
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="password"
+                        value={selfHostedKeyInput}
+                        onChange={(e) => setSelfHostedKeyInput(e.target.value)}
+                        placeholder={local.hasSelfHostedApiKey ? 'Configured (enter to update)' : 'Leave blank for local Ollama'}
+                        className="flex-1 rounded-lg border border-lavray-border bg-lavray-bg px-3 py-1.5 text-[12px] outline-none focus:border-lavray-accent"
+                      />
                       <button
                         type="button"
                         onClick={async () => {
-                          const next = await window.atlas.clearApiKey();
+                          if (!selfHostedKeyInput.trim()) return;
+                          const next = await window.lavray.setApiKey('self_hosted', selfHostedKeyInput.trim());
                           setSettings(next);
                           setLocal(next);
+                          setSelfHostedKeyInput('');
+                          pushToast('Runtime key encrypted & saved', 'success');
                         }}
-                        className="text-atlas-danger hover:underline"
+                        className="rounded-lg border border-lavray-border bg-lavray-shell px-3 py-1.5 text-[12px] font-medium hover:bg-lavray-elevated"
                       >
-                        Remove Key
+                        Save Key
                       </button>
-                    )}
+                    </div>
                   </div>
-                  <div className="flex gap-2">
-                    <input
-                      type="password"
-                      value={apiKeyInput}
-                      onChange={(e) => setApiKeyInput(e.target.value)}
-                      placeholder="Enter Gemini API key..."
-                      className="flex-1 rounded-lg border border-atlas-border bg-atlas-surface px-3 py-1.5 text-[12.5px] outline-none focus:border-atlas-accent"
-                    />
+
+                  <div className="flex flex-wrap gap-2">
                     <button
                       type="button"
-                      onClick={async () => {
-                        if (!apiKeyInput.trim()) return;
-                        const next = await window.atlas.setApiKey('gemini', apiKeyInput.trim());
-                        setSettings(next);
-                        setLocal(next);
-                        setApiKeyInput('');
-                        setProviderStatus(await window.atlas.getProviderStatus());
-                        pushToast('Gemini key encrypted & saved', 'success');
-                      }}
-                      className="rounded-lg bg-atlas-accent px-3.5 py-1.5 text-[12px] font-medium text-atlas-accent-fg"
+                      onClick={async () => setRuntimeStatus(await window.lavray.discoverSelfHostedModels())}
+                      className="rounded-lg border border-lavray-border bg-lavray-shell px-3 py-1.5 text-[12px] font-medium hover:bg-lavray-elevated"
                     >
-                      Save Key
+                      Discover Installed Models
                     </button>
                     <button
                       type="button"
@@ -567,23 +452,49 @@ export const SettingsView: React.FC = () => {
                       onClick={async () => {
                         setTesting(true);
                         try {
-                          setTestResult(await window.atlas.testProvider(local.defaultModel));
+                          setTestResult(await window.lavray.testProvider(local.selfHostedModel));
                         } finally {
                           setTesting(false);
                         }
                       }}
-                      className="rounded-lg border border-atlas-border bg-atlas-surface px-3 py-1.5 text-[12px] font-medium hover:bg-atlas-shell disabled:opacity-50"
+                      className="rounded-lg bg-lavray-accent px-3 py-1.5 text-[12px] font-medium text-lavray-accent-fg disabled:opacity-50"
                     >
-                      {testing ? 'Testing...' : 'Test'}
+                      {testing ? 'Checking...' : 'Verify Model'}
                     </button>
                   </div>
+
+                  {runtimeStatus && (
+                    <div
+                      className={`rounded-lg border p-2.5 text-[11.5px] space-y-1.5 ${
+                        runtimeStatus.reachable && runtimeStatus.modelAvailable
+                          ? 'border-lavray-success/35 bg-lavray-success/10 text-lavray-success'
+                          : 'border-lavray-warning/35 bg-lavray-warning/10 text-lavray-warning'
+                      }`}
+                    >
+                      <div className="font-medium">{runtimeStatus.statusMessage}</div>
+                      {runtimeStatus.availableModels.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 pt-0.5">
+                          {runtimeStatus.availableModels.map((m) => (
+                            <button
+                              key={m}
+                              type="button"
+                              onClick={() => void update({ selfHostedModel: m, defaultModel: m })}
+                              className="rounded-md bg-lavray-surface px-2 py-0.5 text-lavray-text border border-lavray-border hover:border-lavray-accent"
+                            >
+                              Use {m}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   {testResult && (
                     <div
                       className={`flex items-start gap-2 rounded-lg border p-2.5 text-[11.5px] ${
                         testResult.ok
-                          ? 'border-atlas-success/35 bg-atlas-success/10 text-atlas-success'
-                          : 'border-atlas-danger/35 bg-atlas-danger/10 text-atlas-danger'
+                          ? 'border-lavray-success/35 bg-lavray-success/10 text-lavray-success'
+                          : 'border-lavray-danger/35 bg-lavray-danger/10 text-lavray-danger'
                       }`}
                     >
                       {testResult.ok ? (
@@ -594,14 +505,13 @@ export const SettingsView: React.FC = () => {
                       <div className="min-w-0 flex-1 [overflow-wrap:anywhere]">
                         <div className="font-semibold">
                           {testResult.ok
-                            ? `Connected (${testResult.provider} · ${testResult.model}, ${testResult.latencyMs}ms)`
-                            : `Connection Failed (${testResult.provider})`}
+                            ? `Connected (${testResult.model}, ${testResult.latencyMs}ms)`
+                            : `Connection Failed`}
                         </div>
                         {testResult.ok ? (
                           <div>
                             Tools: {String(testResult.capabilities.tools)} · Structured Output:{' '}
-                            {String(testResult.capabilities.structuredOutput)} · Vision:{' '}
-                            {String(testResult.capabilities.vision)}
+                            {String(testResult.capabilities.structuredOutput)}
                           </div>
                         ) : (
                           <div>{testResult.error}</div>
@@ -612,8 +522,8 @@ export const SettingsView: React.FC = () => {
                 </div>
 
                 {/* Budgets & Behavior */}
-                <div className="border-t border-atlas-border pt-4 space-y-3">
-                  <div className="text-[12px] font-medium text-atlas-secondary">Execution Budgets</div>
+                <div className="border-t border-lavray-border pt-4 space-y-3">
+                  <div className="text-[12px] font-medium text-lavray-secondary">Execution Budgets</div>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                     <NumField
                       label="Max Steps / Run"
@@ -660,7 +570,7 @@ export const SettingsView: React.FC = () => {
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <h2 className="text-[15px] font-semibold tracking-[-0.01em]">Search & Cloud Sync</h2>
-                    <p className="mt-0.5 text-[12px] text-atlas-muted">
+                    <p className="mt-0.5 text-[12px] text-lavray-muted">
                       Local-first search indexing with optional self-hosted backend synchronization.
                     </p>
                   </div>
@@ -668,10 +578,10 @@ export const SettingsView: React.FC = () => {
                     <span
                       className={`shrink-0 rounded-md px-2 py-0.5 text-[11px] font-medium ${
                         cloudStatus.operatingMode === 'cloud_connected'
-                          ? 'bg-atlas-success/12 text-atlas-success'
+                          ? 'bg-lavray-success/12 text-lavray-success'
                           : cloudStatus.operatingMode === 'cloud_degraded'
-                          ? 'bg-atlas-warning/12 text-atlas-warning'
-                          : 'bg-atlas-shell text-atlas-muted'
+                          ? 'bg-lavray-warning/12 text-lavray-warning'
+                          : 'bg-lavray-shell text-lavray-muted'
                       }`}
                     >
                       {cloudStatus.operatingMode === 'cloud_connected'
@@ -685,17 +595,17 @@ export const SettingsView: React.FC = () => {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end">
                   <div>
-                    <label className="block text-[12px] font-medium text-atlas-secondary mb-1.5">
-                      Atlas Cloud API Endpoint
+                    <label className="block text-[12px] font-medium text-lavray-secondary mb-1.5">
+                      LAVRAY Cloud API Endpoint
                     </label>
                     <input
                       defaultValue={local.cloudEndpointUrl || 'http://127.0.0.1:48080'}
                       onBlur={(e) =>
                         void update({ cloudEndpointUrl: e.target.value.trim() }).then(() =>
-                          window.atlas.getCloudStatus().then(setCloudStatus)
+                          window.lavray.getCloudStatus().then(setCloudStatus)
                         )
                       }
-                      className="w-full rounded-lg border border-atlas-border bg-atlas-surface px-3 py-2 text-[12.5px] outline-none"
+                      className="w-full rounded-lg border border-lavray-border bg-lavray-surface px-3 py-2 text-[12.5px] outline-none"
                     />
                   </div>
                   <ToggleRow
@@ -703,15 +613,15 @@ export const SettingsView: React.FC = () => {
                     checked={Boolean(local.cloudModeEnabled)}
                     onChange={(v) =>
                       void update({ cloudModeEnabled: v }).then(() =>
-                        window.atlas.getCloudStatus().then(setCloudStatus)
+                        window.lavray.getCloudStatus().then(setCloudStatus)
                       )
                     }
                   />
                 </div>
 
                 {cloudStatus?.authenticated ? (
-                  <div className="rounded-xl border border-atlas-border bg-atlas-surface p-4 space-y-3">
-                    <div className="text-[12px] text-atlas-secondary">
+                  <div className="rounded-xl border border-lavray-border bg-lavray-surface p-4 space-y-3">
+                    <div className="text-[12px] text-lavray-secondary">
                       Signed in{cloudStatus.userEmail ? ` as ${cloudStatus.userEmail}` : ''}
                     </div>
                     <div className="flex flex-wrap gap-2">
@@ -721,7 +631,7 @@ export const SettingsView: React.FC = () => {
                         onClick={async () => {
                           setCloudBusy(true);
                           try {
-                            const r = await window.atlas.syncCloudNow();
+                            const r = await window.lavray.syncCloudNow();
                             pushToast(`Synced: ${JSON.stringify(r.synced)}`, 'success');
                           } catch (err) {
                             pushToast(err instanceof Error ? err.message : 'Sync failed', 'danger');
@@ -729,58 +639,58 @@ export const SettingsView: React.FC = () => {
                             setCloudBusy(false);
                           }
                         }}
-                        className="rounded-lg bg-atlas-accent px-3 py-1.5 text-[12px] font-medium text-atlas-accent-fg"
+                        className="rounded-lg bg-lavray-accent px-3 py-1.5 text-[12px] font-medium text-lavray-accent-fg"
                       >
                         Sync Approved Data
                       </button>
                       <button
                         type="button"
                         onClick={async () => {
-                          const json = await window.atlas.exportCloudData();
+                          const json = await window.lavray.exportCloudData();
                           await navigator.clipboard.writeText(json);
                           pushToast('Exported cloud data to clipboard', 'success');
                         }}
-                        className="rounded-lg border border-atlas-border px-3 py-1.5 text-[12px]"
+                        className="rounded-lg border border-lavray-border px-3 py-1.5 text-[12px]"
                       >
                         Export JSON
                       </button>
                       <button
                         type="button"
                         onClick={async () => {
-                          setCloudStatus(await window.atlas.cloudLogout());
+                          setCloudStatus(await window.lavray.cloudLogout());
                           pushToast('Signed out', 'info');
                         }}
-                        className="rounded-lg border border-atlas-border px-3 py-1.5 text-[12px]"
+                        className="rounded-lg border border-lavray-border px-3 py-1.5 text-[12px]"
                       >
                         Sign Out
                       </button>
                       <button
                         type="button"
                         onClick={async () => {
-                          setCloudStatus(await window.atlas.deleteCloudAccount());
+                          setCloudStatus(await window.lavray.deleteCloudAccount());
                           pushToast('Cloud account deleted', 'warning');
                         }}
-                        className="rounded-lg bg-atlas-danger/12 text-atlas-danger px-3 py-1.5 text-[12px] font-medium"
+                        className="rounded-lg bg-lavray-danger/12 text-lavray-danger px-3 py-1.5 text-[12px] font-medium"
                       >
                         Delete Account
                       </button>
                     </div>
                   </div>
                 ) : (
-                  <div className="flex flex-wrap gap-2 border-t border-atlas-border pt-4">
+                  <div className="flex flex-wrap gap-2 border-t border-lavray-border pt-4">
                     <input
                       type="email"
                       value={cloudEmail}
                       onChange={(e) => setCloudEmail(e.target.value)}
                       placeholder="Email..."
-                      className="flex-1 min-w-[160px] rounded-lg border border-atlas-border bg-atlas-surface px-3 py-1.5 text-[12.5px] outline-none"
+                      className="flex-1 min-w-[160px] rounded-lg border border-lavray-border bg-lavray-surface px-3 py-1.5 text-[12.5px] outline-none"
                     />
                     <input
                       type="password"
                       value={cloudPassword}
                       onChange={(e) => setCloudPassword(e.target.value)}
                       placeholder="Password (min 8 chars)..."
-                      className="flex-1 min-w-[150px] rounded-lg border border-atlas-border bg-atlas-surface px-3 py-1.5 text-[12.5px] outline-none"
+                      className="flex-1 min-w-[150px] rounded-lg border border-lavray-border bg-lavray-surface px-3 py-1.5 text-[12.5px] outline-none"
                     />
                     <button
                       type="button"
@@ -788,7 +698,7 @@ export const SettingsView: React.FC = () => {
                       onClick={async () => {
                         setCloudBusy(true);
                         try {
-                          setCloudStatus(await window.atlas.cloudLogin({ email: cloudEmail, password: cloudPassword }));
+                          setCloudStatus(await window.lavray.cloudLogin({ email: cloudEmail, password: cloudPassword }));
                           setCloudPassword('');
                           pushToast('Signed in', 'success');
                         } catch (err) {
@@ -797,7 +707,7 @@ export const SettingsView: React.FC = () => {
                           setCloudBusy(false);
                         }
                       }}
-                      className="rounded-lg bg-atlas-accent px-3 py-1.5 text-[12px] font-medium text-atlas-accent-fg"
+                      className="rounded-lg bg-lavray-accent px-3 py-1.5 text-[12px] font-medium text-lavray-accent-fg"
                     >
                       Sign In
                     </button>
@@ -807,7 +717,7 @@ export const SettingsView: React.FC = () => {
                       onClick={async () => {
                         setCloudBusy(true);
                         try {
-                          setCloudStatus(await window.atlas.cloudRegister({ email: cloudEmail, password: cloudPassword }));
+                          setCloudStatus(await window.lavray.cloudRegister({ email: cloudEmail, password: cloudPassword }));
                           setCloudPassword('');
                           pushToast('Registered account', 'success');
                         } catch (err) {
@@ -816,7 +726,7 @@ export const SettingsView: React.FC = () => {
                           setCloudBusy(false);
                         }
                       }}
-                      className="rounded-lg border border-atlas-border bg-atlas-surface px-3 py-1.5 text-[12px] font-medium"
+                      className="rounded-lg border border-lavray-border bg-lavray-surface px-3 py-1.5 text-[12px] font-medium"
                     >
                       Register
                     </button>
@@ -824,8 +734,8 @@ export const SettingsView: React.FC = () => {
                 )}
 
                 {cloudStatus && (
-                  <div className="border-t border-atlas-border pt-4 space-y-1">
-                    <div className="mb-2 text-[11.5px] font-medium text-atlas-muted">
+                  <div className="border-t border-lavray-border pt-4 space-y-1">
+                    <div className="mb-2 text-[11.5px] font-medium text-lavray-muted">
                       Sync Permissions (Private tabs are never uploaded)
                     </div>
                     {(
@@ -844,7 +754,7 @@ export const SettingsView: React.FC = () => {
                         label={label}
                         checked={Boolean(cloudStatus.consent[key])}
                         onChange={(v) =>
-                          void window.atlas.updateCloudConsent({ [key]: v }).then((st) => {
+                          void window.lavray.updateCloudConsent({ [key]: v }).then((st) => {
                             setCloudStatus(st);
                             pushToast('Consent updated', 'success');
                           })
@@ -860,14 +770,14 @@ export const SettingsView: React.FC = () => {
               <div className="space-y-6">
                 <div>
                   <h2 className="text-[15px] font-semibold tracking-[-0.01em]">Advanced Tools & Workspaces</h2>
-                  <p className="mt-0.5 text-[12px] text-atlas-muted">
-                    Direct access to Atlas platform modules and automation diagnostics.
+                  <p className="mt-0.5 text-[12px] text-lavray-muted">
+                    Direct access to LAVRAY platform modules and automation diagnostics.
                   </p>
                 </div>
 
-                <div className="divide-y divide-atlas-border border-y border-atlas-border">
+                <div className="divide-y divide-lavray-border border-y border-lavray-border">
                   {[
-                    { title: 'Atlas Search Index & Crawler', desc: 'Manage first-party FTS5/PostgreSQL index seeds', view: 'search' as const },
+                    { title: 'LAVRAY Search Index & Crawler', desc: 'Manage first-party FTS5/PostgreSQL index seeds', view: 'search' as const },
                     { title: 'Local MCP Server', desc: 'Configure localhost Bearer-authenticated MCP tools', view: 'mcp' as const },
                     { title: 'Observability & Token Costs', desc: 'Inspect run success rates, latency, and cost metrics', view: 'dashboard' as const },
                     { title: 'Scheduled Automations', desc: 'Create and pause recurring browser tasks', view: 'scheduler' as const },
@@ -875,13 +785,13 @@ export const SettingsView: React.FC = () => {
                   ].map((item) => (
                     <div key={item.view} className="flex items-center justify-between py-3">
                       <div>
-                        <div className="font-medium text-atlas-text">{item.title}</div>
-                        <div className="text-[11.5px] text-atlas-muted">{item.desc}</div>
+                        <div className="font-medium text-lavray-text">{item.title}</div>
+                        <div className="text-[11.5px] text-lavray-muted">{item.desc}</div>
                       </div>
                       <button
                         type="button"
                         onClick={() => setOverlayView(item.view)}
-                        className="rounded-lg border border-atlas-border bg-atlas-surface px-3 py-1.5 text-[12px] font-medium hover:bg-atlas-shell transition-colors"
+                        className="rounded-lg border border-lavray-border bg-lavray-surface px-3 py-1.5 text-[12px] font-medium hover:bg-lavray-shell transition-colors"
                       >
                         Open
                       </button>
@@ -903,16 +813,16 @@ const ToggleRow: React.FC<{
   checked: boolean;
   onChange: (v: boolean) => void;
 }> = ({ label, description, checked, onChange }) => (
-  <label className="flex items-start justify-between gap-4 rounded-lg py-2 px-1 cursor-pointer hover:bg-atlas-shell/50 transition-colors">
+  <label className="flex items-start justify-between gap-4 rounded-lg py-2 px-1 cursor-pointer hover:bg-lavray-shell/50 transition-colors">
     <div className="min-w-0">
-      <div className="text-[12.5px] font-medium text-atlas-text">{label}</div>
-      {description && <div className="text-[11.5px] text-atlas-muted mt-0.5">{description}</div>}
+      <div className="text-[12.5px] font-medium text-lavray-text">{label}</div>
+      {description && <div className="text-[11.5px] text-lavray-muted mt-0.5">{description}</div>}
     </div>
     <input
       type="checkbox"
       checked={checked}
       onChange={(e) => onChange(e.target.checked)}
-      className="mt-0.5 h-4 w-4 rounded border-atlas-border accent-atlas-accent cursor-pointer"
+      className="mt-0.5 h-4 w-4 rounded border-lavray-border accent-lavray-accent cursor-pointer"
     />
   </label>
 );
@@ -924,13 +834,13 @@ const NumField: React.FC<{
   onChange: (v: number) => void;
 }> = ({ label, value, step = '1', onChange }) => (
   <div>
-    <label className="block text-[11.5px] text-atlas-muted mb-1">{label}</label>
+    <label className="block text-[11.5px] text-lavray-muted mb-1">{label}</label>
     <input
       type="number"
       step={step}
       defaultValue={value}
       onBlur={(e) => onChange(Number(e.target.value))}
-      className="w-full rounded-lg border border-atlas-border bg-atlas-surface px-2.5 py-1.5 text-[12.5px] outline-none focus:border-atlas-accent"
+      className="w-full rounded-lg border border-lavray-border bg-lavray-surface px-2.5 py-1.5 text-[12.5px] outline-none focus:border-lavray-accent"
     />
   </div>
 );

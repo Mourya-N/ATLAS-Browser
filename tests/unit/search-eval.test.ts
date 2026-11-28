@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { runDeterministicSearchEvaluation } from '../../src/backend/eval/search-eval';
 
-describe('Atlas Search Quantitative Evaluation Harness', () => {
+describe('LAVRAY Search Quantitative Evaluation Harness', () => {
   it('evaluates 15 queries across 6 categories achieving high Recall@5, NDCG@5, 100% Citation Accuracy & provider resilience', async () => {
     const metrics = await runDeterministicSearchEvaluation();
     console.log('[SEARCH_EVAL_METRICS]', JSON.stringify(metrics));

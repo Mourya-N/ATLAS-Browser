@@ -1,33 +1,33 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: atlas-cloud-worker
-  namespace: atlas-cloud
+  name: lavray-cloud-worker
+  namespace: lavray-cloud
   labels:
-    app: atlas-cloud-worker
+    app: lavray-cloud-worker
 spec:
   replicas: 2
   selector:
     matchLabels:
-      app: atlas-cloud-worker
+      app: lavray-cloud-worker
   template:
     metadata:
       labels:
-        app: atlas-cloud-worker
+        app: lavray-cloud-worker
     spec:
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
       containers:
         - name: worker
-          image: ghcr.io/mourya-n/atlas-cloud-worker:1.0.0
+          image: ghcr.io/mourya-n/lavray-cloud-worker:1.0.0
           envFrom:
             - secretRef:
-                name: atlas-cloud-secrets
+                name: lavray-cloud-secrets
           env:
             - name: NODE_ENV
               value: "production"
-            - name: ATLAS_WORKER_POLL_MS
+            - name: LAVRAY_WORKER_POLL_MS
               value: "2000"
           resources:
             requests:
@@ -40,13 +40,13 @@ spec:
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: atlas-cloud-worker-hpa
-  namespace: atlas-cloud
+  name: lavray-cloud-worker-hpa
+  namespace: lavray-cloud
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: atlas-cloud-worker
+    name: lavray-cloud-worker
   minReplicas: 1
   maxReplicas: 15
   metrics:

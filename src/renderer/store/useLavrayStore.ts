@@ -41,7 +41,7 @@ export interface ToastItem {
   tone: 'info' | 'success' | 'warning' | 'danger';
 }
 
-interface AtlasState {
+interface LavrayState {
   tabs: TabInfo[];
   activeTabId: string | null;
   groups: TabGroup[];
@@ -81,7 +81,7 @@ interface AtlasState {
   setSidebarOpen: (open: boolean) => void;
   setAgentPanelOpen: (open: boolean) => void;
   setOverlayView: (view: OverlayView, replayRunId?: string | null) => void;
-  openAtlasSearch: (initialQuery?: string) => void;
+  openLavraySearch: (initialQuery?: string) => void;
   setFindBarOpen: (open: boolean) => void;
   setTabSearchOpen: (open: boolean) => void;
   setConversations: (c: AgentConversation[]) => void;
@@ -108,7 +108,7 @@ interface AtlasState {
   dismissToast: (id: string) => void;
 }
 
-export const useAtlasStore = create<AtlasState>((set) => ({
+export const useLavrayStore = create<LavrayState>((set) => ({
   tabs: [],
   activeTabId: null,
   groups: [],
@@ -155,7 +155,7 @@ export const useAtlasStore = create<AtlasState>((set) => ({
   setAgentPanelOpen: (agentPanelOpen) => set({ agentPanelOpen }),
   setOverlayView: (activeOverlayView, replayRunId = null) =>
     set({ activeOverlayView, replayRunId }),
-  openAtlasSearch: (initialQuery = '') =>
+  openLavraySearch: (initialQuery = '') =>
     set({ activeOverlayView: 'search', searchInitialQuery: initialQuery }),
   setFindBarOpen: (findBarOpen) => set({ findBarOpen }),
   setTabSearchOpen: (tabSearchOpen) => set({ tabSearchOpen }),
@@ -193,7 +193,7 @@ export const useAtlasStore = create<AtlasState>((set) => ({
     set((s) => {
       const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
       setTimeout(() => {
-        useAtlasStore.getState().dismissToast(id);
+        useLavrayStore.getState().dismissToast(id);
       }, 4500);
       return { toasts: [...s.toasts.slice(-4), { id, title, tone }] };
     }),

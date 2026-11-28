@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="none">
+  <defs>
+    <linearGradient id="haya-star-grad" x1="36" y1="220" x2="220" y2="36" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#5243C2" />
+      <stop offset="55%" stop-color="#8B7CFA" />
+      <stop offset="100%" stop-color="#DDD6FE" />
+    </linearGradient>
+    <linearGradient id="haya-quill-grad" x1="88" y1="168" x2="216" y2="40" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#7C6CF0" />
+      <stop offset="100%" stop-color="#FFFFFF" />
+    </linearGradient>
+  </defs>
+
+  <rect x="16" y="16" width="224" height="224" rx="56" fill="#131224" />
+  <rect x="17" y="17" width="222" height="222" rx="55" stroke="#A78BFA" stroke-opacity="0.25" stroke-width="2" />
+
+  <!-- Outer Orbital Ring -->
+  <circle cx="128" cy="128" r="78" stroke="#8B7CFA" stroke-opacity="0.32" stroke-width="6" stroke-dasharray="340 120" />
+
+  <!-- Four-Point HAYAGRIVA Intelligence Star -->
+  <path
+    d="M128 44 L147 109 L212 128 L147 147 L128 212 L109 147 L44 128 L109 109 Z"
+    fill="url(#haya-star-grad)"
+  />
+
+  <!-- Inner Core Facet -->
+  <path
+    d="M128 74 L139 117 L182 128 L139 139 L128 182 L117 139 L74 128 L117 117 Z"
+    fill="url(#haya-quill-grad)"
+    opacity="0.9"
+  />
+</svg>

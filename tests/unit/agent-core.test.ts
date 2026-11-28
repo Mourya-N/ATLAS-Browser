@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach } from 'vitest';
-import { AtlasDatabase } from '@main/db/database';
+import { LavrayDatabase } from '@main/db/database';
 import { AgentRepository } from '@main/db/repositories/agent-repo';
 import { PlatformRepository } from '@main/db/repositories/platform-repo';
 import { AuditLogger } from '@main/security/audit-logger';
@@ -18,7 +18,7 @@ import { StructuredExtractionEngine } from '@main/agent/extraction-engine';
 import { DEFAULT_BUDGETS } from '@main/agent/orchestrator';
 
 describe('Agent Core Components', () => {
-  let db: AtlasDatabase;
+  let db: LavrayDatabase;
   let agentRepo: AgentRepository;
   let platformRepo: PlatformRepository;
   let audit: AuditLogger;
@@ -27,7 +27,7 @@ describe('Agent Core Components', () => {
   let registry: ToolRegistry;
 
   beforeEach(() => {
-    db = new AtlasDatabase(':memory:');
+    db = new LavrayDatabase(':memory:');
     agentRepo = new AgentRepository(db.db);
     platformRepo = new PlatformRepository(db.db);
     audit = new AuditLogger(platformRepo);

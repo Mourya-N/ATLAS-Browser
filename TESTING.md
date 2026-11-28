@@ -1,6 +1,6 @@
 # Testing & Evaluation
 
-Atlas Browser uses Vitest executed under Electron's Node ABI (`ELECTRON_RUN_AS_NODE=1`) so native `better-sqlite3` bindings match the runtime binary identically.
+LAVRAY Browser uses Vitest executed under Electron's Node ABI (`ELECTRON_RUN_AS_NODE=1`) so native `better-sqlite3` bindings match the runtime binary identically.
 
 ## Suites
 

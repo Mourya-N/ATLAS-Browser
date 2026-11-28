@@ -42,7 +42,7 @@ export async function startCloudServer(opts?: {
     services.worker.startLoop(services.config.workerPollIntervalMs);
   }
 
-  services.logger.log('info', 'Atlas Cloud Backend listening', {
+  services.logger.log('info', 'LAVRAY Cloud Backend listening', {
     host: services.config.host,
     port,
     storageMode: services.repo.mode
@@ -69,7 +69,7 @@ export async function startCloudServer(opts?: {
 }
 
 if (require.main === module) {
-  const inlineWorker = process.env.ATLAS_INLINE_WORKER !== 'false';
+  const inlineWorker = process.env.LAVRAY_INLINE_WORKER !== 'false';
   void startCloudServer({ startInlineWorker: inlineWorker }).then((runtime) => {
     const shutdown = async () => {
       await runtime.stop();

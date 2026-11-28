@@ -1,10 +1,10 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: atlas-cloud-backend
-  namespace: atlas-cloud
+  name: lavray-cloud-backend
+  namespace: lavray-cloud
   labels:
-    app: atlas-cloud-backend
+    app: lavray-cloud-backend
 spec:
   replicas: 2
   strategy:
@@ -14,31 +14,31 @@ spec:
       maxSurge: 1
   selector:
     matchLabels:
-      app: atlas-cloud-backend
+      app: lavray-cloud-backend
   template:
     metadata:
       labels:
-        app: atlas-cloud-backend
+        app: lavray-cloud-backend
     spec:
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
       containers:
         - name: backend
-          image: ghcr.io/mourya-n/atlas-cloud-backend:1.0.0
+          image: ghcr.io/mourya-n/lavray-cloud-backend:1.0.0
           ports:
             - containerPort: 48080
           envFrom:
             - secretRef:
-                name: atlas-cloud-secrets
+                name: lavray-cloud-secrets
           env:
             - name: NODE_ENV
               value: "production"
-            - name: ATLAS_INLINE_WORKER
+            - name: LAVRAY_INLINE_WORKER
               value: "false"
-            - name: ATLAS_ALLOW_MOCK_SEARCH
+            - name: LAVRAY_ALLOW_MOCK_SEARCH
               value: "false"
-            - name: ATLAS_ALLOW_MOCK_AI
+            - name: LAVRAY_ALLOW_MOCK_AI
               value: "false"
           resources:
             requests:
@@ -63,11 +63,11 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: atlas-cloud-backend
-  namespace: atlas-cloud
+  name: lavray-cloud-backend
+  namespace: lavray-cloud
 spec:
   selector:
-    app: atlas-cloud-backend
+    app: lavray-cloud-backend
   ports:
     - port: 80
       targetPort: 48080
@@ -75,13 +75,13 @@ spec:
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: atlas-cloud-backend-hpa
-  namespace: atlas-cloud
+  name: lavray-cloud-backend-hpa
+  namespace: lavray-cloud
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: atlas-cloud-backend
+    name: lavray-cloud-backend
   minReplicas: 2
   maxReplicas: 20
   metrics:
@@ -95,10 +95,10 @@ spec:
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
-  name: atlas-cloud-backend-pdb
-  namespace: atlas-cloud
+  name: lavray-cloud-backend-pdb
+  namespace: lavray-cloud
 spec:
   minAvailable: 1
   selector:
     matchLabels:
-      app: atlas-cloud-backend
+      app: lavray-cloud-backend

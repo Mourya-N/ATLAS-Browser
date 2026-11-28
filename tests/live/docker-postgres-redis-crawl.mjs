@@ -15,7 +15,7 @@ async function main() {
   console.log('[OK] /health verified storageMode=postgres, aiConfigured=' + health.aiConfigured);
 
   // 2. Register user against live Postgres + Verify Rate Limit + Redis keys
-  const uniqueEmail = `live-verify-${Date.now()}@atlasbrowser.dev`;
+  const uniqueEmail = `live-verify-${Date.now()}@lavraybrowser.dev`;
   const regRes = await fetch(`${API}/api/v1/auth/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -48,7 +48,7 @@ async function main() {
   });
   assert.equal(consentRes.status, 200);
 
-  // 3. Controlled REAL public web crawl into PostgreSQL atlas_index_documents
+  // 3. Controlled REAL public web crawl into PostgreSQL lavray_index_documents
   // Clear prior fixture rows (if re-running against persistent Docker volume) so fresh insert + deduplication both run cleanly.
   for (const url of ['https://example.com/', 'https://www.rfc-editor.org/rfc/rfc9309.html']) {
     await fetch(`${API}/api/v1/index/documents`, {
@@ -90,14 +90,14 @@ async function main() {
 
   // Verify crawl checkpoint & documents stored directly in Postgres
   const pgCount = execFileSync('docker-compose', [
-    'exec', '-T', 'postgres', 'psql', '-U', 'atlas', '-d', 'atlas_cloud', '-t', '-A',
-    '-c', 'SELECT COUNT(*) FROM atlas_index_documents;'
+    'exec', '-T', 'postgres', 'psql', '-U', 'lavray', '-d', 'lavray_cloud', '-t', '-A',
+    '-c', 'SELECT COUNT(*) FROM lavray_index_documents;'
   ]).toString().trim();
   const cpCount = execFileSync('docker-compose', [
-    'exec', '-T', 'postgres', 'psql', '-U', 'atlas', '-d', 'atlas_cloud', '-t', '-A',
+    'exec', '-T', 'postgres', 'psql', '-U', 'lavray', '-d', 'lavray_cloud', '-t', '-A',
     '-c', 'SELECT COUNT(*) FROM crawl_checkpoints;'
   ]).toString().trim();
-  console.log(`[OK] Postgres live rows -> atlas_index_documents=${pgCount}, crawl_checkpoints=${cpCount}`);
+  console.log(`[OK] Postgres live rows -> lavray_index_documents=${pgCount}, crawl_checkpoints=${cpCount}`);
   assert.ok(Number(pgCount) >= 2);
   assert.ok(Number(cpCount) >= 1);
 
@@ -114,7 +114,7 @@ async function main() {
   const s1Ms = Date.now() - s1Started;
   assert.equal(s1.cacheHit, false);
   assert.ok(!s1.providersQueried.includes('mock_search'), 'Docker Compose stack must NOT query mock_search by default');
-  assert.ok(s1.results.some((r) => r.sourceOrigin === 'atlas_index'), 'Expected real first-party atlas_index result from Postgres');
+  assert.ok(s1.results.some((r) => r.sourceOrigin === 'lavray_index'), 'Expected real first-party lavray_index result from Postgres');
   if (health.aiConfigured) {
     assert.ok(['ok', 'insufficient_evidence'].includes(s1.aiAnswer.status), `Expected valid AI answer status when aiConfigured=true, got ${s1.aiAnswer.status}`);
   } else {
@@ -130,11 +130,11 @@ async function main() {
   assert.equal(s2.cacheHit, true, 'Expected Redis cacheHit=true on repeated query');
   console.log(`[OK] Search query verified -> live PG latency=${s1Ms}ms, Redis cached latency=${s2Ms}ms, providers=${JSON.stringify(s1.providersQueried)}, topTitle=${JSON.stringify(s1.results[0]?.title)}, indexDocs=${s1.indexStatus.indexedDocuments}`);
 
-  const redisKeys = execFileSync('docker-compose', ['exec', '-T', 'redis', 'redis-cli', 'KEYS', 'atlas:*']).toString().trim();
+  const redisKeys = execFileSync('docker-compose', ['exec', '-T', 'redis', 'redis-cli', 'KEYS', 'lavray:*']).toString().trim();
   console.log('[OK] Redis active keys sample:\n' + redisKeys.split('\n').slice(0, 6).join('\n'));
-  assert.ok(redisKeys.includes('atlas:rl:') && redisKeys.includes('atlas:scache:'));
+  assert.ok(redisKeys.includes('lavray:rl:') && redisKeys.includes('lavray:scache:'));
 
-  // 5. Enqueue real background worker job (`page_extract`) and verify atlas-cloud-worker processes it in Postgres
+  // 5. Enqueue real background worker job (`page_extract`) and verify lavray-cloud-worker processes it in Postgres
   const jobRes = await fetch(`${API}/api/v1/jobs`, {
     method: 'POST',
     headers: auth,
@@ -149,7 +149,7 @@ async function main() {
   for (let i = 0; i < 15; i++) {
     await new Promise((r) => setTimeout(r, 1000));
     const jobRow = execFileSync('docker-compose', [
-      'exec', '-T', 'postgres', 'psql', '-U', 'atlas', '-d', 'atlas_cloud', '-t', '-A',
+      'exec', '-T', 'postgres', 'psql', '-U', 'lavray', '-d', 'lavray_cloud', '-t', '-A',
       '-c', `SELECT status FROM background_jobs WHERE id='${job.id}';`
     ]).toString().trim();
     if (jobRow === 'completed') {
@@ -158,7 +158,7 @@ async function main() {
     }
   }
   assert.ok(jobDone, 'Worker did not complete background_job within 15s');
-  console.log('[OK] Independent atlas-cloud-worker processed PostgreSQL job id=' + job.id);
+  console.log('[OK] Independent lavray-cloud-worker processed PostgreSQL job id=' + job.id);
 
   // 6. Security verification: live SSRF rejection against metadata & internal Docker services
   for (const badUrl of [
@@ -176,9 +176,9 @@ async function main() {
   }
   console.log('[OK] Live SSRF guard blocked metadata, localhost, internal container hostname, and RFC1918');
 
-  // 7. Restart persistence: restart atlas-backend container & confirm indexed data + search still work cleanly!
-  console.log('[INFO] Restarting atlas-backend container to verify PostgreSQL persistence...');
-  execFileSync('docker-compose', ['restart', 'atlas-backend'], { stdio: 'inherit' });
+  // 7. Restart persistence: restart lavray-backend container & confirm indexed data + search still work cleanly!
+  console.log('[INFO] Restarting lavray-backend container to verify PostgreSQL persistence...');
+  execFileSync('docker-compose', ['restart', 'lavray-backend'], { stdio: 'inherit' });
   let ready = false;
   for (let i = 0; i < 15; i++) {
     await new Promise((r) => setTimeout(r, 1000));
@@ -190,7 +190,7 @@ async function main() {
       }
     } catch {}
   }
-  assert.ok(ready, 'atlas-backend failed to become ready after restart');
+  assert.ok(ready, 'lavray-backend failed to become ready after restart');
 
   const postRestartStats = await (await fetch(`${API}/api/v1/index/stats`)).json();
   assert.ok(postRestartStats.stats.totalDocuments >= 1, 'Index documents did not persist across container restart');

@@ -8,7 +8,7 @@ import type {
   ModelGenerateResponse,
   ModelProvider
 } from '@main/agent/providers/model-provider';
-import { AtlasDatabase } from '@main/db/database';
+import { LavrayDatabase } from '@main/db/database';
 import { AgentRepository } from '@main/db/repositories/agent-repo';
 import { BrowserRepository } from '@main/db/repositories/browser-repo';
 import { PlatformRepository } from '@main/db/repositories/platform-repo';
@@ -24,7 +24,7 @@ import { FirstPartyIndexProvider } from '../../src/backend/modules/search/first-
 import { AiUnavailableError } from '../../src/backend/modules/ai/ai-orchestrator';
 import { SsrfBlockedError, SsrfGuard } from '../../src/backend/security/ssrf-guard';
 
-describe('Atlas Cloud Backend, Security, Hybrid Search & Local-First Desktop Client', () => {
+describe('LAVRAY Cloud Backend, Security, Hybrid Search & Local-First Desktop Client', () => {
   let fixtureServer: http.Server;
   let fixtureBaseUrl = '';
   let runtime: BackendRuntime;
@@ -32,7 +32,7 @@ describe('Atlas Cloud Backend, Security, Hybrid Search & Local-First Desktop Cli
   let tmpDir = '';
 
   beforeAll(async () => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-cloud-test-'));
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lavray-cloud-test-'));
 
     fixtureServer = http.createServer((req, res) => {
       const u = req.url || '/';
@@ -162,12 +162,12 @@ describe('Atlas Cloud Backend, Security, Hybrid Search & Local-First Desktop Cli
   });
 
   it('rejects silent AI mock fallback in production configuration', async () => {
-    expect(() => loadBackendConfig({ NODE_ENV: 'production' })).toThrow(/ATLAS_JWT_SECRET/);
+    expect(() => loadBackendConfig({ NODE_ENV: 'production' })).toThrow(/LAVRAY_JWT_SECRET/);
     const prodConfig = loadBackendConfig({
       NODE_ENV: 'production',
-      ATLAS_JWT_SECRET: '0123456789abcdef0123456789abcdef',
-      ATLAS_ALLOW_MOCK_AI: 'true',
-      ATLAS_ALLOW_MOCK_SEARCH: 'true'
+      LAVRAY_JWT_SECRET: '0123456789abcdef0123456789abcdef',
+      LAVRAY_ALLOW_MOCK_AI: 'true',
+      LAVRAY_ALLOW_MOCK_SEARCH: 'true'
     });
     expect(prodConfig.allowMockAi).toBe(false);
     expect(prodConfig.allowMockSearch).toBe(false);
@@ -189,9 +189,9 @@ describe('Atlas Cloud Backend, Security, Hybrid Search & Local-First Desktop Cli
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        email: 'architect@atlasbrowser.dev',
+        email: 'architect@lavraybrowser.dev',
         password: 'StrongPassword!2026',
-        displayName: 'Atlas Architect'
+        displayName: 'LAVRAY Architect'
       })
     });
     expect(regRes.status).toBe(201);
@@ -203,7 +203,7 @@ describe('Atlas Cloud Backend, Security, Hybrid Search & Local-First Desktop Cli
     };
     expect(session.accessToken).toBeTruthy();
 
-    const storedUser = await runtime.services.repo.findUserByEmail('architect@atlasbrowser.dev');
+    const storedUser = await runtime.services.repo.findUserByEmail('architect@lavraybrowser.dev');
     expect(storedUser?.passwordHash.startsWith('scrypt$')).toBe(true);
     expect(storedUser?.passwordHash).not.toContain('StrongPassword!2026');
 
@@ -248,7 +248,7 @@ describe('Atlas Cloud Backend, Security, Hybrid Search & Local-First Desktop Cli
       method: 'POST',
       headers: authHeaders,
       body: JSON.stringify({
-        title: 'Atlas Hybrid Retrieval Design',
+        title: 'LAVRAY Hybrid Retrieval Design',
         content: 'Combines PostgreSQL tsvector keyword search with 64-dim embeddings for personal memory.',
         tags: ['search', 'architecture']
       })
@@ -275,7 +275,7 @@ describe('Atlas Cloud Backend, Security, Hybrid Search & Local-First Desktop Cli
     });
     expect(kRes.status).toBe(200);
     const kData = (await kRes.json()) as { hits: Array<{ document: { title: string } }> };
-    expect(kData.hits[0].document.title).toContain('Atlas Hybrid Retrieval Design');
+    expect(kData.hits[0].document.title).toContain('LAVRAY Hybrid Retrieval Design');
 
     // 6. Execute Intelligent Search with Cited AI Answer & verify hallucinated URLs are stripped
     const sRes = await fetch(`${apiBaseUrl}/api/v1/search`, {
@@ -322,7 +322,7 @@ describe('Atlas Cloud Backend, Security, Hybrid Search & Local-First Desktop Cli
       headers: authHeaders
     });
     expect(delRes.status).toBe(200);
-    expect(await runtime.services.repo.findUserByEmail('architect@atlasbrowser.dev')).toBeNull();
+    expect(await runtime.services.repo.findUserByEmail('architect@lavraybrowser.dev')).toBeNull();
   });
 
   it('processes retryable background worker jobs and sends persistent failures to dead_letter', async () => {
@@ -356,7 +356,7 @@ describe('Atlas Cloud Backend, Security, Hybrid Search & Local-First Desktop Cli
     expect(attempt2?.status).toBe('dead_letter');
   });
 
-  it('supports FirstPartyIndexProvider with AtlasCrawler robots.txt policy enforcement', async () => {
+  it('supports FirstPartyIndexProvider with LavrayCrawler robots.txt policy enforcement', async () => {
     const provider = new FirstPartyIndexProvider(runtime.services.repo);
     const parsedRobots = runtime.services.crawler.parseRobotsTxt('User-agent: *\nDisallow: /private/\n');
     expect(runtime.services.crawler.isPathAllowed(parsedRobots, '/private/secret')).toBe(false);
@@ -366,10 +366,10 @@ describe('Atlas Cloud Backend, Security, Hybrid Search & Local-First Desktop Cli
       id: 'fp-doc-1',
       url: 'https://docs.example.org/docs/search',
       canonicalUrl: 'https://docs.example.org/docs/search',
-      title: 'Atlas Web Index Document',
+      title: 'LAVRAY Web Index Document',
       mainContent: 'Policy-compliant crawler indexing respecting robots.txt and rate limits.',
       snippet: 'Policy-compliant crawler indexing respecting robots.txt and rate limits.',
-      headings: ['Atlas Web Index'],
+      headings: ['LAVRAY Web Index'],
       language: 'en',
       sourceDomain: 'docs.example.org',
       contentType: 'docs',
@@ -387,11 +387,11 @@ describe('Atlas Cloud Backend, Security, Hybrid Search & Local-First Desktop Cli
       limit: 5
     });
     expect(hits.length).toBeGreaterThanOrEqual(1);
-    expect(hits[0].sourceProvider).toBe('atlas_first_party_index');
+    expect(hits[0].sourceProvider).toBe('lavray_first_party_index');
   });
 
   it('operates Electron CloudClientService in local-first fallback AND cloud-connected hybrid mode while excluding private tabs', async () => {
-    const db = new AtlasDatabase(':memory:');
+    const db = new LavrayDatabase(':memory:');
     const browserRepo = new BrowserRepository(db.db);
     const agentRepo = new AgentRepository(db.db);
     const platformRepo = new PlatformRepository(db.db);
@@ -499,7 +499,7 @@ describe('Atlas Cloud Backend, Security, Hybrid Search & Local-First Desktop Cli
     // 2. Connect to running local cloud backend
     platformRepo.setSetting('cloud.endpointUrl', apiBaseUrl);
     await client.register({
-      email: 'desktop-client@atlasbrowser.dev',
+      email: 'desktop-client@lavraybrowser.dev',
       password: 'DesktopPassword!2026',
       displayName: 'Desktop Client'
     });

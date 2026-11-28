@@ -1,4 +1,4 @@
--- Atlas Browser Schema Migration 002: Long-horizon checkpoints, research reports, page change detection, semantic memory
+-- LAVRAY Browser Schema Migration 002: Long-horizon checkpoints, research reports, page change detection, semantic memory
 
 PRAGMA foreign_keys = ON;
 

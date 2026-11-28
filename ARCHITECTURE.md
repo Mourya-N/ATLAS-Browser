@@ -1,8 +1,8 @@
-# Atlas Browser — System Architecture
+# LAVRAY Browser — System Architecture
 
 > **"Browse normally. Delegate intelligently. Stay in control."**
 
-Atlas Browser is a production-oriented, AI-native desktop web browser built on Electron (`WebContentsView`), TypeScript (strict), React, Vite, Tailwind CSS, Zustand, SQLite (`better-sqlite3`), and Chrome DevTools Protocol (`webContents.debugger`).
+LAVRAY Browser is a production-oriented, AI-native desktop web browser built on Electron (`WebContentsView`), TypeScript (strict), React, Vite, Tailwind CSS, Zustand, SQLite (`better-sqlite3`), and Chrome DevTools Protocol (`webContents.debugger`).
 
 ---
 
@@ -56,7 +56,7 @@ Atlas Browser is a production-oriented, AI-native desktop web browser built on E
 │                   UNTRUSTED REMOTE WEB CONTENT                          │
 │  - contextIsolation: true, nodeIntegration: false, sandbox: true        │
 │  - Zero access to IPC, SQLite, safeStorage, Node, or local files        │
-│  - Private windows use `persist:atlas-private-<id>` / in-memory partition│
+│  - Private windows use `persist:lavray-private-<id>` / in-memory partition│
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -65,7 +65,7 @@ Atlas Browser is a production-oriented, AI-native desktop web browser built on E
 ## 2. Directory Layout
 
 ```
-atlas-browser/
+lavray-browser/
 ├── src/
 │   ├── main/
 │   │   ├── index.ts                 # App entry, lifecycle, shortcuts, CSP, protocols
@@ -165,9 +165,9 @@ atlas-browser/
 
 ## 4. Persistence & Storage
 
-- SQLite database stored in `app.getPath('userData')/atlas.db` with `WAL` mode and `foreign_keys = ON`.
+- SQLite database stored in `app.getPath('userData')/lavray.db` with `WAL` mode and `foreign_keys = ON`.
 - Screenshots stored on disk under `app.getPath('userData')/screenshots/<runId>/<stepId>.png` (never stored as BLOBs in SQLite) with configurable retention cleanup.
-- Private windows use ephemeral in-memory Electron sessions (`session.fromPartition('atlas-private-' + uuid)` without `persist:`) and pass `isPrivate: true` so History, Session Restore, Memory, and Screenshot persistence are bypassed completely.
+- Private windows use ephemeral in-memory Electron sessions (`session.fromPartition('lavray-private-' + uuid)` without `persist:`) and pass `isPrivate: true` so History, Session Restore, Memory, and Screenshot persistence are bypassed completely.
 
 ---
 

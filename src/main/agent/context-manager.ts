@@ -87,7 +87,7 @@ export class ContextManager {
         .slice(0, 60)
         .map(
           (e) =>
-            `${e.atlasId} <${e.tag}${e.type ? ` type="${e.type}"` : ''}> role=${e.role} name="${e.name}" text="${e.text.slice(0, 60)}" selector="${e.selector}"${e.interactable ? '' : ' [disabled]'}`
+            `${e.lavrayId} <${e.tag}${e.type ? ` type="${e.type}"` : ''}> role=${e.role} name="${e.name}" text="${e.text.slice(0, 60)}" selector="${e.selector}"${e.interactable ? '' : ' [disabled]'}`
         )
         .join('\n');
 

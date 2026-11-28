@@ -46,10 +46,10 @@ function tokenize(text: string): string[] {
 }
 
 export function classifyResultOrigin(sourceProvider: string): SearchResultOrigin {
-  if (sourceProvider === 'atlas_first_party_index') return 'atlas_index';
+  if (sourceProvider === 'lavray_first_party_index') return 'lavray_index';
   if (sourceProvider === 'open_tabs') return 'open_tab';
   if (
-    sourceProvider === 'atlas_knowledge' ||
+    sourceProvider === 'lavray_knowledge' ||
     sourceProvider === 'local_bookmarks' ||
     sourceProvider === 'local_memory' ||
     sourceProvider === 'local_research'
@@ -66,13 +66,13 @@ export function sanitizeAndCanonicalizeUrl(rawUrl: string, allowLocalTestUrls = 
   displayUrl: string;
   domain: string;
 } {
-  if (rawUrl.startsWith('atlas://')) {
+  if (rawUrl.startsWith('lavray://')) {
     return {
       valid: true,
       url: rawUrl,
       canonicalUrl: rawUrl,
       displayUrl: rawUrl,
-      domain: 'atlas.local'
+      domain: 'lavray.local'
     };
   }
   try {
@@ -203,7 +203,7 @@ export class SearchRankingPipeline {
         authority = 0.92;
       } else if (check.url.startsWith('https://')) {
         authority = 0.65;
-      } else if (check.url.startsWith('atlas://')) {
+      } else if (check.url.startsWith('lavray://')) {
         authority = 0.85;
       }
 

@@ -26,9 +26,7 @@ import {
   type ProviderStatusInfo,
   type Skill
 } from '@shared/types';
-import { DEFAULT_MODEL_PRICING } from '@shared/pricing';
 import { analyzePageTrust } from '@main/security/trust-analyzer';
-import type { GeminiProvider } from '@main/agent/providers/gemini-provider';
 import type { SelfHostedOpenAiProvider } from '@main/agent/providers/self-hosted-provider';
 import type { ResearchEngine } from '@main/agent/research-engine';
 import type { PageUnderstandingEngine } from '@main/agent/page-understanding';
@@ -79,7 +77,6 @@ export interface MainServices {
   pageUnderstanding?: PageUnderstandingEngine;
   crossTab?: CrossTabIntelligence;
   proactiveAssistant?: ProactiveAssistant;
-  geminiProvider?: GeminiProvider;
   selfHostedProvider?: SelfHostedOpenAiProvider;
   cloudClient?: CloudClientService;
   scheduler: JobScheduler;
@@ -112,7 +109,6 @@ export function registerAllIpcHandlers(services: MainServices): void {
     pageUnderstanding,
     crossTab,
     proactiveAssistant,
-    geminiProvider,
     selfHostedProvider,
     cloudClient,
     scheduler,
@@ -124,7 +120,7 @@ export function registerAllIpcHandlers(services: MainServices): void {
     screenshotsDir
   } = services;
 
-  const devUrl = process.env.ATLAS_DEV_SERVER_URL;
+  const devUrl = process.env.LAVRAY_DEV_SERVER_URL;
   const allowOrigins = ['file://', ...(devUrl ? [devUrl] : [])];
 
   function handleTrusted<T = unknown>(
@@ -312,7 +308,7 @@ export function registerAllIpcHandlers(services: MainServices): void {
   handleTrusted(IPC_CHANNELS.NAV_STOP, (_e, p) => tabManager.stop(validateIpcPayload(TabIdSchema, p).tabId));
   handleTrusted(IPC_CHANNELS.NAV_HOME, async (_e, p) => {
     const { tabId } = validateIpcPayload(TabIdSchema, p);
-    const homeUrl = platformRepo.getSetting<string>('browser.homeUrl', 'atlas://newtab');
+    const homeUrl = platformRepo.getSetting<string>('browser.homeUrl', 'lavray://newtab');
     return tabManager.navigate(tabId, homeUrl);
   });
   handleTrusted(IPC_CHANNELS.NAV_SUGGESTIONS, (_e, p: { query: string }) => {
@@ -643,7 +639,7 @@ export function registerAllIpcHandlers(services: MainServices): void {
       if (!wc) throw new Error('No active tab found');
       const perc = await perception.capture(p.tabId, wc, { includeAxTree: false });
       const schema = JSON.parse(p.schemaJson) as Record<string, unknown>;
-      const model = platformRepo.getSetting<string>('agent.defaultModel', 'gemini-2.5-flash');
+      const model = getConfiguredModel();
       return extractionEngine.extract({
         url: perc.url,
         pageTitle: perc.title,
@@ -682,37 +678,47 @@ export function registerAllIpcHandlers(services: MainServices): void {
   });
   handleTrusted(IPC_CHANNELS.MCP_GET_TOKEN, () => vault.getOrCreateMcpToken());
 
-  const getSettings = (): AppSettings => ({
-    theme: platformRepo.getSetting('ui.theme', 'light'),
-    searchEngine: platformRepo.getSetting('browser.searchEngine', 'google'),
-    homeUrl: platformRepo.getSetting('browser.homeUrl', 'atlas://newtab'),
-    downloadDir: downloadManager.getDownloadDir(),
-    verticalTabs: platformRepo.getSetting('ui.verticalTabs', false),
-    adBlockEnabled: adBlocker.getStats().globalEnabled,
-    restoreSessionOnStart: platformRepo.getSetting('browser.restoreSessionOnStart', true),
-    retainScreenshots: platformRepo.getSetting('agent.retainScreenshots', true),
-    screenshotRetentionDays: platformRepo.getSetting('agent.screenshotRetentionDays', 14),
-    experimentalScriptingEnabled: platformRepo.getSetting('security.experimentalScriptingEnabled', false),
-    proactiveAssistanceEnabled: platformRepo.getSetting('agent.proactiveAssistanceEnabled', false),
-    voiceSpokenResponsesEnabled: platformRepo.getSetting('agent.voiceSpokenResponsesEnabled', false),
-    telemetryEnabled: platformRepo.getSetting('privacy.telemetryEnabled', false),
-    activeProfileId: platformRepo.getSetting('memory.activeProfileId', 'default'),
-    defaultProvider: platformRepo.getSetting('agent.defaultProvider', 'gemini'),
-    defaultModel: platformRepo.getSetting('agent.defaultModel', 'gemini-2.5-flash'),
-    customEndpointUrl: platformRepo.getSetting('agent.customEndpointUrl', ''),
-    selfHostedEndpointUrl: platformRepo.getSetting('agent.selfHostedEndpointUrl', 'http://127.0.0.1:11434/v1'),
-    selfHostedModel: platformRepo.getSetting('agent.selfHostedModel', 'qwen2.5:7b-instruct'),
-    hasGeminiApiKey: Boolean(vault.getGeminiApiKey()),
-    hasSelfHostedApiKey: Boolean(vault.getCustomApiKey()),
-    cloudModeEnabled: platformRepo.getSetting('cloud.enabled', false),
-    cloudEndpointUrl: platformRepo.getSetting('cloud.endpointUrl', 'http://127.0.0.1:48080'),
-    cloudConsent: {
-      ...DEFAULT_CLOUD_CONSENT,
-      ...platformRepo.getSetting('cloud.consent', DEFAULT_CLOUD_CONSENT)
-    },
-    budgets: platformRepo.getSetting('agent.budgets', DEFAULT_BUDGETS),
-    mcp: platformRepo.getSetting('mcp.config', DEFAULT_MCP_CONFIG)
-  });
+  const getConfiguredModel = (): string => {
+    const raw =
+      platformRepo.getSetting<string>('agent.selfHostedModel', 'qwen2.5:3b') ||
+      platformRepo.getSetting<string>('agent.defaultModel', 'qwen2.5:3b');
+    return /^(gemini|mock)/i.test(raw.trim()) ? 'qwen2.5:3b' : raw.trim();
+  };
+
+  const getSettings = (): AppSettings => {
+    const model = getConfiguredModel();
+    return {
+      theme: platformRepo.getSetting('ui.theme', 'light'),
+      searchEngine: platformRepo.getSetting('browser.searchEngine', 'google'),
+      homeUrl: platformRepo.getSetting('browser.homeUrl', 'lavray://newtab'),
+      downloadDir: downloadManager.getDownloadDir(),
+      verticalTabs: platformRepo.getSetting('ui.verticalTabs', false),
+      adBlockEnabled: adBlocker.getStats().globalEnabled,
+      restoreSessionOnStart: platformRepo.getSetting('browser.restoreSessionOnStart', true),
+      retainScreenshots: platformRepo.getSetting('agent.retainScreenshots', true),
+      screenshotRetentionDays: platformRepo.getSetting('agent.screenshotRetentionDays', 14),
+      experimentalScriptingEnabled: platformRepo.getSetting('security.experimentalScriptingEnabled', false),
+      proactiveAssistanceEnabled: platformRepo.getSetting('agent.proactiveAssistanceEnabled', false),
+      voiceSpokenResponsesEnabled: platformRepo.getSetting('agent.voiceSpokenResponsesEnabled', false),
+      telemetryEnabled: platformRepo.getSetting('privacy.telemetryEnabled', false),
+      activeProfileId: platformRepo.getSetting('memory.activeProfileId', 'default'),
+      defaultProvider: 'self_hosted',
+      defaultModel: model,
+      customEndpointUrl: platformRepo.getSetting('agent.customEndpointUrl', ''),
+      selfHostedEndpointUrl: platformRepo.getSetting('agent.selfHostedEndpointUrl', 'http://127.0.0.1:11434/v1'),
+      selfHostedModel: model,
+      hasGeminiApiKey: false,
+      hasSelfHostedApiKey: Boolean(vault.getCustomApiKey()),
+      cloudModeEnabled: platformRepo.getSetting('cloud.enabled', false),
+      cloudEndpointUrl: platformRepo.getSetting('cloud.endpointUrl', 'http://127.0.0.1:48080'),
+      cloudConsent: {
+        ...DEFAULT_CLOUD_CONSENT,
+        ...platformRepo.getSetting('cloud.consent', DEFAULT_CLOUD_CONSENT)
+      },
+      budgets: platformRepo.getSetting('agent.budgets', DEFAULT_BUDGETS),
+      mcp: platformRepo.getSetting('mcp.config', DEFAULT_MCP_CONFIG)
+    };
+  };
 
   handleTrusted(IPC_CHANNELS.SETTINGS_GET, () => getSettings());
   handleTrusted(IPC_CHANNELS.SETTINGS_UPDATE, async (_e, patch: Partial<AppSettings>) => {
@@ -738,15 +744,19 @@ export function registerAllIpcHandlers(services: MainServices): void {
       platformRepo.setSetting('privacy.telemetryEnabled', patch.telemetryEnabled);
     if (patch.activeProfileId !== undefined)
       platformRepo.setSetting('memory.activeProfileId', patch.activeProfileId);
-    if (patch.defaultProvider !== undefined)
-      platformRepo.setSetting('agent.defaultProvider', patch.defaultProvider);
-    if (patch.defaultModel !== undefined) platformRepo.setSetting('agent.defaultModel', patch.defaultModel);
+    platformRepo.setSetting('agent.defaultProvider', 'self_hosted');
+    if (patch.selfHostedModel !== undefined) {
+      const m = patch.selfHostedModel.trim() || 'qwen2.5:3b';
+      platformRepo.setSetting('agent.selfHostedModel', m);
+      platformRepo.setSetting('agent.defaultModel', m);
+    } else if (patch.defaultModel !== undefined && !/^(gemini|mock)/i.test(patch.defaultModel)) {
+      platformRepo.setSetting('agent.defaultModel', patch.defaultModel.trim());
+      platformRepo.setSetting('agent.selfHostedModel', patch.defaultModel.trim());
+    }
     if (patch.customEndpointUrl !== undefined)
       platformRepo.setSetting('agent.customEndpointUrl', patch.customEndpointUrl);
     if (patch.selfHostedEndpointUrl !== undefined)
       platformRepo.setSetting('agent.selfHostedEndpointUrl', patch.selfHostedEndpointUrl);
-    if (patch.selfHostedModel !== undefined)
-      platformRepo.setSetting('agent.selfHostedModel', patch.selfHostedModel);
     if (patch.cloudModeEnabled !== undefined)
       platformRepo.setSetting('cloud.enabled', patch.cloudModeEnabled);
     if (patch.cloudEndpointUrl !== undefined)
@@ -760,13 +770,12 @@ export function registerAllIpcHandlers(services: MainServices): void {
 
   handleTrusted(IPC_CHANNELS.SETTINGS_SET_API_KEY, (_e, p) => {
     const data = validateIpcPayload(SettingsSetApiKeySchema, p);
-    if (data.provider === 'gemini') vault.setGeminiApiKey(data.apiKey);
-    else vault.setCustomApiKey(data.apiKey);
+    vault.setCustomApiKey(data.apiKey);
     auditLogger.log({
       category: 'security',
       action: 'api_key_updated',
       actor: 'user',
-      details: { provider: data.provider }
+      details: { provider: 'self_hosted' }
     });
     return getSettings();
   });
@@ -778,51 +787,26 @@ export function registerAllIpcHandlers(services: MainServices): void {
 
   handleTrusted(IPC_CHANNELS.SETTINGS_PROVIDER_STATUS, (): ProviderStatusInfo => {
     const s = getSettings();
-    const pricing = DEFAULT_MODEL_PRICING.find((m) => m.model === s.defaultModel);
-    const isSelfHosted =
-      s.defaultProvider === 'self_hosted' || s.defaultProvider === 'custom_openai_compatible';
-    const isLive = s.defaultProvider === 'gemini' || isSelfHosted;
-    const activeModel = isSelfHosted ? s.selfHostedModel || s.defaultModel : s.defaultModel;
+    const activeModel = s.selfHostedModel || s.defaultModel;
+    const endpoint = s.selfHostedEndpointUrl || s.customEndpointUrl;
     return {
-      activeProvider: s.defaultProvider,
+      activeProvider: 'self_hosted',
       model: activeModel,
-      endpointUrl: isSelfHosted ? s.selfHostedEndpointUrl || s.customEndpointUrl : undefined,
-      isLive,
-      hasGeminiKey: s.hasGeminiApiKey,
+      endpointUrl: endpoint,
+      isLive: true,
+      hasGeminiKey: false,
       hasSelfHostedKey: s.hasSelfHostedApiKey,
-      supportsVision: isSelfHosted ? false : pricing?.supportsVision ?? true,
-      supportsTools: pricing?.supportsTools ?? true,
-      supportsStructuredOutput: pricing?.supportsStructuredOutput ?? true,
-      warning:
-        s.defaultProvider === 'gemini' && !s.hasGeminiApiKey
-          ? 'Gemini is selected but no GEMINI_API_KEY is configured.'
-          : isSelfHosted && !(s.selfHostedEndpointUrl || s.customEndpointUrl)
-          ? 'Self-hosted provider selected but endpoint URL is empty.'
-          : s.defaultProvider === 'mock'
-          ? 'Deterministic Mock provider is active (offline/testing only).'
-          : undefined
+      supportsVision: false,
+      supportsTools: true,
+      supportsStructuredOutput: true,
+      warning: !endpoint ? 'Self-hosted runtime endpoint URL is empty.' : undefined
     };
   });
 
   handleTrusted(IPC_CHANNELS.SETTINGS_TEST_PROVIDER, async (_e, p?: { model?: string }) => {
     const s = getSettings();
-    if (s.defaultProvider === 'mock') {
-      return {
-        ok: true,
-        provider: 'mock',
-        model: 'mock-deterministic',
-        latencyMs: 1,
-        capabilities: { tools: true, structuredOutput: true, vision: true }
-      };
-    }
-    if (s.defaultProvider === 'self_hosted' || s.defaultProvider === 'custom_openai_compatible') {
-      if (!selfHostedProvider) throw new Error('Self-hosted provider not initialized');
-      return selfHostedProvider.testConnection(p?.model || s.selfHostedModel || s.defaultModel);
-    }
-    if (!geminiProvider) {
-      throw new Error('Gemini provider not initialized');
-    }
-    return geminiProvider.testConnection(p?.model || s.defaultModel);
+    if (!selfHostedProvider) throw new Error('Self-hosted provider not initialized');
+    return selfHostedProvider.testConnection(p?.model || s.selfHostedModel || s.defaultModel);
   });
 
   handleTrusted(IPC_CHANNELS.SETTINGS_DISCOVER_MODELS, async () => {
@@ -870,7 +854,7 @@ export function registerAllIpcHandlers(services: MainServices): void {
           // ignore unreadable tab
         }
       }
-      const model = platformRepo.getSetting<string>('agent.defaultModel', 'gemini-2.5-flash');
+      const model = getConfiguredModel();
       return researchEngine.buildReport({
         query: p.query,
         sources: researchEngine.sourcesFromPerceptions(perceptions),
@@ -893,7 +877,7 @@ export function registerAllIpcHandlers(services: MainServices): void {
       const wc = tabManager.getWebContents(p.tabId);
       if (!wc) throw new Error('Tab not found');
       const perc = await perception.capture(p.tabId, wc, { includeAxTree: false });
-      const model = platformRepo.getSetting<string>('agent.defaultModel', 'gemini-2.5-flash');
+      const model = getConfiguredModel();
       return pageUnderstanding.answerQuestion({ perception: perc, question: p.question, model });
     }
   );
@@ -945,7 +929,7 @@ export function registerAllIpcHandlers(services: MainServices): void {
         if (!wc) continue;
         perceptions.push(await perception.capture(t.id, wc, { includeAxTree: false }));
       }
-      const model = platformRepo.getSetting<string>('agent.defaultModel', 'gemini-2.5-flash');
+      const model = getConfiguredModel();
       return crossTab.compareSelectedTabs({ tabs, perceptions, criteria: p.criteria, model });
     }
   );
@@ -1013,7 +997,7 @@ export function registerAllIpcHandlers(services: MainServices): void {
     });
   });
 
-  // --- Atlas Intelligent Search & Cloud Synchronization ---
+  // --- LAVRAY Intelligent Search & Cloud Synchronization ---
   handleTrusted(IPC_CHANNELS.SEARCH_EXECUTE, async (_e, raw) => {
     if (!cloudClient) throw new Error('Search service unavailable');
     const data = SearchExecuteSchema.parse(raw);
@@ -1058,7 +1042,7 @@ export function registerAllIpcHandlers(services: MainServices): void {
     IPC_CHANNELS.SEARCH_SAVE_TO_RESEARCH,
     async (_e, p: { query: string; sources: Array<{ url: string; title: string; snippet?: string }> }) => {
       if (!researchEngine) throw new Error('Research engine unavailable');
-      const model = platformRepo.getSetting<string>('agent.defaultModel', 'gemini-2.5-flash');
+      const model = getConfiguredModel();
       return researchEngine.buildReport({
         query: p.query,
         sources: (p.sources || []).map((s) => ({

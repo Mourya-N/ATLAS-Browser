@@ -14,9 +14,9 @@ export async function startE2EHttpServer(): Promise<E2EServerHandle> {
       case '/':
         res.end(`<!doctype html>
 <html>
-<head><title>Atlas E2E Home</title></head>
+<head><title>LAVRAY E2E Home</title></head>
 <body>
-  <h1>Atlas Browser Live Test Portal</h1>
+  <h1>LAVRAY Browser Live Test Portal</h1>
   <p>Welcome to the real Chromium E2E fixture portal.</p>
   <form id="search-form" action="/search" method="get">
     <input id="search-input" name="q" placeholder="Search documentation..." />
@@ -47,14 +47,14 @@ export async function startE2EHttpServer(): Promise<E2EServerHandle> {
       case '/workspace':
         res.end(`<!doctype html>
 <html>
-<head><title>Atlas E2E Workspace</title></head>
+<head><title>LAVRAY E2E Workspace</title></head>
 <body>
   <h1>Dynamic Workspace</h1>
   <div id="dynamic-container"></div>
   <button id="stale-target-btn" onclick="this.dataset.clicked='yes'">Target To Remove</button>
   <button id="remove-target-btn" onclick="const el=document.getElementById('stale-target-btn'); if(el) el.remove();">Remove Stale Target</button>
 
-  <atlas-shadow-card id="shadow-host"></atlas-shadow-card>
+  <lavray-shadow-card id="shadow-host"></lavray-shadow-card>
 
   <iframe id="child-frame" src="/iframe-child" style="width:420px;height:140px;border:1px solid #999;"></iframe>
 
@@ -66,7 +66,7 @@ export async function startE2EHttpServer(): Promise<E2EServerHandle> {
       document.getElementById('dynamic-container').appendChild(badge);
     }, 150);
 
-    class AtlasShadowCard extends HTMLElement {
+    class LavrayShadowCard extends HTMLElement {
       constructor() {
         super();
         const root = this.attachShadow({ mode: 'open' });
@@ -76,7 +76,7 @@ export async function startE2EHttpServer(): Promise<E2EServerHandle> {
         });
       }
     }
-    customElements.define('atlas-shadow-card', AtlasShadowCard);
+    customElements.define('lavray-shadow-card', LavrayShadowCard);
   </script>
 </body>
 </html>`);
@@ -96,7 +96,7 @@ export async function startE2EHttpServer(): Promise<E2EServerHandle> {
       case '/form':
         res.end(`<!doctype html>
 <html>
-<head><title>Atlas Harmless Test Form</title></head>
+<head><title>LAVRAY Harmless Test Form</title></head>
 <body>
   <h1>Configuration Form</h1>
   <form action="/form-result" method="get">

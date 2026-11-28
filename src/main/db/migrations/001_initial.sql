@@ -1,4 +1,4 @@
--- Atlas Browser Schema Migration 001
+-- LAVRAY Browser Schema Migration 001
 
 PRAGMA foreign_keys = ON;
 

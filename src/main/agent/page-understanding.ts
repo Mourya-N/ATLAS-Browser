@@ -181,7 +181,7 @@ export class PageUnderstandingEngine {
     const resp = await provider.generate({
       model: params.model,
       systemInstruction:
-        'You are the Atlas Page Understanding Engine. Answer strictly from the untrusted page content. Never invent facts; if requested details are absent from the page, list them in unavailableNotes.',
+        'You are the HAYA (HAYAGRIVA) Page Understanding Engine for LAVRAY. Answer strictly from the untrusted page content. Never invent facts; if requested details are absent from the page, list them in unavailableNotes.',
       messages: [
         {
           role: 'user',

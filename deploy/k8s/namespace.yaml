@@ -1,6 +1,6 @@
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: atlas-cloud
+  name: lavray-cloud
   labels:
-    app.kubernetes.io/part-of: atlas-browser
+    app.kubernetes.io/part-of: lavray-browser

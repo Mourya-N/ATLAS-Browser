@@ -1,24 +1,24 @@
 # Production Compose Override (Strict separation: no mock fallbacks, required secrets, internal DB/Redis)
 services:
-  atlas-backend:
+  lavray-backend:
     environment:
       NODE_ENV: production
-      ATLAS_ALLOW_MOCK_SEARCH: "false"
-      ATLAS_ALLOW_MOCK_AI: "false"
-      ATLAS_JWT_SECRET: ${ATLAS_JWT_SECRET:?ATLAS_JWT_SECRET must be set in production}
+      LAVRAY_ALLOW_MOCK_SEARCH: "false"
+      LAVRAY_ALLOW_MOCK_AI: "false"
+      LAVRAY_JWT_SECRET: ${LAVRAY_JWT_SECRET:?LAVRAY_JWT_SECRET must be set in production}
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must be set in production}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379}
-      ATLAS_INLINE_WORKER: "false"
+      LAVRAY_INLINE_WORKER: "false"
     deploy:
       resources:
         limits:
           memory: 1024M
           cpus: "1.0"
 
-  atlas-worker:
+  lavray-worker:
     environment:
       NODE_ENV: production
-      ATLAS_JWT_SECRET: ${ATLAS_JWT_SECRET:?ATLAS_JWT_SECRET must be set in production}
+      LAVRAY_JWT_SECRET: ${LAVRAY_JWT_SECRET:?LAVRAY_JWT_SECRET must be set in production}
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must be set in production}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379}
     deploy:

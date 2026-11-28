@@ -23,7 +23,7 @@ export function exportConsentedTrainingExamples(params: {
     return [];
   }
 
-  const target = params.modelVersionTarget || 'atlas-qwen2.5-7b-lora-v1';
+  const target = params.modelVersionTarget || 'haya-qwen2.5-7b-lora-v1';
   const examples: SftTrainingExample[] = [];
 
   for (const run of params.runs) {
@@ -44,7 +44,7 @@ export function exportConsentedTrainingExamples(params: {
       messages: [
         {
           role: 'system',
-          content: 'You are Atlas AI, an evidence-grounded browser and search assistant.'
+          content: 'You are HAYAGRIVA (HAYA), an evidence-grounded browser and search assistant for LAVRAY.'
         },
         {
           role: 'user',

@@ -2,8 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Pool } from 'pg';
 import type {
-  AtlasIndexDocument,
-  AtlasIndexStats,
+  LavrayIndexDocument,
+  LavrayIndexStats,
   CloudBackgroundJob,
   CloudBookmarkRecord,
   CloudConsentSettings,
@@ -785,7 +785,7 @@ export class PostgresCloudRepository implements CloudRepository {
     await this.pool.query('DELETE FROM users WHERE id = $1', [userId]);
   }
 
-  private mapAtlasDocRow(r: Record<string, any>): AtlasIndexDocument {
+  private mapLavrayDocRow(r: Record<string, any>): LavrayIndexDocument {
     return {
       id: r.id,
       url: r.url,
@@ -807,12 +807,12 @@ export class PostgresCloudRepository implements CloudRepository {
     };
   }
 
-  public async upsertAtlasIndexDocument(
-    doc: AtlasIndexDocument
+  public async upsertLavrayIndexDocument(
+    doc: LavrayIndexDocument
   ): Promise<{ inserted: boolean; updated: boolean }> {
-    const existing = await this.getAtlasIndexDocument(doc.canonicalUrl);
+    const existing = await this.getLavrayIndexDocument(doc.canonicalUrl);
     await this.pool.query(
-      `INSERT INTO atlas_index_documents
+      `INSERT INTO lavray_index_documents
         (id, url, canonical_url, title, main_content, snippet, headings_json, language, source_domain, content_type, content_hash, authority_score, authority_method, published_at, crawled_at, index_version, embedding_json)
        VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17::jsonb)
        ON CONFLICT (canonical_url) DO UPDATE SET
@@ -845,35 +845,35 @@ export class PostgresCloudRepository implements CloudRepository {
     return { inserted: false, updated: existing.contentHash !== doc.contentHash };
   }
 
-  public async removeAtlasIndexDocument(canonicalUrl: string): Promise<boolean> {
-    const res = await this.pool.query('DELETE FROM atlas_index_documents WHERE canonical_url = $1', [
+  public async removeLavrayIndexDocument(canonicalUrl: string): Promise<boolean> {
+    const res = await this.pool.query('DELETE FROM lavray_index_documents WHERE canonical_url = $1', [
       canonicalUrl
     ]);
     return (res.rowCount ?? 0) > 0;
   }
 
-  public async getAtlasIndexDocument(canonicalUrl: string): Promise<AtlasIndexDocument | null> {
+  public async getLavrayIndexDocument(canonicalUrl: string): Promise<LavrayIndexDocument | null> {
     const res = await this.pool.query(
-      'SELECT * FROM atlas_index_documents WHERE canonical_url = $1 LIMIT 1',
+      'SELECT * FROM lavray_index_documents WHERE canonical_url = $1 LIMIT 1',
       [canonicalUrl]
     );
-    return res.rows[0] ? this.mapAtlasDocRow(res.rows[0]) : null;
+    return res.rows[0] ? this.mapLavrayDocRow(res.rows[0]) : null;
   }
 
-  public async findAtlasDocumentByContentHash(contentHash: string): Promise<AtlasIndexDocument | null> {
+  public async findLavrayDocumentByContentHash(contentHash: string): Promise<LavrayIndexDocument | null> {
     const res = await this.pool.query(
-      'SELECT * FROM atlas_index_documents WHERE content_hash = $1 LIMIT 1',
+      'SELECT * FROM lavray_index_documents WHERE content_hash = $1 LIMIT 1',
       [contentHash]
     );
-    return res.rows[0] ? this.mapAtlasDocRow(res.rows[0]) : null;
+    return res.rows[0] ? this.mapLavrayDocRow(res.rows[0]) : null;
   }
 
-  public async searchAtlasIndex(params: {
+  public async searchLavrayIndex(params: {
     query: string;
     queryEmbedding: number[];
     domains?: string[];
     limit?: number;
-  }): Promise<Array<{ document: AtlasIndexDocument; lexicalScore: number; semanticScore: number }>> {
+  }): Promise<Array<{ document: LavrayIndexDocument; lexicalScore: number; semanticScore: number }>> {
     const domains = params.domains && params.domains.length > 0 ? params.domains.map((d) => d.toLowerCase()) : null;
     const res = await this.pool.query(
       `WITH q AS (
@@ -887,7 +887,7 @@ export class PostgresCloudRepository implements CloudRepository {
          COALESCE(d.tsv @@ q.or_q, FALSE) AS fts_any,
          CASE WHEN d.tsv @@ q.and_q THEN COALESCE(ts_rank(d.tsv, q.and_q), 0) ELSE 0 END AS and_rank,
          CASE WHEN d.tsv @@ q.or_q THEN COALESCE(ts_rank(d.tsv, q.or_q), 0) ELSE 0 END AS or_rank
-       FROM atlas_index_documents d
+       FROM lavray_index_documents d
        CROSS JOIN q
        WHERE ($2::text[] IS NULL OR d.source_domain = ANY($2::text[]))
        ORDER BY and_rank DESC, or_rank DESC, d.crawled_at DESC
@@ -897,7 +897,7 @@ export class PostgresCloudRepository implements CloudRepository {
 
     return res.rows
       .map((r) => {
-        const doc = this.mapAtlasDocRow(r);
+        const doc = this.mapLavrayDocRow(r);
         const ftsExact = Boolean(r.fts_exact);
         const ftsAny = Boolean(r.fts_any);
         const lexicalScore = Math.min(1, Math.max(Number(r.and_rank || 0), Number(r.or_rank || 0) * 0.65));
@@ -910,12 +910,12 @@ export class PostgresCloudRepository implements CloudRepository {
       .map(({ document, lexicalScore, semanticScore }) => ({ document, lexicalScore, semanticScore }));
   }
 
-  public async getAtlasIndexStats(): Promise<AtlasIndexStats> {
+  public async getLavrayIndexStats(): Promise<LavrayIndexStats> {
     const res = await this.pool.query<{
       total: string;
       domains: string;
       latest: string | null;
-    }>('SELECT COUNT(*)::text AS total, COUNT(DISTINCT source_domain)::text AS domains, MAX(crawled_at)::text AS latest FROM atlas_index_documents');
+    }>('SELECT COUNT(*)::text AS total, COUNT(DISTINCT source_domain)::text AS domains, MAX(crawled_at)::text AS latest FROM lavray_index_documents');
     const row = res.rows[0];
     const total = Number(row?.total ?? 0);
     const uniqueDomains = Number(row?.domains ?? 0);
@@ -928,8 +928,8 @@ export class PostgresCloudRepository implements CloudRepository {
       indexVersion: 'v1',
       limitedCoverage,
       notice: limitedCoverage
-        ? `Atlas Index currently contains ${total} crawled document(s) across ${uniqueDomains} domain(s) (controlled seed scope).`
-        : `Atlas Index serving ${total} documents across ${uniqueDomains} domains.`
+        ? `LAVRAY Index currently contains ${total} crawled document(s) across ${uniqueDomains} domain(s) (controlled seed scope).`
+        : `LAVRAY Index serving ${total} documents across ${uniqueDomains} domains.`
     };
   }
 

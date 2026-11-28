@@ -1,6 +1,6 @@
 import type {
-  AtlasIndexDocument,
-  AtlasIndexStats,
+  LavrayIndexDocument,
+  LavrayIndexStats,
   CloudBackgroundJob,
   CloudBookmarkRecord,
   CloudConsentSettings,
@@ -136,18 +136,18 @@ export interface CloudRepository {
     deadLetter: number;
   }>;
 
-  // First-Party Atlas Web Index & Incremental Crawler
-  upsertAtlasIndexDocument(doc: AtlasIndexDocument): Promise<{ inserted: boolean; updated: boolean }>;
-  removeAtlasIndexDocument(canonicalUrl: string): Promise<boolean>;
-  getAtlasIndexDocument(canonicalUrl: string): Promise<AtlasIndexDocument | null>;
-  findAtlasDocumentByContentHash(contentHash: string): Promise<AtlasIndexDocument | null>;
-  searchAtlasIndex(params: {
+  // First-Party LAVRAY Web Index & Incremental Crawler
+  upsertLavrayIndexDocument(doc: LavrayIndexDocument): Promise<{ inserted: boolean; updated: boolean }>;
+  removeLavrayIndexDocument(canonicalUrl: string): Promise<boolean>;
+  getLavrayIndexDocument(canonicalUrl: string): Promise<LavrayIndexDocument | null>;
+  findLavrayDocumentByContentHash(contentHash: string): Promise<LavrayIndexDocument | null>;
+  searchLavrayIndex(params: {
     query: string;
     queryEmbedding: number[];
     domains?: string[];
     limit?: number;
-  }): Promise<Array<{ document: AtlasIndexDocument; lexicalScore: number; semanticScore: number }>>;
-  getAtlasIndexStats(): Promise<AtlasIndexStats>;
+  }): Promise<Array<{ document: LavrayIndexDocument; lexicalScore: number; semanticScore: number }>>;
+  getLavrayIndexStats(): Promise<LavrayIndexStats>;
   saveCrawlCheckpoint(cp: CrawlCheckpoint): Promise<void>;
   getCrawlCheckpoint(id: string): Promise<CrawlCheckpoint | null>;
   listCrawlCheckpoints(limit?: number): Promise<CrawlCheckpoint[]>;

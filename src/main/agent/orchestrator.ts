@@ -312,7 +312,7 @@ export class AgentOrchestrator {
         params.goal,
         params.mode,
         [
-          'Available Atlas slash commands:',
+          'Available HAYA (HAYAGRIVA) slash commands:',
           '- `/summarize [focus]` — Summarize the current page',
           '- `/extract [schema or fields]` — Extract structured data from the page',
           '- `/compare [criteria]` — Compare open tabs side-by-side',
@@ -363,7 +363,10 @@ export class AgentOrchestrator {
     const activeTab = params.tabId ? this.tabManager.getTab(params.tabId) : undefined;
     const isPrivate = Boolean(activeTab?.info.isPrivate);
     const provider = this.getProvider();
-    const model = this.platformRepo.getSetting<string>('agent.defaultModel', 'gemini-2.5-flash');
+    const rawModel =
+      this.platformRepo.getSetting<string>('agent.selfHostedModel', 'qwen2.5:3b') ||
+      this.platformRepo.getSetting<string>('agent.defaultModel', 'qwen2.5:3b');
+    const model = /^(gemini|mock)/i.test(rawModel.trim()) ? 'qwen2.5:3b' : rawModel.trim();
     const runId = randomUUID();
 
     if (!isPrivate) {
@@ -481,7 +484,7 @@ export class AgentOrchestrator {
       estimatedCostUsd: 0,
       isCostEstimated: false,
       model: 'system',
-      provider: 'atlas',
+      provider: 'lavray',
       isPrivate: false,
       startedAt: Date.now(),
       endedAt: Date.now()
@@ -706,7 +709,7 @@ export class AgentOrchestrator {
             phase: 'hitl',
             subgoalId: run.subgoals[activeSubgoalIdx]?.id,
             summary: `Paused for human intervention (${hitlReason})`,
-            decisionExplanation: 'Atlas never bypasses CAPTCHAs or submits payments without human takeover.',
+            decisionExplanation: 'HAYA never bypasses CAPTCHAs or submits payments without human takeover.',
             injectionWarnings: []
           });
           await this.waitIfPaused(ctrl);
@@ -765,7 +768,7 @@ export class AgentOrchestrator {
         const resp = await provider.generate({
           model: run.model,
           systemInstruction:
-            'You are Atlas Browser Agent. Operate real browser tabs via tools one step at a time. Never invent page data. Explain actions concisely without exposing private chain-of-thought.',
+            'You are HAYAGRIVA (HAYA), the autonomous browser agent in LAVRAY. Operate real browser tabs via tools one step at a time. Never invent page data. Explain actions concisely without exposing private chain-of-thought.',
           messages: callMessages,
           tools: allowedTools,
           temperature: 0.15,

@@ -14,7 +14,7 @@ import type { HybridIndexService } from '../modules/knowledge/hybrid-index-servi
 import type { ResearchExtractorService } from '../modules/research/research-extractor';
 import type { SearchOrchestrator } from '../modules/search/search-orchestrator';
 import type { FirstPartyIndexProvider } from '../modules/search/first-party-index-provider';
-import type { AtlasCrawler } from '../modules/crawler/atlas-crawler';
+import type { LavrayCrawler } from '../modules/crawler/lavray-crawler';
 import { ConsentRequiredError, type UserDataService } from '../modules/userdata/user-data-service';
 import type { WorkerService } from '../modules/worker/worker-service';
 
@@ -29,7 +29,7 @@ export interface BackendServicesContainer {
   ai: AiOrchestrator;
   search: SearchOrchestrator;
   firstPartyIndex: FirstPartyIndexProvider;
-  crawler: AtlasCrawler;
+  crawler: LavrayCrawler;
   extractor: ResearchExtractorService;
   hybridIndex: HybridIndexService;
   userData: UserDataService;
@@ -124,7 +124,7 @@ export function createCloudApiRouter(services: BackendServicesContainer) {
     res.statusCode = status;
     res.setHeader('Content-Type', 'application/json');
     res.setHeader('X-Request-Id', requestId);
-    res.setHeader('X-Atlas-API-Version', 'v1');
+    res.setHeader('X-Lavray-API-Version', 'v1');
     for (const [k, v] of Object.entries(extraHeaders)) {
       res.setHeader(k, v);
     }
@@ -191,7 +191,7 @@ export function createCloudApiRouter(services: BackendServicesContainer) {
           dbOk ? 200 : 503,
           {
             ok: dbOk,
-            service: 'atlas-cloud-backend',
+            service: 'lavray-cloud-backend',
             version: 'v1',
             storageMode: repo.mode,
             aiConfigured: ai.isConfigured(),
@@ -252,7 +252,7 @@ export function createCloudApiRouter(services: BackendServicesContainer) {
         const workerStats = await repo.getJobStats();
         const indexStats = await firstPartyIndex.getStats();
         const snap = metrics.snapshot({
-          service: 'atlas-cloud-backend',
+          service: 'lavray-cloud-backend',
           providers,
           worker: workerStats,
           storage: {
@@ -279,7 +279,7 @@ export function createCloudApiRouter(services: BackendServicesContainer) {
         const workerStats = await repo.getJobStats();
         const indexStats = await firstPartyIndex.getStats();
         const snap = metrics.snapshot({
-          service: 'atlas-cloud-backend',
+          service: 'lavray-cloud-backend',
           providers,
           worker: workerStats,
           storage: {

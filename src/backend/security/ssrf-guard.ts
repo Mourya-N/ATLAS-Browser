@@ -204,7 +204,7 @@ export class SsrfGuard {
           redirect: 'manual',
           signal: controller.signal,
           headers: {
-            'User-Agent': 'AtlasBrowserResearchFetcher/1.0 (+https://atlasbrowser.local)',
+            'User-Agent': 'LavrayBrowserResearchFetcher/1.0 (+https://lavraybrowser.local)',
             Accept: 'text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.1',
             // Prevent unexpected compressed bomb encodings unless Node handles standard gzip safely; read loop caps bytes
             'Accept-Encoding': 'gzip, deflate'

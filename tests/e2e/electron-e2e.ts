@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
-import { AtlasDatabase } from '@main/db/database';
+import { LavrayDatabase } from '@main/db/database';
 import { BrowserRepository } from '@main/db/repositories/browser-repo';
 import { AgentRepository } from '@main/db/repositories/agent-repo';
 import { PlatformRepository } from '@main/db/repositories/platform-repo';
@@ -100,7 +100,7 @@ async function waitForCondition(predicate: () => Promise<boolean>, timeoutMs = 5
 
 app.enableSandbox();
 
-const tempUserData = fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-e2e-userdata-'));
+const tempUserData = fs.mkdtempSync(path.join(os.tmpdir(), 'lavray-e2e-userdata-'));
 app.setPath('userData', tempUserData);
 
 app.whenReady().then(async () => {
@@ -108,7 +108,7 @@ app.whenReady().then(async () => {
   const screenshotsDir = path.join(tempUserData, 'screenshots');
   fs.mkdirSync(screenshotsDir, { recursive: true });
 
-  const db = new AtlasDatabase(path.join(tempUserData, 'atlas.db'));
+  const db = new LavrayDatabase(path.join(tempUserData, 'lavray.db'));
   const browserRepo = new BrowserRepository(db.db);
   const agentRepo = new AgentRepository(db.db);
   const platformRepo = new PlatformRepository(db.db);
@@ -274,19 +274,19 @@ app.whenReady().then(async () => {
     assert.equal(win.isDestroyed(), false);
     const uiCheck = await win.webContents.executeJavaScript(`(() => ({
       hasRoot: Boolean(document.getElementById('root')?.children.length),
-      hasAtlasBridge: typeof window.atlas === 'object',
+      hasLavrayBridge: typeof window.lavray === 'object',
       hasAddressInput: Boolean(document.querySelector('input[placeholder*="Search or enter website URL"]')),
       hasAgentPanel: Boolean(document.querySelector('aside textarea'))
     }))()`);
     assert.equal(uiCheck.hasRoot, true);
-    assert.equal(uiCheck.hasAtlasBridge, true);
+    assert.equal(uiCheck.hasLavrayBridge, true);
     assert.equal(uiCheck.hasAddressInput, true);
     assert.equal(uiCheck.hasAgentPanel, true);
     assert.equal(rendererErrors.length, 0, `Renderer errors: ${rendererErrors.join('; ')}`);
   });
 
   await runCase('UI', 'Navigation via address bar, Back, Forward, Reload, Stop, and Tab switching', async () => {
-    await win.webContents.executeJavaScript(`window.atlas.navigate(${JSON.stringify(mainTabId)}, ${JSON.stringify(`${server.baseUrl}/workspace`)})`);
+    await win.webContents.executeJavaScript(`window.lavray.navigate(${JSON.stringify(mainTabId)}, ${JSON.stringify(`${server.baseUrl}/workspace`)})`);
     await waitForTabLoad(tabManager, mainTabId);
     await new Promise((r) => setTimeout(r, 150));
 
@@ -296,25 +296,25 @@ app.whenReady().then(async () => {
     assert.ok(addrVal.includes('/workspace'), `Expected address bar to reflect /workspace, got ${addrVal}`);
 
     // Back -> Home
-    const wentBack = await win.webContents.executeJavaScript(`window.atlas.goBack(${JSON.stringify(mainTabId)})`);
+    const wentBack = await win.webContents.executeJavaScript(`window.lavray.goBack(${JSON.stringify(mainTabId)})`);
     assert.equal(wentBack, true);
     await waitForTabLoad(tabManager, mainTabId);
     assert.equal(tabManager.getTab(mainTabId)!.info.url, `${server.baseUrl}/`);
 
     // Forward -> Workspace
-    const wentFwd = await win.webContents.executeJavaScript(`window.atlas.goForward(${JSON.stringify(mainTabId)})`);
+    const wentFwd = await win.webContents.executeJavaScript(`window.lavray.goForward(${JSON.stringify(mainTabId)})`);
     assert.equal(wentFwd, true);
     await waitForTabLoad(tabManager, mainTabId);
     assert.ok(tabManager.getTab(mainTabId)!.info.url.includes('/workspace'));
 
     // Reload & Stop callable without error
-    await win.webContents.executeJavaScript(`window.atlas.reload(${JSON.stringify(mainTabId)})`);
+    await win.webContents.executeJavaScript(`window.lavray.reload(${JSON.stringify(mainTabId)})`);
     await waitForTabLoad(tabManager, mainTabId);
-    await win.webContents.executeJavaScript(`window.atlas.stopLoading(${JSON.stringify(mainTabId)})`);
+    await win.webContents.executeJavaScript(`window.lavray.stopLoading(${JSON.stringify(mainTabId)})`);
 
     // Open second tab and verify tab switching updates active WebContentsView & visibilityState
     const secondTab = await win.webContents.executeJavaScript(
-      `window.atlas.createTab({ url: ${JSON.stringify(`${server.baseUrl}/compare-1`)}, activate: true })`
+      `window.lavray.createTab({ url: ${JSON.stringify(`${server.baseUrl}/compare-1`)}, activate: true })`
     );
     await waitForTabLoad(tabManager, secondTab.id);
     assert.equal(tabManager.getActiveTabId(win.id), secondTab.id);
@@ -325,34 +325,34 @@ app.whenReady().then(async () => {
     );
 
     // Switch back to first tab
-    await win.webContents.executeJavaScript(`window.atlas.activateTab(${JSON.stringify(mainTabId)})`);
+    await win.webContents.executeJavaScript(`window.lavray.activateTab(${JSON.stringify(mainTabId)})`);
     assert.equal(tabManager.getActiveTabId(win.id), mainTabId);
     assert.equal(
       await tabManager.getWebContents(mainTabId)!.executeJavaScript('document.visibilityState'),
       'visible'
     );
-    await win.webContents.executeJavaScript(`window.atlas.closeTab(${JSON.stringify(secondTab.id)})`);
+    await win.webContents.executeJavaScript(`window.lavray.closeTab(${JSON.stringify(secondTab.id)})`);
   });
 
   await runCase('UI', 'Agent panel opens/closes and updates WebContentsView layout bounds', async () => {
     const initialW = tabManager.getTab(mainTabId)!.view.getBounds().width;
-    await win.webContents.executeJavaScript(`document.querySelector('button[title="Toggle Atlas AI Panel"]').click()`);
+    await win.webContents.executeJavaScript(`document.querySelector('button[title="Toggle HAYA (HAYAGRIVA) AI Panel"]').click()`);
     await new Promise((r) => setTimeout(r, 150));
     const expandedW = tabManager.getTab(mainTabId)!.view.getBounds().width;
     assert.ok(expandedW > initialW, `Expected WebContentsView width to grow when panel closed (${initialW} -> ${expandedW})`);
-    await win.webContents.executeJavaScript(`document.querySelector('button[title="Toggle Atlas AI Panel"]').click()`);
+    await win.webContents.executeJavaScript(`document.querySelector('button[title="Toggle HAYA (HAYAGRIVA) AI Panel"]').click()`);
     await new Promise((r) => setTimeout(r, 150));
     const restoredW = tabManager.getTab(mainTabId)!.view.getBounds().width;
     assert.equal(restoredW, initialW);
   });
 
   // Capture screenshots of both the BrowserWindow chrome and the active WebContentsView webpage
-  const uiShotDir = process.env.ATLAS_E2E_ARTIFACT_DIR || tempUserData;
+  const uiShotDir = process.env.LAVRAY_E2E_ARTIFACT_DIR || tempUserData;
   try {
     const img = await win.capturePage();
-    fs.writeFileSync(path.join(uiShotDir, 'atlas-live-ui.png'), img.toPNG());
+    fs.writeFileSync(path.join(uiShotDir, 'lavray-live-ui.png'), img.toPNG());
     const tabImg = await tabManager.getWebContents(mainTabId)!.capturePage();
-    fs.writeFileSync(path.join(uiShotDir, 'atlas-live-webview.png'), tabImg.toPNG());
+    fs.writeFileSync(path.join(uiShotDir, 'lavray-live-webview.png'), tabImg.toPNG());
     console.log(`  [Artifact] Saved live UI & WebContentsView screenshots to ${uiShotDir}`);
   } catch (err) {
     console.warn('  [Artifact] Screenshot skipped:', err);
@@ -384,7 +384,7 @@ app.whenReady().then(async () => {
   };
 
   const ctx = createToolCtx(mainTabId);
-  let capturedStaleAtlasId = '';
+  let capturedStaleLavrayId = '';
   let secondTabId = '';
 
   await runCase('CDP-1', 'Navigate to local page', async () => {
@@ -397,8 +397,8 @@ app.whenReady().then(async () => {
     const res = await toolRegistry.invoke('read_page', {}, ctx);
     assert.equal(res.outcome.success, true);
     const data = res.outcome.data as { title: string; mainText: string };
-    assert.equal(data.title, 'Atlas E2E Home');
-    assert.ok(data.mainText.includes('Atlas Browser Live Test Portal'));
+    assert.equal(data.title, 'LAVRAY E2E Home');
+    assert.ok(data.mainText.includes('LAVRAY Browser Live Test Portal'));
   });
 
   await runCase('CDP-3', 'Find button using accessibility tree', async () => {
@@ -427,10 +427,10 @@ app.whenReady().then(async () => {
 
   await runCase('CDP-14', 'Real iframe element inspection and click', async () => {
     const domRes = await toolRegistry.invoke('inspect_dom', {}, ctx);
-    const elements = (domRes.outcome.data as { elements: Array<{ atlasId: string; frameId?: string; text: string }> }).elements;
+    const elements = (domRes.outcome.data as { elements: Array<{ lavrayId: string; frameId?: string; text: string }> }).elements;
     const iframeBtn = elements.find((e) => e.frameId && e.frameId !== 'main' && e.text.includes('Click Inside Iframe'));
     assert.ok(iframeBtn, 'Expected button inside real <iframe> to be discovered');
-    const clickRes = await toolRegistry.invoke('click', { atlasId: iframeBtn.atlasId }, ctx);
+    const clickRes = await toolRegistry.invoke('click', { lavrayId: iframeBtn.lavrayId }, ctx);
     assert.equal(clickRes.outcome.success, true);
     const statusText = await cdp.evaluateInternal<string>(
       mainTabId,
@@ -442,10 +442,10 @@ app.whenReady().then(async () => {
 
   await runCase('CDP-15', 'Real Shadow DOM element inspection and click', async () => {
     const domRes = await toolRegistry.invoke('inspect_dom', {}, ctx);
-    const elements = (domRes.outcome.data as { elements: Array<{ atlasId: string; inShadowDom: boolean; text: string }> }).elements;
+    const elements = (domRes.outcome.data as { elements: Array<{ lavrayId: string; inShadowDom: boolean; text: string }> }).elements;
     const shadowBtn = elements.find((e) => e.inShadowDom && e.text.includes('Shadow Action'));
     assert.ok(shadowBtn, 'Expected button inside Shadow DOM to be discovered');
-    const clickRes = await toolRegistry.invoke('click', { atlasId: shadowBtn.atlasId }, ctx);
+    const clickRes = await toolRegistry.invoke('click', { lavrayId: shadowBtn.lavrayId }, ctx);
     assert.equal(clickRes.outcome.success, true);
     const shadowStatus = await cdp.evaluateInternal<string>(
       mainTabId,
@@ -457,15 +457,15 @@ app.whenReady().then(async () => {
 
   await runCase('CDP-17', 'Stale element reference rejected cleanly after DOM removal', async () => {
     const domRes = await toolRegistry.invoke('inspect_dom', {}, ctx);
-    const elements = (domRes.outcome.data as { elements: Array<{ atlasId: string; attributes: Record<string, string> }> }).elements;
+    const elements = (domRes.outcome.data as { elements: Array<{ lavrayId: string; attributes: Record<string, string> }> }).elements;
     const target = elements.find((e) => e.attributes.id === 'stale-target-btn');
     assert.ok(target, 'Expected #stale-target-btn');
-    capturedStaleAtlasId = target.atlasId;
+    capturedStaleLavrayId = target.lavrayId;
 
     const removeClick = await toolRegistry.invoke('click', { selector: '#remove-target-btn' }, ctx);
     assert.equal(removeClick.outcome.success, true);
 
-    const staleClick = await toolRegistry.invoke('click', { atlasId: capturedStaleAtlasId }, ctx);
+    const staleClick = await toolRegistry.invoke('click', { lavrayId: capturedStaleLavrayId }, ctx);
     assert.equal(staleClick.outcome.success, false);
     assert.match(staleClick.outcome.error || '', /no longer exists|stale|not found/i);
   });
@@ -560,7 +560,7 @@ app.whenReady().then(async () => {
 
     const recovered = await toolRegistry.invoke('navigate', { url: `${server.baseUrl}/` }, ctx);
     assert.equal(recovered.outcome.success, true);
-    assert.equal((recovered.outcome.data as { title: string }).title, 'Atlas E2E Home');
+    assert.equal((recovered.outcome.data as { title: string }).title, 'LAVRAY E2E Home');
   });
 
   await runCase('CDP-18', 'Private-session isolation in real Electron BrowserWindow', async () => {
@@ -754,15 +754,15 @@ app.whenReady().then(async () => {
 
   console.log('\n=== PART 4: LIVE SECURITY VERIFICATION ===');
 
-  await runCase('SEC-1', 'Remote website in WebContentsView has zero access to window.atlas or Electron APIs', async () => {
+  await runCase('SEC-1', 'Remote website in WebContentsView has zero access to window.lavray or Electron APIs', async () => {
     await tabManager.navigate(mainTabId, `${server.baseUrl}/`);
     await waitForTabLoad(tabManager, mainTabId);
     const probe = await tabManager.getWebContents(mainTabId)!.executeJavaScript(`({
-      atlasType: typeof window.atlas,
+      lavrayType: typeof window.lavray,
       requireType: typeof window.require,
       processType: typeof window.process
     })`);
-    assert.equal(probe.atlasType, 'undefined');
+    assert.equal(probe.lavrayType, 'undefined');
     assert.equal(probe.requireType, 'undefined');
     assert.equal(probe.processType, 'undefined');
   });
@@ -785,7 +785,7 @@ app.whenReady().then(async () => {
   await runCase('SEC-4', 'File upload requires explicit sensitive confirmation and valid non-sensitive path', async () => {
     await toolRegistry.invoke('navigate', { url: `${server.baseUrl}/form` }, ctx);
     const sampleFile = path.join(tempUserData, 'upload-test.txt');
-    fs.writeFileSync(sampleFile, 'Atlas harmless upload test');
+    fs.writeFileSync(sampleFile, 'LAVRAY harmless upload test');
 
     confirmBehavior = 'reject';
     const rejected = await toolRegistry.invoke(
@@ -826,16 +826,16 @@ app.whenReady().then(async () => {
     await mcpServer.stop();
   });
 
-  await runCase('UI-SEARCH-1', 'Atlas Search UI executes local index search, displays source badges & AI answer, and opens result in Chromium tab', async () => {
-    process.env.ATLAS_ALLOW_LOCALHOST_SEARCH_TEST = 'true';
+  await runCase('UI-SEARCH-1', 'LAVRAY Search UI executes local index search, displays source badges & AI answer, and opens result in Chromium tab', async () => {
+    process.env.LAVRAY_ALLOW_LOCALHOST_SEARCH_TEST = 'true';
     localSearchIndex.indexRawPageForLocalCache(
       `${server.baseUrl}/form`,
-      'Atlas Chromium Search Target Form',
+      'LAVRAY Chromium Search Target Form',
       'Local test page indexed in SQLite FTS5 for Chromium SearchView verification.'
     );
     mockProvider.enqueue([
       {
-        text: 'Found the Atlas Chromium Search Target Form in the local SQLite FTS5 index.',
+        text: 'Found the LAVRAY Chromium Search Target Form in the local SQLite FTS5 index.',
         functionCalls: [],
         usage: { inputTokens: 40, outputTokens: 20, fromProvider: false }
       }
@@ -844,8 +844,8 @@ app.whenReady().then(async () => {
     // Open SearchView via toolbar button & submit query inside real React UI
     await win.webContents.executeJavaScript(`
       (() => {
-        const btn = document.querySelector('button[title="Atlas Intelligent Search"]');
-        if (!btn) throw new Error('Atlas Search button not found');
+        const btn = document.querySelector('button[title="LAVRAY Intelligent Search"]');
+        if (!btn) throw new Error('LAVRAY Search button not found');
         btn.click();
       })()
     `);
@@ -853,7 +853,7 @@ app.whenReady().then(async () => {
 
     await win.webContents.executeJavaScript(`
       (() => {
-        const input = document.querySelector('input[placeholder*="Search Atlas Index"]');
+        const input = document.querySelector('input[placeholder*="Search LAVRAY Index"]');
         if (!input) throw new Error('SearchView input not found');
         const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
         setter.call(input, 'Chromium Search Target Form');
@@ -865,7 +865,7 @@ app.whenReady().then(async () => {
 
     await waitForCondition(async () => {
       const txt = await win.webContents.executeJavaScript(`document.body.innerText`);
-      return txt.includes('Atlas Chromium Search Target Form') && txt.includes('AI Grounded Answer');
+      return txt.includes('LAVRAY Chromium Search Target Form') && txt.includes('AI Grounded Answer');
     }, 6000);
 
     // Click "Open here" on the result and verify WebContentsView navigates cleanly
@@ -878,7 +878,7 @@ app.whenReady().then(async () => {
       })()
     `);
     await waitForCondition(async () => tabManager.getTab(mainTabId)!.info.url.includes('/form'), 5000);
-    delete process.env.ATLAS_ALLOW_LOCALHOST_SEARCH_TEST;
+    delete process.env.LAVRAY_ALLOW_LOCALHOST_SEARCH_TEST;
   });
 
   await runCase('ADBLOCK-NET-1', 'Native AdBlocker cancels ad requests at webRequest network layer, applies cosmetic CSS, and respects allowlist', async () => {

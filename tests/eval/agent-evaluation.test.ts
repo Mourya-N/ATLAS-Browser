@@ -3,7 +3,7 @@ import { parseHTML } from 'linkedom';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { AtlasDatabase } from '@main/db/database';
+import { LavrayDatabase } from '@main/db/database';
 import { BrowserRepository } from '@main/db/repositories/browser-repo';
 import { AgentRepository } from '@main/db/repositories/agent-repo';
 import { PlatformRepository } from '@main/db/repositories/platform-repo';
@@ -51,9 +51,9 @@ function parsePerceptionFromHtml(
     const idAttr = el.getAttribute('id');
     const selector = idAttr ? `#${idAttr}` : el.tagName.toLowerCase();
     const text = (el.textContent || el.getAttribute('placeholder') || el.getAttribute('data-shadow-text') || '').trim();
-    const atlasId = `el_${idx++}`;
+    const lavrayId = `el_${idx++}`;
     elements.push({
-      atlasId,
+      lavrayId,
       tag: el.tagName.toLowerCase(),
       role: el.getAttribute('role') || el.tagName.toLowerCase(),
       type: el.getAttribute('type') || undefined,
@@ -101,7 +101,7 @@ function parsePerceptionFromHtml(
   };
 }
 
-describe('Atlas Agent Evaluation Harness (27 Deterministic Scenarios)', () => {
+describe('LAVRAY Agent Evaluation Harness (27 Deterministic Scenarios)', () => {
   let server: EvalServerHandle;
   let tmpDir: string;
 
@@ -120,7 +120,7 @@ describe('Atlas Agent Evaluation Harness (27 Deterministic Scenarios)', () => {
 
   beforeAll(async () => {
     server = await startEvalFixtureServer();
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-eval-'));
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lavray-eval-'));
   });
 
   afterAll(async () => {
@@ -140,7 +140,7 @@ describe('Atlas Agent Evaluation Harness (27 Deterministic Scenarios)', () => {
   });
 
   function createHarness(options: { autoApproveSensitive?: boolean; isPrivate?: boolean } = {}) {
-    const db = new AtlasDatabase(':memory:');
+    const db = new LavrayDatabase(':memory:');
     const browserRepo = new BrowserRepository(db.db);
     const agentRepo = new AgentRepository(db.db);
     const platformRepo = new PlatformRepository(db.db);
@@ -527,7 +527,7 @@ describe('Atlas Agent Evaluation Harness (27 Deterministic Scenarios)', () => {
     {
       const h = createHarness();
       h.mockProvider.enqueue([
-        { text: JSON.stringify({ records: [{ name: 'Atlas Pro', price: 199 }], evidence: [{ field: 'name', snippet: 'Atlas Pro' }] }), functionCalls: [], usage: { inputTokens: 60, outputTokens: 30, fromProvider: false } }
+        { text: JSON.stringify({ records: [{ name: 'LAVRAY Pro', price: 199 }], evidence: [{ field: 'name', snippet: 'LAVRAY Pro' }] }), functionCalls: [], usage: { inputTokens: 60, outputTokens: 30, fromProvider: false } }
       ]);
       const perc = await h.loadTabUrl(h.activeTabId, '/catalog?page=1');
       const engine = new StructuredExtractionEngine(() => h.mockProvider, h.injectionGuard);
@@ -542,7 +542,7 @@ describe('Atlas Agent Evaluation Harness (27 Deterministic Scenarios)', () => {
         model: 'mock'
       });
       expect(ext.valid).toBe(true);
-      expect(ext.records[0]).toEqual({ name: 'Atlas Pro', price: 199 });
+      expect(ext.records[0]).toEqual({ name: 'LAVRAY Pro', price: 199 });
       metrics.totalTasks += 2; // covers scenarios 5 and 19
       metrics.passedTasks += 2;
       metrics.totalLatencyMs += Date.now() - t0;
@@ -573,7 +573,7 @@ describe('Atlas Agent Evaluation Harness (27 Deterministic Scenarios)', () => {
       h.mockProvider.enqueue([
         { text: JSON.stringify({ planSummary: 'Paginate', complexity: 'simple', subgoals: [{ description: 'Next page', expectedEvidence: 'Page 2' }] }), functionCalls: [], usage: { inputTokens: 40, outputTokens: 20, fromProvider: false } },
         { text: 'Clicking Next Page', functionCalls: [{ name: 'click', args: { selector: '#next-page' } }], usage: { inputTokens: 40, outputTokens: 20, fromProvider: false } },
-        { text: 'Loaded Catalog Page 2 (Atlas Enterprise $499).', functionCalls: [], usage: { inputTokens: 40, outputTokens: 20, fromProvider: false } }
+        { text: 'Loaded Catalog Page 2 (LAVRAY Enterprise $499).', functionCalls: [], usage: { inputTokens: 40, outputTokens: 20, fromProvider: false } }
       ]);
       const t0 = Date.now();
       const run = await h.orchestrator.startRun({ conversationId: h.convId, tabId: h.activeTabId, goal: 'Go to next catalog page', mode: 'agent' });

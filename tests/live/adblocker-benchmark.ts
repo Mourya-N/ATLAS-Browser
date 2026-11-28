@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { AtlasDatabase } from '@main/db/database';
+import { LavrayDatabase } from '@main/db/database';
 import { PlatformRepository } from '@main/db/repositories/platform-repo';
 import { AdBlocker } from '@main/browser/ad-blocker';
 
@@ -71,8 +71,8 @@ function runWorkloadBenchmark(blocker: AdBlocker, iterations = 2000): {
 }
 
 async function main() {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-adblock-bench-'));
-  const db = new AtlasDatabase(path.join(tmpDir, 'atlas.db'));
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lavray-adblock-bench-'));
+  const db = new LavrayDatabase(path.join(tmpDir, 'lavray.db'));
   const repo = new PlatformRepository(db.db);
   const blocker = new AdBlocker(repo);
 

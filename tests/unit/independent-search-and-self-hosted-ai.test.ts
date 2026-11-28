@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import http from 'node:http';
-import { AtlasDatabase } from '@main/db/database';
+import { LavrayDatabase } from '@main/db/database';
 import { LocalSearchIndexService } from '@main/cloud/local-search-index';
 import { SelfHostedOpenAiProvider } from '@main/agent/providers/self-hosted-provider';
 import { GeminiApiError } from '@main/agent/providers/gemini-provider';
@@ -12,7 +12,7 @@ import { loadBackendConfig } from '../../src/backend/config';
 import { startCloudServer, type BackendRuntime } from '../../src/backend/api/server';
 import type { AgentRun } from '@shared/types';
 
-describe('Independent Atlas Search (Crawler + FTS5/PG Index) & Self-Hosted Atlas AI Runtime', () => {
+describe('Independent LAVRAY Search (Crawler + FTS5/PG Index) & Self-Hosted HAYA AI Runtime', () => {
   let siteServer: http.Server;
   let siteBaseUrl = '';
   let pageVersion = 1;
@@ -39,7 +39,7 @@ describe('Independent Atlas Search (Crawler + FTS5/PG Index) & Self-Hosted Atlas
         res.statusCode = 200;
         res.setHeader('Content-Type', 'application/xml');
         res.end(
-          `<?xml version="1.0"?><urlset><url><loc>${siteBaseUrl}/docs/atlas-crawler</loc></url><url><loc>${siteBaseUrl}/docs/self-hosted-ai</loc></url><url><loc>${siteBaseUrl}/private-admin/secrets</loc></url></urlset>`
+          `<?xml version="1.0"?><urlset><url><loc>${siteBaseUrl}/docs/lavray-crawler</loc></url><url><loc>${siteBaseUrl}/docs/self-hosted-ai</loc></url><url><loc>${siteBaseUrl}/private-admin/secrets</loc></url></urlset>`
         );
         return;
       }
@@ -53,7 +53,7 @@ describe('Independent Atlas Search (Crawler + FTS5/PG Index) & Self-Hosted Atlas
         res.statusCode = 200;
         res.setHeader('Content-Type', 'text/html');
         res.end(
-          `<html><head><title>Atlas Self-Hosted AI Guide</title><link rel="canonical" href="${siteBaseUrl}/docs/self-hosted-ai" /></head><body><main><h1>Ollama & vLLM Integration</h1><p>Self-hosted Qwen2.5-7B-Instruct serves OpenAI compatible chat completions locally without external cloud calls.</p></main></body></html>`
+          `<html><head><title>LAVRAY Self-Hosted AI Guide</title><link rel="canonical" href="${siteBaseUrl}/docs/self-hosted-ai" /></head><body><main><h1>Ollama & vLLM Integration</h1><p>Self-hosted Qwen2.5-7B-Instruct serves OpenAI compatible chat completions locally without external cloud calls.</p></main></body></html>`
         );
         return;
       }
@@ -61,14 +61,14 @@ describe('Independent Atlas Search (Crawler + FTS5/PG Index) & Self-Hosted Atlas
         res.statusCode = 200;
         res.setHeader('Content-Type', 'text/html');
         res.end(
-          `<html><head><title>Atlas Crawler Docs v${pageVersion}</title><link rel="canonical" href="${siteBaseUrl}/docs/atlas-crawler" /></head><body><main><h1>Crawler Pipeline v${pageVersion}</h1><p>Atlas Crawler obeys robots.txt, enforces SSRF protections, and extracts canonical HTML articles.</p></main></body></html>`
+          `<html><head><title>LAVRAY Crawler Docs v${pageVersion}</title><link rel="canonical" href="${siteBaseUrl}/docs/lavray-crawler" /></head><body><main><h1>Crawler Pipeline v${pageVersion}</h1><p>LAVRAY Crawler obeys robots.txt, enforces SSRF protections, and extracts canonical HTML articles.</p></main></body></html>`
         );
         return;
       }
       res.statusCode = 200;
       res.setHeader('Content-Type', 'text/html');
       res.end(
-        `<html><head><title>Atlas Crawler Docs v${pageVersion}</title><link rel="canonical" href="${siteBaseUrl}/docs/atlas-crawler" /></head><body><main><h1>Crawler Pipeline v${pageVersion}</h1><p>Atlas Crawler obeys robots.txt, enforces SSRF protections, and extracts canonical HTML articles. Revision ${pageVersion}.</p><a href="${siteBaseUrl}/docs/duplicate-mirror">Mirror</a><a href="https://external-disallowed.invalid/out">Out</a></main></body></html>`
+        `<html><head><title>LAVRAY Crawler Docs v${pageVersion}</title><link rel="canonical" href="${siteBaseUrl}/docs/lavray-crawler" /></head><body><main><h1>Crawler Pipeline v${pageVersion}</h1><p>LAVRAY Crawler obeys robots.txt, enforces SSRF protections, and extracts canonical HTML articles. Revision ${pageVersion}.</p><a href="${siteBaseUrl}/docs/duplicate-mirror">Mirror</a><a href="https://external-disallowed.invalid/out">Out</a></main></body></html>`
       );
     });
     await new Promise<void>((resolve) => siteServer.listen(0, '127.0.0.1', () => resolve()));
@@ -107,7 +107,7 @@ describe('Independent Atlas Search (Crawler + FTS5/PG Index) & Self-Hosted Atlas
 
         if (body.stream) {
           res.setHeader('Content-Type', 'text/event-stream');
-          res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: 'Atlas ' } }] })}\n\n`);
+          res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: 'HAYA ' } }] })}\n\n`);
           res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: 'AI works.' }, finish_reason: 'stop' }], usage: { prompt_tokens: 20, completion_tokens: 5 } })}\n\n`);
           res.write('data: [DONE]\n\n');
           res.end();
@@ -142,8 +142,8 @@ describe('Independent Atlas Search (Crawler + FTS5/PG Index) & Self-Hosted Atlas
         const userText = body.messages.map((m) => String(m.content)).join('\n');
         const urlMatch = /URL:\s*(http:\/\/127\.0\.0\.1:\d+\S+)/.exec(userText);
         const excerptMatch = /EXCERPT:\s*([^\n]+)/.exec(userText);
-        const citedUrl = urlMatch?.[1] || `${siteBaseUrl}/docs/atlas-crawler`;
-        const quote = excerptMatch?.[1]?.trim() || 'Atlas Crawler obeys robots.txt';
+        const citedUrl = urlMatch?.[1] || `${siteBaseUrl}/docs/lavray-crawler`;
+        const quote = excerptMatch?.[1]?.trim() || 'LAVRAY Crawler obeys robots.txt';
 
         res.setHeader('Content-Type', 'application/json');
         res.end(
@@ -156,7 +156,7 @@ describe('Independent Atlas Search (Crawler + FTS5/PG Index) & Self-Hosted Atlas
                     summary: `Grounded answer from local runtime: ${quote.slice(0, 140)}`,
                     claims: [
                       {
-                        statement: 'Atlas Crawler obeys robots.txt and enforces SSRF protections.',
+                        statement: 'LAVRAY Crawler obeys robots.txt and enforces SSRF protections.',
                         kind: 'fact',
                         sourceUrl: citedUrl,
                         supportingQuote: quote.slice(0, 100)
@@ -180,13 +180,13 @@ describe('Independent Atlas Search (Crawler + FTS5/PG Index) & Self-Hosted Atlas
     const lAddr = llmServer.address();
     llmBaseUrl = `http://127.0.0.1:${typeof lAddr === 'object' && lAddr ? lAddr.port : 0}`;
 
-    // 3. Start Atlas Cloud Backend configured to use self-hosted AI runtime + FirstPartyIndexProvider
+    // 3. Start LAVRAY Cloud Backend configured to use self-hosted AI runtime + FirstPartyIndexProvider
     const config = {
       ...loadBackendConfig({
         NODE_ENV: 'test',
-        ATLAS_AI_PROVIDER: 'self_hosted',
-        ATLAS_SELF_HOSTED_URL: `${llmBaseUrl}/v1`,
-        ATLAS_SELF_HOSTED_MODEL: 'qwen2.5:7b-instruct'
+        LAVRAY_AI_PROVIDER: 'self_hosted',
+        LAVRAY_SELF_HOSTED_URL: `${llmBaseUrl}/v1`,
+        LAVRAY_SELF_HOSTED_MODEL: 'qwen2.5:7b-instruct'
       }),
       port: 0,
       host: '127.0.0.1'
@@ -225,7 +225,7 @@ describe('Independent Atlas Search (Crawler + FTS5/PG Index) & Self-Hosted Atlas
         streamed += d;
       }
     });
-    expect(streamed).toBe('Atlas AI works.');
+    expect(streamed).toBe('HAYA AI works.');
     expect(streamRes.usage.inputTokens).toBe(20);
 
     // Tool call check
@@ -258,7 +258,7 @@ describe('Independent Atlas Search (Crawler + FTS5/PG Index) & Self-Hosted Atlas
     const reg = await fetch(`${cloudBaseUrl}/api/v1/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: 'search-admin@atlas.dev', password: 'AdminPassword!2026' })
+      body: JSON.stringify({ email: 'search-admin@lavray.dev', password: 'AdminPassword!2026' })
     });
     const session = (await reg.json()) as { accessToken: string };
     const authHeaders = {
@@ -271,7 +271,7 @@ describe('Independent Atlas Search (Crawler + FTS5/PG Index) & Self-Hosted Atlas
       method: 'POST',
       headers: authHeaders,
       body: JSON.stringify({
-        seedUrls: [`${siteBaseUrl}/docs/atlas-crawler`],
+        seedUrls: [`${siteBaseUrl}/docs/lavray-crawler`],
         allowedDomains: ['127.0.0.1'],
         maxDepth: 2,
         maxPages: 10,
@@ -289,14 +289,14 @@ describe('Independent Atlas Search (Crawler + FTS5/PG Index) & Self-Hosted Atlas
       };
     };
     expect(crawlData.checkpoint.status).toBe('completed');
-    // Both /docs/atlas-crawler and /docs/self-hosted-ai from sitemap indexed; /private-admin disallowed by robots.txt; duplicate mirror deduplicated
+    // Both /docs/lavray-crawler and /docs/self-hosted-ai from sitemap indexed; /private-admin disallowed by robots.txt; duplicate mirror deduplicated
     expect(crawlData.checkpoint.indexedCount).toBe(2);
-    expect(await cloudRuntime.services.repo.getAtlasIndexDocument(`${siteBaseUrl}/private-admin/secrets`)).toBeNull();
-    expect(await cloudRuntime.services.repo.getAtlasIndexDocument(`${siteBaseUrl}/docs/atlas-crawler`)).not.toBeNull();
+    expect(await cloudRuntime.services.repo.getLavrayIndexDocument(`${siteBaseUrl}/private-admin/secrets`)).toBeNull();
+    expect(await cloudRuntime.services.repo.getLavrayIndexDocument(`${siteBaseUrl}/docs/lavray-crawler`)).not.toBeNull();
 
-    // 2. Query via GET /api/v1/search?q=... and verify Atlas Index labeling + self-hosted grounded AI citations
+    // 2. Query via GET /api/v1/search?q=... and verify LAVRAY Index labeling + self-hosted grounded AI citations
     const getSearchRes = await fetch(
-      `${cloudBaseUrl}/api/v1/search?q=${encodeURIComponent('Atlas Crawler robots.txt SSRF')}&category=research&limit=5&allowLocalhost=true`
+      `${cloudBaseUrl}/api/v1/search?q=${encodeURIComponent('LAVRAY Crawler robots.txt SSRF')}&category=research&limit=5&allowLocalhost=true`
     );
     expect(getSearchRes.status).toBe(200);
     const searchData = (await getSearchRes.json()) as {
@@ -311,8 +311,8 @@ describe('Independent Atlas Search (Crawler + FTS5/PG Index) & Self-Hosted Atlas
       aiRuntimeStatus: { reachable: boolean; configuredModel: string };
     };
     expect(searchData.results.length).toBeGreaterThanOrEqual(1);
-    expect(searchData.results[0].sourceOrigin).toBe('atlas_index');
-    expect(searchData.results[0].canonicalUrl).toBe(`${siteBaseUrl}/docs/atlas-crawler`);
+    expect(searchData.results[0].sourceOrigin).toBe('lavray_index');
+    expect(searchData.results[0].canonicalUrl).toBe(`${siteBaseUrl}/docs/lavray-crawler`);
     expect(searchData.pagination.page).toBe(1);
     expect(searchData.indexStatus.indexedDocuments).toBe(2);
     expect(searchData.indexStatus.limitedCoverage).toBe(true);
@@ -327,7 +327,7 @@ describe('Independent Atlas Search (Crawler + FTS5/PG Index) & Self-Hosted Atlas
       method: 'POST',
       headers: authHeaders,
       body: JSON.stringify({
-        seedUrls: [`${siteBaseUrl}/docs/atlas-crawler`],
+        seedUrls: [`${siteBaseUrl}/docs/lavray-crawler`],
         allowedDomains: ['127.0.0.1'],
         maxDepth: 1,
         maxPages: 5,
@@ -337,21 +337,21 @@ describe('Independent Atlas Search (Crawler + FTS5/PG Index) & Self-Hosted Atlas
     });
     const recrawlData = (await recrawlRes.json()) as { checkpoint: { updatedCount: number } };
     expect(recrawlData.checkpoint.updatedCount).toBeGreaterThanOrEqual(1);
-    const updatedDoc = await cloudRuntime.services.repo.getAtlasIndexDocument(`${siteBaseUrl}/docs/atlas-crawler`);
+    const updatedDoc = await cloudRuntime.services.repo.getLavrayIndexDocument(`${siteBaseUrl}/docs/lavray-crawler`);
     expect(updatedDoc?.title).toContain('v2');
 
     // 4. Document removal
     const delRes = await fetch(`${cloudBaseUrl}/api/v1/index/documents`, {
       method: 'DELETE',
       headers: authHeaders,
-      body: JSON.stringify({ canonicalUrl: `${siteBaseUrl}/docs/atlas-crawler` })
+      body: JSON.stringify({ canonicalUrl: `${siteBaseUrl}/docs/lavray-crawler` })
     });
     expect(delRes.status).toBe(200);
-    expect(await cloudRuntime.services.repo.getAtlasIndexDocument(`${siteBaseUrl}/docs/atlas-crawler`)).toBeNull();
+    expect(await cloudRuntime.services.repo.getLavrayIndexDocument(`${siteBaseUrl}/docs/lavray-crawler`)).toBeNull();
   });
 
   it('supports local SQLite FTS5 first-party index CRUD, search, history clear, and consent-gated training JSONL export', async () => {
-    const db = new AtlasDatabase(':memory:');
+    const db = new LavrayDatabase(':memory:');
     const localIdx = new LocalSearchIndexService(db.db);
 
     const cp = await localIdx.crawlSeeds({
@@ -366,7 +366,7 @@ describe('Independent Atlas Search (Crawler + FTS5/PG Index) & Self-Hosted Atlas
 
     const hits = localIdx.searchLocalIndex('Qwen2.5 Ollama locally');
     expect(hits.length).toBeGreaterThanOrEqual(1);
-    expect(hits[0].sourceProvider).toBe('atlas_first_party_index');
+    expect(hits[0].sourceProvider).toBe('lavray_first_party_index');
 
     // Search history respects private flag and clears cleanly
     localIdx.recordSearchHistory('private query', 'web', 1, true);

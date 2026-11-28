@@ -2,7 +2,7 @@ import { describe, expect, it, beforeEach } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { AtlasDatabase } from '@main/db/database';
+import { LavrayDatabase } from '@main/db/database';
 import { PlatformRepository } from '@main/db/repositories/platform-repo';
 import { AuditLogger } from '@main/security/audit-logger';
 import { KillSwitch } from '@main/security/kill-switch';
@@ -13,13 +13,13 @@ import { validateIpcPayload, validateIpcSender } from '@main/security/ipc-valida
 import { NavGoSchema } from '@shared/ipc-channels';
 
 describe('Security & Validation Layer', () => {
-  let db: AtlasDatabase;
+  let db: LavrayDatabase;
   let repo: PlatformRepository;
   let audit: AuditLogger;
   let killSwitch: KillSwitch;
 
   beforeEach(() => {
-    db = new AtlasDatabase(':memory:');
+    db = new LavrayDatabase(':memory:');
     repo = new PlatformRepository(db.db);
     audit = new AuditLogger(repo);
     killSwitch = new KillSwitch();
@@ -209,13 +209,13 @@ describe('Security & Validation Layer', () => {
   });
 
   it('encrypts/decrypts secrets and redacts credentials from logs', () => {
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-sec-'));
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lavray-sec-'));
     try {
       const vault = new SecretVault(tmpDir);
       vault.setGeminiApiKey('AIzaSyTestKey1234567890abcdef');
       expect(vault.getGeminiApiKey()).toBe('AIzaSyTestKey1234567890abcdef');
 
-      const rawDisk = fs.readFileSync(path.join(tmpDir, 'atlas-secrets.enc'), 'utf8');
+      const rawDisk = fs.readFileSync(path.join(tmpDir, 'lavray-secrets.enc'), 'utf8');
       expect(rawDisk).not.toContain('AIzaSyTestKey1234567890abcdef');
 
       expect(redactSecrets('key=AIzaSyTestKey1234567890abcdef')).toBe('key=[REDACTED_SECRET]');

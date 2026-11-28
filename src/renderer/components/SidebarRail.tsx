@@ -3,7 +3,6 @@ import {
   BookOpen,
   Bookmark,
   Columns2,
-  Compass,
   Download,
   History,
   PanelLeftClose,
@@ -13,7 +12,8 @@ import {
   Shield,
   Sparkles
 } from 'lucide-react';
-import { useAtlasStore, type OverlayView } from '../store/useAtlasStore';
+import { useLavrayStore, type OverlayView } from '../store/useLavrayStore';
+import { LavrayMark } from './BrandMarks';
 
 export const SidebarRail: React.FC = () => {
   const {
@@ -21,12 +21,12 @@ export const SidebarRail: React.FC = () => {
     setSidebarOpen,
     activeOverlayView,
     setOverlayView,
-    openAtlasSearch,
+    openLavraySearch,
     verticalTabs,
     setVerticalTabs,
     downloads,
     adBlockStats
-  } = useAtlasStore();
+  } = useLavrayStore();
 
   if (!sidebarOpen) return null;
 
@@ -46,13 +46,13 @@ export const SidebarRail: React.FC = () => {
       aria-label={title}
       className={`relative flex h-8 w-8 items-center justify-center rounded-lg transition-colors duration-150 ${
         active
-          ? 'bg-atlas-surface text-atlas-accent border border-atlas-border'
-          : 'text-atlas-muted hover:bg-atlas-elevated hover:text-atlas-text'
+          ? 'bg-lavray-surface text-lavray-accent border border-lavray-border'
+          : 'text-lavray-muted hover:bg-lavray-elevated hover:text-lavray-text'
       }`}
     >
       {icon}
       {badge !== undefined && (
-        <span className="absolute -right-0.5 -top-0.5 flex h-3.5 min-w-[14px] items-center justify-center rounded-full bg-atlas-accent px-1 text-[9px] font-semibold text-atlas-accent-fg">
+        <span className="absolute -right-0.5 -top-0.5 flex h-3.5 min-w-[14px] items-center justify-center rounded-full bg-lavray-accent px-1 text-[9px] font-semibold text-lavray-accent-fg">
           {badge}
         </span>
       )}
@@ -65,22 +65,22 @@ export const SidebarRail: React.FC = () => {
 
   return (
     <nav
-      aria-label="Atlas Workspace Sidebar"
-      className="flex h-full w-11 shrink-0 flex-col items-center justify-between border-r border-atlas-border bg-atlas-shell py-2.5 select-none"
+      aria-label="LAVRAY Workspace Sidebar"
+      className="flex h-full w-11 shrink-0 flex-col items-center justify-between border-r border-lavray-border bg-lavray-shell py-2.5 select-none"
     >
       {/* Primary Views */}
       <div className="flex flex-col items-center gap-1">
         {navBtn(
           activeOverlayView === null,
           'Active Tab',
-          <Compass className="h-[15px] w-[15px]" strokeWidth={1.75} />,
+          <LavrayMark className="h-[16px] w-[16px]" />,
           () => setOverlayView(null)
         )}
         {navBtn(
           activeOverlayView === 'search',
-          'Atlas Search Workspace',
+          'LAVRAY Search Workspace',
           <Search className="h-[15px] w-[15px]" strokeWidth={1.75} />,
-          () => (activeOverlayView === 'search' ? setOverlayView(null) : openAtlasSearch(''))
+          () => (activeOverlayView === 'search' ? setOverlayView(null) : openLavraySearch(''))
         )}
         {navBtn(
           activeOverlayView === 'intelligence',
@@ -95,7 +95,7 @@ export const SidebarRail: React.FC = () => {
           () => toggleOverlay('reader')
         )}
 
-        <div className="my-1.5 h-px w-5 bg-atlas-border" />
+        <div className="my-1.5 h-px w-5 bg-lavray-border" />
 
         {navBtn(
           activeOverlayView === 'bookmarks',
@@ -131,7 +131,7 @@ export const SidebarRail: React.FC = () => {
           () => {
             const next = !verticalTabs;
             setVerticalTabs(next);
-            void window.atlas.updateSettings({ verticalTabs: next });
+            void window.lavray.updateSettings({ verticalTabs: next });
           }
         )}
         {navBtn(
@@ -151,7 +151,7 @@ export const SidebarRail: React.FC = () => {
           onClick={() => setSidebarOpen(false)}
           title="Collapse Sidebar (Cmd/Ctrl+B)"
           aria-label="Collapse Sidebar"
-          className="mt-0.5 flex h-7 w-8 items-center justify-center rounded-lg text-atlas-muted hover:bg-atlas-elevated hover:text-atlas-text transition-colors"
+          className="mt-0.5 flex h-7 w-8 items-center justify-center rounded-lg text-lavray-muted hover:bg-lavray-elevated hover:text-lavray-text transition-colors"
         >
           <PanelLeftClose className="h-[15px] w-[15px]" strokeWidth={1.75} />
         </button>

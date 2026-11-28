@@ -1,6 +1,7 @@
 import React from 'react';
-import { BookOpen, Globe, HelpCircle, PenLine, Search, Sparkles, X } from 'lucide-react';
-import { useAtlasStore } from '../store/useAtlasStore';
+import { BookOpen, Globe, HelpCircle, PenLine, Search, X } from 'lucide-react';
+import { useLavrayStore } from '../store/useLavrayStore';
+import { HayaMark } from './BrandMarks';
 
 export const SelectionOverlay: React.FC = () => {
   const {
@@ -8,7 +9,7 @@ export const SelectionOverlay: React.FC = () => {
     setSelectionOverlay,
     activeConversationId,
     setAgentPanelOpen
-  } = useAtlasStore();
+  } = useLavrayStore();
 
   if (!selectionOverlay || !selectionOverlay.text) return null;
 
@@ -17,7 +18,7 @@ export const SelectionOverlay: React.FC = () => {
     setAgentPanelOpen(true);
     const snippet = selectionOverlay.text;
     setSelectionOverlay(null);
-    await window.atlas.startAgentRun({
+    await window.lavray.startAgentRun({
       conversationId: activeConversationId,
       tabId: selectionOverlay.tabId,
       goal: `${promptPrefix}:\n\n"${snippet}"`,
@@ -27,8 +28,8 @@ export const SelectionOverlay: React.FC = () => {
   };
 
   return (
-    <div className="atlas-glass fixed bottom-4 left-1/2 -translate-x-1/2 z-40 flex items-center gap-0.5 rounded-xl border border-atlas-border px-2 py-1.5 shadow-atlas-float">
-      <span className="max-w-[150px] truncate px-2 text-[11px] text-atlas-muted border-r border-atlas-border">
+    <div className="lavray-glass fixed bottom-4 left-1/2 -translate-x-1/2 z-40 flex items-center gap-0.5 rounded-xl border border-lavray-border px-2 py-1.5 shadow-lavray-float">
+      <span className="max-w-[150px] truncate px-2 text-[11px] text-lavray-muted border-r border-lavray-border">
         &ldquo;{selectionOverlay.text}&rdquo;
       </span>
       <ActionBtn
@@ -52,8 +53,8 @@ export const SelectionOverlay: React.FC = () => {
         onClick={() => void runSelectionPrompt('Rewrite the selected text clearly and professionally')}
       />
       <ActionBtn
-        icon={<Sparkles className="h-3 w-3" />}
-        label="Ask"
+        icon={<HayaMark className="h-3 w-3" />}
+        label="Ask HAYA"
         onClick={() => void runSelectionPrompt('Answer key insights and context about this selection')}
       />
       <ActionBtn
@@ -62,13 +63,13 @@ export const SelectionOverlay: React.FC = () => {
         onClick={async () => {
           const text = selectionOverlay.text;
           setSelectionOverlay(null);
-          await window.atlas.createTab({ url: text, activate: true });
+          await window.lavray.createTab({ url: text, activate: true });
         }}
       />
       <button
         type="button"
         onClick={() => setSelectionOverlay(null)}
-        className="rounded-lg p-1 text-atlas-muted hover:bg-atlas-elevated hover:text-atlas-text"
+        className="rounded-lg p-1 text-lavray-muted hover:bg-lavray-elevated hover:text-lavray-text"
         aria-label="Dismiss selection actions"
       >
         <X className="h-3 w-3" />
@@ -85,7 +86,7 @@ const ActionBtn: React.FC<{ icon: React.ReactNode; label: string; onClick: () =>
   <button
     type="button"
     onClick={onClick}
-    className="flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-medium text-atlas-text hover:bg-atlas-accent hover:text-atlas-accent-fg transition-colors"
+    className="flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-medium text-lavray-text hover:bg-lavray-accent hover:text-lavray-accent-fg transition-colors"
   >
     {icon}
     <span>{label}</span>

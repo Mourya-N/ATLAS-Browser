@@ -36,13 +36,13 @@ async function resolveAndVerifyElement(
   wc: WebContents,
   args: Record<string, unknown>
 ) {
-  const atlasId = typeof args.atlasId === 'string' ? args.atlasId : undefined;
+  const lavrayId = typeof args.lavrayId === 'string' ? args.lavrayId : undefined;
   const selector = typeof args.selector === 'string' ? args.selector : undefined;
   const text = typeof args.text === 'string' ? args.text : undefined;
-  if (!atlasId && !selector && !text) {
-    throw new Error('Provide at least one target identifier: atlasId, selector, or text');
+  if (!lavrayId && !selector && !text) {
+    throw new Error('Provide at least one target identifier: lavrayId, selector, or text');
   }
-  const check = await ctx.resolver.resolveTarget(tabId, wc, { atlasId, selector, text });
+  const check = await ctx.resolver.resolveTarget(tabId, wc, { lavrayId, selector, text });
   if (!check.exists) {
     throw new Error(check.reason || 'Target element no longer exists (stale reference)');
   }
@@ -99,12 +99,12 @@ export function registerAllBrowserTools(registry: ToolRegistry): void {
     },
     {
       name: 'click',
-      description: 'Click an element on the page identified by atlasId, CSS selector, or visible text.',
+      description: 'Click an element on the page identified by lavrayId, CSS selector, or visible text.',
       baseTier: 'interact',
       parameters: {
         type: 'object',
         properties: {
-          atlasId: { type: 'string' },
+          lavrayId: { type: 'string' },
           selector: { type: 'string' },
           text: { type: 'string' },
           tabId: { type: 'string' }
@@ -114,11 +114,11 @@ export function registerAllBrowserTools(registry: ToolRegistry): void {
       resolveTier: async (args, ctx) => {
         const { tabId, wc } = requireTabWc(ctx, args.tabId);
         const check = await ctx.resolver.resolveTarget(tabId, wc, {
-          atlasId: args.atlasId as string | undefined,
+          lavrayId: args.lavrayId as string | undefined,
           selector: args.selector as string | undefined,
           text: args.text as string | undefined
         });
-        const label = check.text || String(args.text || args.selector || args.atlasId || 'element');
+        const label = check.text || String(args.text || args.selector || args.lavrayId || 'element');
         const sensitive = Boolean(check.isSensitiveAction) || isSensitiveTarget(label);
         return {
           tier: sensitive ? 'sensitive' : 'interact',
@@ -153,7 +153,7 @@ export function registerAllBrowserTools(registry: ToolRegistry): void {
       parameters: {
         type: 'object',
         properties: {
-          atlasId: { type: 'string' },
+          lavrayId: { type: 'string' },
           selector: { type: 'string' },
           text: { type: 'string' },
           value: { type: 'string' },
@@ -167,14 +167,14 @@ export function registerAllBrowserTools(registry: ToolRegistry): void {
       resolveTier: async (args, ctx) => {
         const { tabId, wc } = requireTabWc(ctx, args.tabId);
         const check = await ctx.resolver.resolveTarget(tabId, wc, {
-          atlasId: args.atlasId as string | undefined,
+          lavrayId: args.lavrayId as string | undefined,
           selector: args.selector as string | undefined,
           text: args.text as string | undefined
         });
         const sensitive = Boolean(check.isSensitiveField);
         return {
           tier: sensitive ? 'sensitive' : 'interact',
-          targetDescription: `<${check.tag || 'input'}> ${check.text || String(args.selector || args.atlasId || '')}`,
+          targetDescription: `<${check.tag || 'input'}> ${check.text || String(args.selector || args.lavrayId || '')}`,
           submittedDataSummary: sensitive ? '[REDACTED SENSITIVE INPUT]' : String(args.value).slice(0, 80),
           expectedConsequence: sensitive
             ? 'Enters sensitive credential or payment data into a form field.'
@@ -189,8 +189,8 @@ export function registerAllBrowserTools(registry: ToolRegistry): void {
         if (!check.center) throw new Error('Missing element center');
         await ctx.cdp.clickAt(tabId, wc, check.center.x, check.center.y);
         if (args.clearFirst !== false) {
-          const selectorExpr = args.atlasId
-            ? `[data-atlas-id="${String(args.atlasId).replace(/"/g, '')}"]`
+          const selectorExpr = args.lavrayId
+            ? `[data-lavray-id="${String(args.lavrayId).replace(/"/g, '')}"]`
             : String(args.selector || '');
           if (selectorExpr) {
             await ctx.cdp.evaluateInternal(
@@ -221,7 +221,7 @@ export function registerAllBrowserTools(registry: ToolRegistry): void {
       parameters: {
         type: 'object',
         properties: {
-          atlasId: { type: 'string' },
+          lavrayId: { type: 'string' },
           selector: { type: 'string' },
           optionValue: { type: 'string' },
           tabId: { type: 'string' }
@@ -233,8 +233,8 @@ export function registerAllBrowserTools(registry: ToolRegistry): void {
         const { tabId, wc } = requireTabWc(ctx, args.tabId);
         const before = ctx.lastPerception ?? (await ctx.perception.capture(tabId, wc));
         await resolveAndVerifyElement(ctx, tabId, wc, args);
-        const targetSel = args.atlasId
-          ? `[data-atlas-id="${String(args.atlasId).replace(/"/g, '')}"]`
+        const targetSel = args.lavrayId
+          ? `[data-lavray-id="${String(args.lavrayId).replace(/"/g, '')}"]`
           : String(args.selector);
         const selected = await ctx.cdp.evaluateInternal<string | null>(
           tabId,
@@ -311,7 +311,7 @@ export function registerAllBrowserTools(registry: ToolRegistry): void {
       parameters: {
         type: 'object',
         properties: {
-          atlasId: { type: 'string' },
+          lavrayId: { type: 'string' },
           selector: { type: 'string' },
           text: { type: 'string' },
           tabId: { type: 'string' }
@@ -610,7 +610,7 @@ export function registerAllBrowserTools(registry: ToolRegistry): void {
       parameters: {
         type: 'object',
         properties: {
-          atlasId: { type: 'string' },
+          lavrayId: { type: 'string' },
           selector: { type: 'string' },
           text: { type: 'string' },
           tabId: { type: 'string' }
@@ -620,7 +620,7 @@ export function registerAllBrowserTools(registry: ToolRegistry): void {
       execute: async (args, ctx) => {
         const { tabId, wc } = requireTabWc(ctx, args.tabId);
         const check = await ctx.resolver.resolveTarget(tabId, wc, {
-          atlasId: args.atlasId as string | undefined,
+          lavrayId: args.lavrayId as string | undefined,
           selector: args.selector as string | undefined,
           text: args.text as string | undefined
         });
@@ -635,7 +635,7 @@ export function registerAllBrowserTools(registry: ToolRegistry): void {
         type: 'object',
         properties: {
           selector: { type: 'string' },
-          atlasId: { type: 'string' },
+          lavrayId: { type: 'string' },
           tabId: { type: 'string' }
         },
         additionalProperties: false
@@ -643,7 +643,7 @@ export function registerAllBrowserTools(registry: ToolRegistry): void {
       execute: async (args, ctx) => {
         const { tabId, wc } = requireTabWc(ctx, args.tabId);
         const check = await ctx.resolver.resolveTarget(tabId, wc, {
-          atlasId: args.atlasId as string | undefined,
+          lavrayId: args.lavrayId as string | undefined,
           selector: args.selector as string | undefined
         });
         return { success: check.exists, data: { text: check.text ?? '' }, error: check.reason };
@@ -1029,7 +1029,7 @@ export function registerAllBrowserTools(registry: ToolRegistry): void {
     },
     {
       name: 'fill_form',
-      description: 'Smart form fill: populate multiple form inputs by selector, atlasId, or label text without submitting.',
+      description: 'Smart form fill: populate multiple form inputs by selector, lavrayId, or label text without submitting.',
       baseTier: 'interact',
       parameters: {
         type: 'object',
@@ -1042,7 +1042,7 @@ export function registerAllBrowserTools(registry: ToolRegistry): void {
               type: 'object',
               properties: {
                 selector: { type: 'string' },
-                atlasId: { type: 'string' },
+                lavrayId: { type: 'string' },
                 text: { type: 'string' },
                 value: { type: 'string' }
               },
@@ -1060,7 +1060,7 @@ export function registerAllBrowserTools(registry: ToolRegistry): void {
         let hasSensitive = false;
         for (const f of fields) {
           const check = await ctx.resolver.resolveTarget(tabId, wc, {
-            atlasId: f.atlasId as string | undefined,
+            lavrayId: f.lavrayId as string | undefined,
             selector: f.selector as string | undefined,
             text: f.text as string | undefined
           });
@@ -1080,13 +1080,13 @@ export function registerAllBrowserTools(registry: ToolRegistry): void {
       execute: async (args, ctx) => {
         const { tabId, wc } = requireTabWc(ctx, args.tabId);
         const before = ctx.lastPerception ?? (await ctx.perception.capture(tabId, wc));
-        const fields = args.fields as Array<{ selector?: string; atlasId?: string; text?: string; value: string }>;
+        const fields = args.fields as Array<{ selector?: string; lavrayId?: string; text?: string; value: string }>;
         let filledCount = 0;
         for (const f of fields) {
           const check = await resolveAndVerifyElement(ctx, tabId, wc, f);
           if (!check.center) continue;
           await ctx.cdp.clickAt(tabId, wc, check.center.x, check.center.y);
-          const sel = f.atlasId ? `[data-atlas-id="${f.atlasId.replace(/"/g, '')}"]` : f.selector;
+          const sel = f.lavrayId ? `[data-lavray-id="${f.lavrayId.replace(/"/g, '')}"]` : f.selector;
           if (sel) {
             await ctx.cdp.evaluateInternal(
               tabId,

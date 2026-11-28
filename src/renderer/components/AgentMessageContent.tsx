@@ -8,13 +8,13 @@ export const AgentMessageContent: React.FC<{ content: string }> = ({ content }) 
   const blocks = splitCodeBlocks(content);
 
   return (
-    <div className="space-y-2 text-[13px] leading-[1.58] text-atlas-text [overflow-wrap:anywhere]">
+    <div className="space-y-2 text-[13px] leading-[1.58] text-lavray-text [overflow-wrap:anywhere]">
       {blocks.map((block, idx) => {
         if (block.type === 'code') {
           return (
             <pre
               key={idx}
-              className="overflow-x-auto rounded-lg border border-atlas-border bg-atlas-shell px-3 py-2 font-mono text-[11.5px] leading-relaxed text-atlas-text"
+              className="overflow-x-auto rounded-lg border border-lavray-border bg-lavray-shell px-3 py-2 font-mono text-[11.5px] leading-relaxed text-lavray-text"
             >
               <code>{block.text}</code>
             </pre>
@@ -33,7 +33,7 @@ export const AgentMessageContent: React.FC<{ content: string }> = ({ content }) 
                 return (
                   <div
                     key={lineIdx}
-                    className="pt-1 text-[13px] font-semibold tracking-[-0.01em] text-atlas-text"
+                    className="pt-1 text-[13px] font-semibold tracking-[-0.01em] text-lavray-text"
                   >
                     {renderInline(headingMatch[2])}
                   </div>
@@ -43,9 +43,9 @@ export const AgentMessageContent: React.FC<{ content: string }> = ({ content }) 
               const bulletMatch = trimmed.match(/^[-*•]\s+(.+)$/);
               if (bulletMatch) {
                 return (
-                  <div key={lineIdx} className="flex items-start gap-2 pl-0.5 text-atlas-secondary">
-                    <span className="mt-[8px] h-1 w-1 shrink-0 rounded-full bg-atlas-accent" />
-                    <span className="min-w-0 flex-1 text-atlas-text">{renderInline(bulletMatch[1])}</span>
+                  <div key={lineIdx} className="flex items-start gap-2 pl-0.5 text-lavray-secondary">
+                    <span className="mt-[8px] h-1 w-1 shrink-0 rounded-full bg-lavray-accent" />
+                    <span className="min-w-0 flex-1 text-lavray-text">{renderInline(bulletMatch[1])}</span>
                   </div>
                 );
               }
@@ -54,16 +54,16 @@ export const AgentMessageContent: React.FC<{ content: string }> = ({ content }) 
               if (numMatch) {
                 return (
                   <div key={lineIdx} className="flex items-start gap-1.5 pl-0.5">
-                    <span className="shrink-0 font-mono text-[11.5px] font-medium text-atlas-muted">
+                    <span className="shrink-0 font-mono text-[11.5px] font-medium text-lavray-muted">
                       {numMatch[1]}
                     </span>
-                    <span className="min-w-0 flex-1 text-atlas-text">{renderInline(numMatch[2])}</span>
+                    <span className="min-w-0 flex-1 text-lavray-text">{renderInline(numMatch[2])}</span>
                   </div>
                 );
               }
 
               return (
-                <p key={lineIdx} className="text-atlas-text">
+                <p key={lineIdx} className="text-lavray-text">
                   {renderInline(trimmed)}
                 </p>
               );
@@ -104,7 +104,7 @@ function renderInline(text: string): React.ReactNode[] {
       return (
         <code
           key={idx}
-          className="rounded border border-atlas-border bg-atlas-shell px-1 py-0.5 font-mono text-[11.5px] text-atlas-text"
+          className="rounded border border-lavray-border bg-lavray-shell px-1 py-0.5 font-mono text-[11.5px] text-lavray-text"
         >
           {tok.slice(1, -1)}
         </code>
@@ -112,7 +112,7 @@ function renderInline(text: string): React.ReactNode[] {
     }
     if (tok.startsWith('**') && tok.endsWith('**') && tok.length >= 4) {
       return (
-        <strong key={idx} className="font-semibold text-atlas-text">
+        <strong key={idx} className="font-semibold text-lavray-text">
           {tok.slice(2, -2)}
         </strong>
       );
@@ -126,9 +126,9 @@ function renderInline(text: string): React.ReactNode[] {
             href={cleanUrl}
             onClick={(e) => {
               e.preventDefault();
-              void window.atlas.createTab({ url: cleanUrl, activate: true });
+              void window.lavray.createTab({ url: cleanUrl, activate: true });
             }}
-            className="text-atlas-accent underline decoration-atlas-accent/40 underline-offset-2 hover:decoration-atlas-accent break-all"
+            className="text-lavray-accent underline decoration-lavray-accent/40 underline-offset-2 hover:decoration-lavray-accent break-all"
             title={`Open ${cleanUrl} in new tab`}
           >
             {cleanUrl}

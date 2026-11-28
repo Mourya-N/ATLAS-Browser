@@ -2,20 +2,20 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { AtlasDatabase } from '@main/db/database';
+import { LavrayDatabase } from '@main/db/database';
 import { PlatformRepository } from '@main/db/repositories/platform-repo';
 import { AdBlocker } from '@main/browser/ad-blocker';
 import { parseFilterListText, isSafeCssSelector } from '@main/browser/filter-parser';
 
-describe('Native Atlas Ad Blocker & Cosmetic Filter Engine', () => {
+describe('Native LAVRAY Ad Blocker & Cosmetic Filter Engine', () => {
   let tmpDir: string;
-  let db: AtlasDatabase;
+  let db: LavrayDatabase;
   let repo: PlatformRepository;
   let adBlocker: AdBlocker;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-adblock-test-'));
-    db = new AtlasDatabase(path.join(tmpDir, 'atlas.db'));
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lavray-adblock-test-'));
+    db = new LavrayDatabase(path.join(tmpDir, 'lavray.db'));
     repo = new PlatformRepository(db.db);
     adBlocker = new AdBlocker(repo);
   });

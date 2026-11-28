@@ -1,6 +1,6 @@
 import type {
-  AtlasIndexDocument,
-  AtlasIndexStats,
+  LavrayIndexDocument,
+  LavrayIndexStats,
   SearchMode,
   SearchProviderHealth
 } from '@shared/types';
@@ -9,12 +9,12 @@ import type { CloudRepository } from '../../db/repository';
 import type { ProviderSearchParams, RawSearchCandidate, SearchProvider } from './provider';
 
 /**
- * First-party Atlas Search Index Provider backed by persistent storage
+ * First-party LAVRAY Search Index Provider backed by persistent storage
  * (PostgreSQL tsvector GIN + embeddings in Cloud, or InMemory store in tests).
  */
 export class FirstPartyIndexProvider implements SearchProvider {
-  public readonly id = 'atlas_first_party_index';
-  public readonly name = 'Atlas First-Party Web Index';
+  public readonly id = 'lavray_first_party_index';
+  public readonly name = 'LAVRAY First-Party Web Index';
   public readonly isMock = false;
   private avgLatencyMs = 0;
 
@@ -28,22 +28,22 @@ export class FirstPartyIndexProvider implements SearchProvider {
     return ['web', 'docs', 'research', 'news'].includes(mode);
   }
 
-  public async upsertDocument(doc: AtlasIndexDocument): Promise<{ inserted: boolean; updated: boolean }> {
-    return this.repo.upsertAtlasIndexDocument(doc);
+  public async upsertDocument(doc: LavrayIndexDocument): Promise<{ inserted: boolean; updated: boolean }> {
+    return this.repo.upsertLavrayIndexDocument(doc);
   }
 
   public async removeDocument(canonicalUrl: string): Promise<boolean> {
-    return this.repo.removeAtlasIndexDocument(canonicalUrl);
+    return this.repo.removeLavrayIndexDocument(canonicalUrl);
   }
 
-  public async getStats(): Promise<AtlasIndexStats> {
-    return this.repo.getAtlasIndexStats();
+  public async getStats(): Promise<LavrayIndexStats> {
+    return this.repo.getLavrayIndexStats();
   }
 
   public async search(params: ProviderSearchParams): Promise<RawSearchCandidate[]> {
     const started = Date.now();
     const queryEmbedding = computeLocalEmbedding(params.query);
-    const hits = await this.repo.searchAtlasIndex({
+    const hits = await this.repo.searchLavrayIndex({
       query: params.query,
       queryEmbedding,
       domains: params.filters?.domains,

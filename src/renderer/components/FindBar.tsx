@@ -1,10 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ChevronDown, ChevronUp, X } from 'lucide-react';
-import { useAtlasStore } from '../store/useAtlasStore';
+import { useLavrayStore } from '../store/useLavrayStore';
 
 export const FindBar: React.FC = () => {
   const { findBarOpen, setFindBarOpen, activeTabId, agentPanelOpen, agentPanelWidth, verticalTabs } =
-    useAtlasStore();
+    useLavrayStore();
   const [query, setQuery] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -13,7 +13,7 @@ export const FindBar: React.FC = () => {
       inputRef.current?.focus();
       inputRef.current?.select();
     } else if (activeTabId) {
-      void window.atlas.stopFindInPage(activeTabId);
+      void window.lavray.stopFindInPage(activeTabId);
     }
   }, [findBarOpen, activeTabId]);
 
@@ -21,14 +21,14 @@ export const FindBar: React.FC = () => {
 
   const find = (forward: boolean, findNext: boolean) => {
     if (activeTabId && query) {
-      void window.atlas.findInPage(activeTabId, query, forward, findNext);
+      void window.lavray.findInPage(activeTabId, query, forward, findNext);
     }
   };
 
   return (
     <div
       style={{ right: agentPanelOpen ? agentPanelWidth + 16 : 16 }}
-      className={`atlas-glass fixed z-40 flex items-center gap-1 rounded-xl border border-atlas-border px-3 py-1.5 shadow-atlas-float ${
+      className={`lavray-glass fixed z-40 flex items-center gap-1 rounded-xl border border-lavray-border px-3 py-1.5 shadow-lavray-float ${
         verticalTabs ? 'top-14' : 'top-[90px]'
       }`}
     >
@@ -38,7 +38,7 @@ export const FindBar: React.FC = () => {
         onChange={(e) => {
           setQuery(e.target.value);
           if (activeTabId && e.target.value) {
-            void window.atlas.findInPage(activeTabId, e.target.value, true, false);
+            void window.lavray.findInPage(activeTabId, e.target.value, true, false);
           }
         }}
         onKeyDown={(e) => {
@@ -46,12 +46,12 @@ export const FindBar: React.FC = () => {
           if (e.key === 'Escape') setFindBarOpen(false);
         }}
         placeholder="Find in page..."
-        className="w-48 bg-transparent text-xs text-atlas-text placeholder:text-atlas-muted outline-none select-text"
+        className="w-48 bg-transparent text-xs text-lavray-text placeholder:text-lavray-muted outline-none select-text"
       />
       <button
         type="button"
         onClick={() => find(false, true)}
-        className="rounded-md p-1 text-atlas-muted hover:bg-atlas-shell hover:text-atlas-text"
+        className="rounded-md p-1 text-lavray-muted hover:bg-lavray-shell hover:text-lavray-text"
         aria-label="Previous match"
       >
         <ChevronUp className="h-3.5 w-3.5" />
@@ -59,7 +59,7 @@ export const FindBar: React.FC = () => {
       <button
         type="button"
         onClick={() => find(true, true)}
-        className="rounded-md p-1 text-atlas-muted hover:bg-atlas-shell hover:text-atlas-text"
+        className="rounded-md p-1 text-lavray-muted hover:bg-lavray-shell hover:text-lavray-text"
         aria-label="Next match"
       >
         <ChevronDown className="h-3.5 w-3.5" />
@@ -67,7 +67,7 @@ export const FindBar: React.FC = () => {
       <button
         type="button"
         onClick={() => setFindBarOpen(false)}
-        className="rounded-md p-1 text-atlas-muted hover:bg-atlas-shell hover:text-atlas-text"
+        className="rounded-md p-1 text-lavray-muted hover:bg-lavray-shell hover:text-lavray-text"
         aria-label="Close find bar"
       >
         <X className="h-3.5 w-3.5" />

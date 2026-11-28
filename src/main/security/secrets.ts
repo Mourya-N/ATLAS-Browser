@@ -19,7 +19,7 @@ export class SecretVault {
   private cache: SecretVaultData | null = null;
 
   constructor(userDataDir: string) {
-    this.vaultPath = path.join(userDataDir, 'atlas-secrets.enc');
+    this.vaultPath = path.join(userDataDir, 'lavray-secrets.enc');
   }
 
   private isSafeStorageAvailable(): boolean {
@@ -32,8 +32,8 @@ export class SecretVault {
 
   private getMachineKey(): Buffer {
     // Only used in headless/test environments when OS safeStorage is unavailable
-    const seed = `${process.env.USER || 'atlas'}:${this.vaultPath}:atlas-vault-v1`;
-    return scryptSync(seed, 'atlas-salt-v1', 32);
+    const seed = `${process.env.USER || 'lavray'}:${this.vaultPath}:lavray-vault-v1`;
+    return scryptSync(seed, 'lavray-salt-v1', 32);
   }
 
   private encryptPayload(plaintext: string): Buffer {
@@ -119,7 +119,7 @@ export class SecretVault {
   }
 
   public getCustomApiKey(): string | undefined {
-    return this.load().customApiKey || process.env.ATLAS_SELF_HOSTED_API_KEY || undefined;
+    return this.load().customApiKey || process.env.LAVRAY_SELF_HOSTED_API_KEY || undefined;
   }
 
   public clearCustomApiKey(): void {
@@ -131,7 +131,7 @@ export class SecretVault {
   public getOrCreateMcpToken(): string {
     const data = this.load();
     if (!data.mcpAuthToken) {
-      data.mcpAuthToken = `atlas_mcp_${randomBytes(24).toString('hex')}`;
+      data.mcpAuthToken = `lavray_mcp_${randomBytes(24).toString('hex')}`;
       this.save(data);
     }
     return data.mcpAuthToken;
@@ -139,7 +139,7 @@ export class SecretVault {
 
   public rotateMcpToken(): string {
     const data = this.load();
-    data.mcpAuthToken = `atlas_mcp_${randomBytes(24).toString('hex')}`;
+    data.mcpAuthToken = `lavray_mcp_${randomBytes(24).toString('hex')}`;
     this.save(data);
     return data.mcpAuthToken;
   }

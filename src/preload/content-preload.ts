@@ -12,7 +12,7 @@ function reportSelection() {
     if (!text) {
       if (lastSent !== '') {
         lastSent = '';
-        ipcRenderer.send('atlas:content:selection', { text: '', x: 0, y: 0 });
+        ipcRenderer.send('lavray:content:selection', { text: '', x: 0, y: 0 });
       }
       return;
     }
@@ -20,7 +20,7 @@ function reportSelection() {
     if (sel && sel.rangeCount > 0) {
       const rect = sel.getRangeAt(0).getBoundingClientRect();
       lastSent = text;
-      ipcRenderer.send('atlas:content:selection', {
+      ipcRenderer.send('lavray:content:selection', {
         text,
         x: Math.max(0, Math.round(rect.left + rect.width / 2)),
         y: Math.max(0, Math.round(rect.top))

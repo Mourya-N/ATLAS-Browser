@@ -178,7 +178,7 @@ export class JobScheduler {
           actor: 'job_scheduler',
           details: { jobId: job.id, skillId: skill.id }
         });
-        this.notify('Atlas Scheduler: Confirmation Needed', `Job "${job.name}" paused — sensitive action requires approval.`);
+        this.notify('LAVRAY Scheduler: Confirmation Needed', `Job "${job.name}" paused — sensitive action requires approval.`);
         return this.repo.saveScheduledJob(pausedJob);
       }
 
@@ -219,7 +219,7 @@ export class JobScheduler {
       });
 
       this.notify(
-        `Atlas Scheduler: ${job.name}`,
+        `LAVRAY Scheduler: ${job.name}`,
         exec.status === 'completed' ? 'Scheduled workflow completed successfully.' : `Failed: ${exec.error}`
       );
 

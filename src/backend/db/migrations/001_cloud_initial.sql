@@ -1,4 +1,4 @@
--- Atlas Cloud PostgreSQL Migration 001
+-- LAVRAY Cloud PostgreSQL Migration 001
 -- Safe transactional schema for Identity, Profiles, User Data, Hybrid Search Index, Jobs, and Audits
 
 CREATE TABLE IF NOT EXISTS schema_migrations (

@@ -4,57 +4,57 @@
 
 :root {
   color-scheme: light;
-  /* Light Theme (Primary): Warm Architectural Paper + Deep Atlas Teal */
-  --atlas-bg: 250 250 248;
-  --atlas-shell: 242 242 239;
-  --atlas-surface: 255 255 255;
-  --atlas-elevated: 235 235 231;
-  --atlas-hover: 226 226 221;
-  --atlas-border: 221 221 215;
-  --atlas-border-strong: 196 196 189;
-  --atlas-text: 24 24 27;
-  --atlas-secondary: 74 75 83;
-  --atlas-muted: 113 114 122;
-  --atlas-accent: 19 94 115;
-  --atlas-accent-fg: 255 255 255;
-  --atlas-danger: 185 45 45;
-  --atlas-warning: 180 105 14;
-  --atlas-success: 22 128 67;
+  /* Light Theme (Primary): Warm Architectural Paper + Deep LAVRAY Iris */
+  --lavray-bg: 250 250 248;
+  --lavray-shell: 242 242 240;
+  --lavray-surface: 255 255 255;
+  --lavray-elevated: 235 235 233;
+  --lavray-hover: 226 226 223;
+  --lavray-border: 221 221 217;
+  --lavray-border-strong: 196 196 191;
+  --lavray-text: 24 24 27;
+  --lavray-secondary: 74 75 83;
+  --lavray-muted: 113 114 122;
+  --lavray-accent: 82 67 194;
+  --lavray-accent-fg: 255 255 255;
+  --lavray-danger: 185 45 45;
+  --lavray-warning: 180 105 14;
+  --lavray-success: 22 128 67;
 
-  --atlas-glass: rgb(255 255 255 / 0.86);
-  --atlas-shadow-sm: 0 1px 2px 0 rgb(24 24 27 / 0.05);
-  --atlas-shadow-tab: 0 -1px 0 0 rgb(var(--atlas-border) / 0.4), 0 1px 2px 0 rgb(24 24 27 / 0.04);
-  --atlas-shadow-float: 0 10px 28px -6px rgb(24 24 27 / 0.12), 0 0 0 1px rgb(24 24 27 / 0.06);
+  --lavray-glass: rgb(255 255 255 / 0.86);
+  --lavray-shadow-sm: 0 1px 2px 0 rgb(24 24 27 / 0.05);
+  --lavray-shadow-tab: 0 -1px 0 0 rgb(var(--lavray-border) / 0.4), 0 1px 2px 0 rgb(24 24 27 / 0.04);
+  --lavray-shadow-float: 0 10px 28px -6px rgb(24 24 27 / 0.12), 0 0 0 1px rgb(24 24 27 / 0.06);
 
-  --atlas-topbar-h: 38px;
-  --atlas-nav-h: 44px;
-  --atlas-rail-w: 44px;
-  --atlas-agent-w: 372px;
+  --lavray-topbar-h: 38px;
+  --lavray-nav-h: 44px;
+  --lavray-rail-w: 44px;
+  --lavray-agent-w: 372px;
 }
 
 html.dark {
   color-scheme: dark;
-  /* Dark Theme Companion: Obsidian Ink + Luminous Atlas Teal */
-  --atlas-bg: 17 18 20;
-  --atlas-shell: 22 24 27;
-  --atlas-surface: 28 30 34;
-  --atlas-elevated: 38 41 47;
-  --atlas-hover: 47 51 59;
-  --atlas-border: 48 51 58;
-  --atlas-border-strong: 68 72 82;
-  --atlas-text: 238 239 242;
-  --atlas-secondary: 176 180 189;
-  --atlas-muted: 120 125 136;
-  --atlas-accent: 56 163 184;
-  --atlas-accent-fg: 12 18 22;
-  --atlas-danger: 229 83 83;
-  --atlas-warning: 229 159 54;
-  --atlas-success: 56 178 107;
+  /* Dark Theme Companion: Obsidian Ink + Luminous LAVRAY Lavender */
+  --lavray-bg: 15 16 22;
+  --lavray-shell: 21 22 29;
+  --lavray-surface: 27 29 37;
+  --lavray-elevated: 37 39 49;
+  --lavray-hover: 46 49 62;
+  --lavray-border: 47 50 61;
+  --lavray-border-strong: 68 72 86;
+  --lavray-text: 238 239 244;
+  --lavray-secondary: 176 180 192;
+  --lavray-muted: 122 126 140;
+  --lavray-accent: 155 140 255;
+  --lavray-accent-fg: 15 16 24;
+  --lavray-danger: 229 83 83;
+  --lavray-warning: 229 159 54;
+  --lavray-success: 56 178 107;
 
-  --atlas-glass: rgb(26 28 32 / 0.88);
-  --atlas-shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.22);
-  --atlas-shadow-tab: 0 1px 2px 0 rgb(0 0 0 / 0.25);
-  --atlas-shadow-float: 0 14px 32px -8px rgb(0 0 0 / 0.48), 0 0 0 1px rgb(255 255 255 / 0.06);
+  --lavray-glass: rgb(26 28 32 / 0.88);
+  --lavray-shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.22);
+  --lavray-shadow-tab: 0 1px 2px 0 rgb(0 0 0 / 0.25);
+  --lavray-shadow-float: 0 14px 32px -8px rgb(0 0 0 / 0.48), 0 0 0 1px rgb(255 255 255 / 0.06);
 }
 
 * {
@@ -69,7 +69,7 @@ a:focus:not(:focus-visible),
 
 button:focus-visible,
 [role='button']:focus-visible {
-  outline: 1.5px solid rgb(var(--atlas-accent) / 0.7);
+  outline: 1.5px solid rgb(var(--lavray-accent) / 0.7);
   outline-offset: 1px;
 }
 
@@ -84,15 +84,15 @@ body,
 }
 
 /* Selective Liquid Glass for floating popovers, palettes, and ephemeral controls */
-.atlas-glass {
-  background-color: var(--atlas-glass);
+.lavray-glass {
+  background-color: var(--lavray-glass);
   backdrop-filter: blur(14px) saturate(1.15);
   -webkit-backdrop-filter: blur(14px) saturate(1.15);
 }
 
 @supports not (backdrop-filter: blur(1px)) {
-  .atlas-glass {
-    background-color: rgb(var(--atlas-surface));
+  .lavray-glass {
+    background-color: rgb(var(--lavray-surface));
   }
 }
 
@@ -106,12 +106,12 @@ body,
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgb(var(--atlas-border-strong) / 0.75);
+  background: rgb(var(--lavray-border-strong) / 0.75);
   border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgb(var(--atlas-muted) / 0.75);
+  background: rgb(var(--lavray-muted) / 0.75);
 }
 
 .no-scrollbar::-webkit-scrollbar {
@@ -126,7 +126,7 @@ body,
   -webkit-app-region: no-drag;
 }
 
-@keyframes atlas-shimmer {
+@keyframes lavray-shimmer {
   0% {
     transform: translateX(-100%);
   }
@@ -135,12 +135,12 @@ body,
   }
 }
 
-.atlas-loading-bar {
-  animation: atlas-shimmer 1.15s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+.lavray-loading-bar {
+  animation: lavray-shimmer 1.15s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .atlas-loading-bar {
+  .lavray-loading-bar {
     animation: none;
     width: 100%;
     opacity: 0.45;

@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { useAtlasStore } from './store/useAtlasStore';
+import { useLavrayStore } from './store/useLavrayStore';
 import { TabBar } from './components/TabBar';
 import { AddressBar } from './components/AddressBar';
 import { SidebarRail } from './components/SidebarRail';
@@ -54,59 +54,59 @@ export const App: React.FC = () => {
     setTabSearchOpen,
     setAgentPanelOpen,
     pushToast
-  } = useAtlasStore();
+  } = useLavrayStore();
 
   // Bootstrap initial state and IPC event listeners
   useEffect(() => {
     void (async () => {
       const [tabData, convs, appSettings, adStats, dls, provStatus] = await Promise.all([
-        window.atlas.listTabs(),
-        window.atlas.listConversations(),
-        window.atlas.getSettings(),
-        window.atlas.getAdBlockStats(),
-        window.atlas.listDownloads(),
-        window.atlas.getProviderStatus()
+        window.lavray.listTabs(),
+        window.lavray.listConversations(),
+        window.lavray.getSettings(),
+        window.lavray.getAdBlockStats(),
+        window.lavray.listDownloads(),
+        window.lavray.getProviderStatus()
       ]);
 
       setTabsState(tabData);
       setSettings(appSettings);
       setProviderStatus(provStatus);
       setAdBlockStats(adStats);
-      useAtlasStore.getState().setDownloads(dls);
+      useLavrayStore.getState().setDownloads(dls);
       if (appSettings.proactiveAssistanceEnabled && tabData.activeTabId) {
-        void window.atlas.checkProactiveSuggestions(tabData.activeTabId).then(setProactiveSuggestions);
+        void window.lavray.checkProactiveSuggestions(tabData.activeTabId).then(setProactiveSuggestions);
       }
 
       setConversations(convs);
       if (convs[0]) {
         setActiveConversationId(convs[0].id);
-        const msgs = await window.atlas.getMessages(convs[0].id);
+        const msgs = await window.lavray.getMessages(convs[0].id);
         setMessages(msgs);
       }
     })();
 
-    const unsubTabs = window.atlas.onTabsChanged((data) => {
+    const unsubTabs = window.lavray.onTabsChanged((data) => {
       setTabsState(data);
     });
 
-    const unsubDownloads = window.atlas.onDownloadUpdated((item) => {
+    const unsubDownloads = window.lavray.onDownloadUpdated((item) => {
       upsertDownload(item);
     });
 
-    const unsubConfirm = window.atlas.onConfirmationRequest((req) => {
+    const unsubConfirm = window.lavray.onConfirmationRequest((req) => {
       pushConfirmation(req);
     });
 
-    const unsubHitl = window.atlas.onHitlPause((pause) => {
+    const unsubHitl = window.lavray.onHitlPause((pause) => {
       setHitlPause(pause);
     });
 
-    const unsubSelection = window.atlas.onContentSelection((data) => {
+    const unsubSelection = window.lavray.onContentSelection((data) => {
       setSelectionOverlay(data.text ? data : null);
     });
 
-    const unsubContextAction = window.atlas.onContentContextAction(async (data) => {
-      const state = useAtlasStore.getState();
+    const unsubContextAction = window.lavray.onContentContextAction(async (data) => {
+      const state = useLavrayStore.getState();
       if (!state.activeConversationId) return;
       setAgentPanelOpen(true);
       const goalMap: Record<string, string> = {
@@ -116,7 +116,7 @@ export const App: React.FC = () => {
         translate_selection: `Translate this selected text clearly:\n\n"${data.selectedText || ''}"`,
         extract_info: '/extract'
       };
-      await window.atlas.startAgentRun({
+      await window.lavray.startAgentRun({
         conversationId: state.activeConversationId,
         tabId: data.tabId,
         goal: goalMap[data.action] || 'Analyze this page.',
@@ -125,18 +125,18 @@ export const App: React.FC = () => {
       });
     });
 
-    const unsubAgent = window.atlas.onAgentEvent((ev) => {
+    const unsubAgent = window.lavray.onAgentEvent((ev) => {
       if (ev.type === 'run_updated') {
         setActiveRun(ev.run);
         if (['completed', 'failed', 'cancelled', 'budget_exceeded'].includes(ev.run.status)) {
           clearStreamBuffer();
-          const cid = useAtlasStore.getState().activeConversationId;
+          const cid = useLavrayStore.getState().activeConversationId;
           if (cid) {
-            void window.atlas.getMessages(cid).then(setMessages);
+            void window.lavray.getMessages(cid).then(setMessages);
           }
         }
       } else if (ev.type === 'step_added') {
-        const cur = useAtlasStore.getState().activeRun;
+        const cur = useLavrayStore.getState().activeRun;
         if (cur && cur.id === ev.runId) {
           const exists = cur.steps.some((s) => s.id === ev.step.id);
           if (!exists) {
@@ -185,14 +185,14 @@ export const App: React.FC = () => {
     return undefined;
   }, [settings?.theme]);
 
-  // Keep provider status fresh whenever provider or model settings change
+  // Keep provider status fresh whenever self-hosted model settings change
   useEffect(() => {
-    void window.atlas.getProviderStatus().then(setProviderStatus);
-  }, [settings?.defaultProvider, settings?.defaultModel, settings?.selfHostedModel, settings?.hasGeminiApiKey]);
+    void window.lavray.getProviderStatus().then(setProviderStatus);
+  }, [settings?.selfHostedModel, settings?.selfHostedEndpointUrl, settings?.defaultModel]);
 
   const activeTab = tabs.find((t) => t.id === activeTabId) ?? null;
   const isNewTab = Boolean(
-    activeTab && (activeTab.url === 'atlas://newtab' || activeTab.url === 'about:blank')
+    activeTab && (activeTab.url === 'lavray://newtab' || activeTab.url === 'about:blank')
   );
 
   // Sync Electron WebContentsView insets whenever UI panels change
@@ -200,7 +200,7 @@ export const App: React.FC = () => {
     const topInset = (verticalTabs ? 44 : 82) + (hitlPause ? 40 : 0);
     const leftInset = (sidebarOpen ? 44 : 0) + (verticalTabs ? 224 : 0);
     const rightInset = agentPanelOpen ? agentPanelWidth : 0;
-    void window.atlas.setLayout({
+    void window.lavray.setLayout({
       topInset,
       leftInset,
       rightInset,
@@ -215,21 +215,21 @@ export const App: React.FC = () => {
       const key = e.key.toLowerCase();
       if (mod && key === 'b') {
         e.preventDefault();
-        setSidebarOpen(!useAtlasStore.getState().sidebarOpen);
+        setSidebarOpen(!useLavrayStore.getState().sidebarOpen);
       } else if (mod && key === 't' && !e.shiftKey) {
         e.preventDefault();
-        void window.atlas.createTab({ url: 'atlas://newtab', activate: true });
+        void window.lavray.createTab({ url: 'lavray://newtab', activate: true });
       } else if (mod && e.shiftKey && key === 't') {
         e.preventDefault();
-        void window.atlas.restoreClosedTab();
+        void window.lavray.restoreClosedTab();
       } else if (mod && key === 'w') {
         e.preventDefault();
-        const tid = useAtlasStore.getState().activeTabId;
-        if (tid) void window.atlas.closeTab(tid);
+        const tid = useLavrayStore.getState().activeTabId;
+        if (tid) void window.lavray.closeTab(tid);
       } else if (mod && key === 'r') {
         e.preventDefault();
-        const tid = useAtlasStore.getState().activeTabId;
-        if (tid) void window.atlas.reload(tid);
+        const tid = useLavrayStore.getState().activeTabId;
+        if (tid) void window.lavray.reload(tid);
       } else if (mod && key === 'f') {
         e.preventDefault();
         setFindBarOpen(true);
@@ -238,7 +238,7 @@ export const App: React.FC = () => {
         setTabSearchOpen(true);
       } else if (mod && e.shiftKey && key === 'n') {
         e.preventDefault();
-        void window.atlas.newPrivateWindow();
+        void window.lavray.newPrivateWindow();
       } else if (e.key === 'Escape') {
         setFindBarOpen(false);
         setTabSearchOpen(false);
@@ -287,7 +287,7 @@ export const App: React.FC = () => {
   };
 
   return (
-    <div className="flex h-screen w-screen flex-col bg-atlas-bg text-atlas-text overflow-hidden">
+    <div className="flex h-screen w-screen flex-col bg-lavray-bg text-lavray-text overflow-hidden">
       {!verticalTabs && <TabBar vertical={false} />}
       <AddressBar />
       <HitlBanner />
@@ -296,13 +296,13 @@ export const App: React.FC = () => {
         <SidebarRail />
         {verticalTabs && <TabBar vertical={true} />}
 
-        <main className="relative flex-1 min-w-0 bg-atlas-bg">
+        <main className="relative flex-1 min-w-0 bg-lavray-bg">
           {activeOverlayView ? (
             <div className="absolute inset-0 z-20">{renderOverlay()}</div>
           ) : isNewTab ? (
             <NewTabView />
           ) : (
-            <div className="flex h-full items-center justify-center text-xs text-atlas-muted">
+            <div className="flex h-full items-center justify-center text-xs text-lavray-muted">
               Loading page...
             </div>
           )}
@@ -323,14 +323,14 @@ export const App: React.FC = () => {
             <div
               key={t.id}
               onClick={() => dismissToast(t.id)}
-              className={`atlas-glass cursor-pointer rounded-xl border px-3.5 py-2 text-xs font-medium shadow-atlas-float transition-opacity ${
+              className={`lavray-glass cursor-pointer rounded-xl border px-3.5 py-2 text-xs font-medium shadow-lavray-float transition-opacity ${
                 t.tone === 'danger'
-                  ? 'border-atlas-danger/40 text-atlas-danger'
+                  ? 'border-lavray-danger/40 text-lavray-danger'
                   : t.tone === 'warning'
-                  ? 'border-atlas-warning/40 text-atlas-warning'
+                  ? 'border-lavray-warning/40 text-lavray-warning'
                   : t.tone === 'success'
-                  ? 'border-atlas-success/40 text-atlas-success'
-                  : 'border-atlas-border text-atlas-text'
+                  ? 'border-lavray-success/40 text-lavray-success'
+                  : 'border-lavray-border text-lavray-text'
               }`}
             >
               {t.title}

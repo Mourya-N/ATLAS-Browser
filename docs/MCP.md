@@ -15,7 +15,7 @@ Implemented in `src/main/mcp/mcp-server.ts`.
 
 ```bash
 curl -X POST http://127.0.0.1:47291/mcp \
-  -H "Authorization: Bearer <YOUR_ATLAS_MCP_TOKEN>" \
+  -H "Authorization: Bearer <YOUR_LAVRAY_MCP_TOKEN>" \
   -H "Content-Type: application/json" \
   -d '{"id":1,"method":"tools/call","params":{"name":"list_tabs","arguments":{}}}'
 ```

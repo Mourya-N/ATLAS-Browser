@@ -56,7 +56,7 @@ export class UserDataService {
     isPrivate?: boolean;
   }): Promise<CloudBookmarkRecord> {
     if (params.isPrivate) {
-      throw new Error('Private browsing items cannot be uploaded to Atlas Cloud');
+      throw new Error('Private browsing items cannot be uploaded to LAVRAY Cloud');
     }
     await this.requireConsent(params.userId, params.profileId, 'syncBookmarks');
     const now = Date.now();
@@ -104,7 +104,7 @@ export class UserDataService {
     isPrivate?: boolean;
   }): Promise<CloudNoteRecord> {
     if (params.isPrivate) {
-      throw new Error('Private browsing notes cannot be uploaded to Atlas Cloud');
+      throw new Error('Private browsing notes cannot be uploaded to LAVRAY Cloud');
     }
     await this.requireConsent(params.userId, params.profileId, 'syncNotes');
     if (containsSensitiveText(`${params.title}\n${params.content}`)) {
@@ -183,7 +183,7 @@ export class UserDataService {
     isPrivate?: boolean;
   }): Promise<ResearchReport> {
     if (params.isPrivate) {
-      throw new Error('Private research cannot be persisted to Atlas Cloud');
+      throw new Error('Private research cannot be persisted to LAVRAY Cloud');
     }
     await this.requireConsent(params.userId, params.profileId, 'syncResearch');
     await this.repo.saveResearchReport(params.userId, params.profileId, params.report);
@@ -224,11 +224,11 @@ export class UserDataService {
     isPrivate?: boolean;
   }): Promise<void> {
     if (params.isPrivate) {
-      throw new Error('Private session memory cannot be synced to Atlas Cloud');
+      throw new Error('Private session memory cannot be synced to LAVRAY Cloud');
     }
     await this.requireConsent(params.userId, params.profileId, 'syncMemory');
     if (!params.item.userApproved) {
-      throw new Error('Only user-approved memory items may sync to Atlas Cloud');
+      throw new Error('Only user-approved memory items may sync to LAVRAY Cloud');
     }
     if (containsSensitiveText(`${params.item.title}\n${params.item.content}`)) {
       throw new Error('Refusing to upload sensitive secret data to cloud memory');

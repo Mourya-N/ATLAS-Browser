@@ -1,9 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ShieldAlert } from 'lucide-react';
-import { useAtlasStore } from '../store/useAtlasStore';
+import { useLavrayStore } from '../store/useLavrayStore';
 
 export const ConfirmationDialog: React.FC = () => {
-  const { confirmationQueue, shiftConfirmation } = useAtlasStore();
+  const { confirmationQueue, shiftConfirmation } = useLavrayStore();
   const current = confirmationQueue[0] ?? null;
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [rememberDomain, setRememberDomain] = useState(false);
@@ -22,7 +22,7 @@ export const ConfirmationDialog: React.FC = () => {
   if (!current) return null;
 
   const respond = async (approved: boolean) => {
-    await window.atlas.respondConfirmation({
+    await window.lavray.respondConfirmation({
       requestId: current.id,
       approved,
       rememberForDomain: approved && rememberDomain && current.tier !== 'sensitive',
@@ -38,15 +38,15 @@ export const ConfirmationDialog: React.FC = () => {
         e.preventDefault();
         void respond(false);
       }}
-      className="atlas-glass w-full max-w-lg rounded-xl border border-atlas-border p-0 text-atlas-text shadow-atlas-float backdrop:bg-black/25"
+      className="lavray-glass w-full max-w-lg rounded-xl border border-lavray-border p-0 text-lavray-text shadow-lavray-float backdrop:bg-black/25"
     >
-      <div className="flex items-center gap-3 border-b border-atlas-border px-5 py-3.5">
-        <ShieldAlert className="h-5 w-5 text-atlas-warning shrink-0" strokeWidth={1.75} />
+      <div className="flex items-center gap-3 border-b border-lavray-border px-5 py-3.5">
+        <ShieldAlert className="h-5 w-5 text-lavray-warning shrink-0" strokeWidth={1.75} />
         <div>
           <h2 className="text-[13.5px] font-semibold">Action Confirmation Required</h2>
-          <p className="text-[11.5px] text-atlas-muted">
+          <p className="text-[11.5px] text-lavray-muted">
             Permission Tier:{' '}
-            <span className="font-semibold uppercase text-atlas-warning">{current.tier}</span>
+            <span className="font-semibold uppercase text-lavray-warning">{current.tier}</span>
           </p>
         </div>
       </div>
@@ -59,38 +59,38 @@ export const ConfirmationDialog: React.FC = () => {
         <InfoRow label="Data" value={current.submittedDataSummary} />
         <InfoRow label="Consequence" value={current.expectedConsequence} />
 
-        <div className="flex items-center justify-between border-t border-atlas-border pt-2.5">
-          <span className="text-atlas-muted font-medium">Reversible</span>
-          <span className={`font-semibold ${current.reversible ? 'text-atlas-success' : 'text-atlas-danger'}`}>
+        <div className="flex items-center justify-between border-t border-lavray-border pt-2.5">
+          <span className="text-lavray-muted font-medium">Reversible</span>
+          <span className={`font-semibold ${current.reversible ? 'text-lavray-success' : 'text-lavray-danger'}`}>
             {current.reversible ? 'Yes' : 'No — High impact'}
           </span>
         </div>
 
         {current.tier !== 'sensitive' && (
-          <label className="flex items-center gap-2 pt-1 text-xs text-atlas-secondary cursor-pointer">
+          <label className="flex items-center gap-2 pt-1 text-xs text-lavray-secondary cursor-pointer">
             <input
               type="checkbox"
               checked={rememberDomain}
               onChange={(e) => setRememberDomain(e.target.checked)}
-              className="rounded border-atlas-border accent-atlas-accent"
+              className="rounded border-lavray-border accent-lavray-accent"
             />
             Allow non-sensitive interactions on {current.domain}
           </label>
         )}
       </div>
 
-      <div className="flex items-center justify-end gap-2 border-t border-atlas-border px-5 py-3 bg-atlas-shell/50">
+      <div className="flex items-center justify-end gap-2 border-t border-lavray-border px-5 py-3 bg-lavray-shell/50">
         <button
           type="button"
           onClick={() => void respond(false)}
-          className="rounded-lg border border-atlas-border bg-atlas-surface px-3.5 py-1.5 text-xs font-medium text-atlas-text hover:bg-atlas-shell transition-colors"
+          className="rounded-lg border border-lavray-border bg-lavray-surface px-3.5 py-1.5 text-xs font-medium text-lavray-text hover:bg-lavray-shell transition-colors"
         >
           Reject
         </button>
         <button
           type="button"
           onClick={() => void respond(true)}
-          className="rounded-lg bg-atlas-accent px-3.5 py-1.5 text-xs font-medium text-atlas-accent-fg hover:opacity-90 transition-opacity"
+          className="rounded-lg bg-lavray-accent px-3.5 py-1.5 text-xs font-medium text-lavray-accent-fg hover:opacity-90 transition-opacity"
         >
           Approve & Continue
         </button>
@@ -100,9 +100,9 @@ export const ConfirmationDialog: React.FC = () => {
 };
 
 const InfoRow: React.FC<{ label: string; value: string; mono?: boolean }> = ({ label, value, mono }) => (
-  <div className="grid grid-cols-4 gap-2 py-1 border-b border-atlas-border/50 last:border-b-0">
-    <div className="text-[11px] font-medium text-atlas-muted">{label}</div>
-    <div className={`col-span-3 break-all text-atlas-text ${mono ? 'font-mono text-[11px]' : ''}`}>
+  <div className="grid grid-cols-4 gap-2 py-1 border-b border-lavray-border/50 last:border-b-0">
+    <div className="text-[11px] font-medium text-lavray-muted">{label}</div>
+    <div className={`col-span-3 break-all text-lavray-text ${mono ? 'font-mono text-[11px]' : ''}`}>
       {value}
     </div>
   </div>

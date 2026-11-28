@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Atlas AI — Multi-Document Real-World Live Evaluation (NO fixtures, NO Gemini)
+ * HAYA AI — Multi-Document Real-World Live Evaluation (NO fixtures, NO Gemini)
  *
  * Crawls 3 real public documentation pages across 3 domains into PostgreSQL,
  * runs 5 evaluation queries (explicit detail, second domain, multi-doc, absent,
@@ -60,7 +60,7 @@ const EVAL_CASES = [
 ];
 
 async function main() {
-  console.log('=== ATLAS AI MULTI-DOCUMENT LIVE EVALUATION ===\n');
+  console.log('=== HAYA AI (HAYAGRIVA) MULTI-DOCUMENT LIVE EVALUATION ===\n');
 
   const healthRes = await fetch(`${API}/health`);
   assert.ok(healthRes.ok, 'Backend /health failed');

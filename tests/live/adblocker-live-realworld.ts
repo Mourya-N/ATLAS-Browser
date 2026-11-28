@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { AtlasDatabase } from '@main/db/database';
+import { LavrayDatabase } from '@main/db/database';
 import { BrowserRepository } from '@main/db/repositories/browser-repo';
 import { PlatformRepository } from '@main/db/repositories/platform-repo';
 import { AdBlocker } from '@main/browser/ad-blocker';
@@ -12,7 +12,7 @@ import { PrivateSessionManager } from '@main/browser/private-session';
 import { SessionRestoreService } from '@main/browser/session-restore';
 import { TabManager, resolveContentPreloadPath } from '@main/browser/tab-manager';
 
-const tempUserData = fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-adblock-live-'));
+const tempUserData = fs.mkdtempSync(path.join(os.tmpdir(), 'lavray-adblock-live-'));
 app.setPath('userData', tempUserData);
 
 function mb(bytes: number): string {
@@ -22,7 +22,7 @@ function mb(bytes: number): string {
 app.whenReady().then(async () => {
   console.log('=== LIVE AD BLOCKER: UPSTREAM FILTER LISTS, MEMORY, BENCHMARK & REAL WEBSITES ===\n');
 
-  const db = new AtlasDatabase(path.join(tempUserData, 'atlas.db'));
+  const db = new LavrayDatabase(path.join(tempUserData, 'lavray.db'));
   const browserRepo = new BrowserRepository(db.db);
   const platformRepo = new PlatformRepository(db.db);
   const adBlocker = new AdBlocker(platformRepo);
@@ -187,7 +187,7 @@ app.whenReady().then(async () => {
   });
   assert.equal(savedItem.status, 'reading');
   db.close();
-  const db2 = new AtlasDatabase(path.join(tempUserData, 'atlas.db'));
+  const db2 = new LavrayDatabase(path.join(tempUserData, 'lavray.db'));
   const browserRepo2 = new BrowserRepository(db2.db);
   const reloadedList = browserRepo2.listReadingList();
   assert.equal(reloadedList.length, 1);

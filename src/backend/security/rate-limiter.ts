@@ -15,7 +15,7 @@ export class RateLimiter {
   public async consume(key: string, limit: number, windowMs = 60_000): Promise<RateLimitResult> {
     const now = Date.now();
     if (this.redis && this.redis.status === 'ready') {
-      const redisKey = `atlas:rl:${key}:${Math.floor(now / windowMs)}`;
+      const redisKey = `lavray:rl:${key}:${Math.floor(now / windowMs)}`;
       const count = await this.redis.incr(redisKey);
       if (count === 1) {
         await this.redis.pexpire(redisKey, windowMs);

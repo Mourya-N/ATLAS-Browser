@@ -6,7 +6,7 @@ export class PrivateSessionManager {
   private sessions = new Map<string, Electron.Session>();
 
   public createEphemeralSession(adBlocker?: AdBlocker): { partitionId: string; sess: Electron.Session } {
-    const partitionId = `atlas-private-${randomUUID()}`;
+    const partitionId = `lavray-private-${randomUUID()}`;
     // Partition WITHOUT `persist:` prefix is strictly in-memory & isolated
     const sess = session.fromPartition(partitionId, { cache: false });
     sess.setPermissionRequestHandler((_wc, _permission, callback) => {

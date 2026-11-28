@@ -66,7 +66,7 @@ export function signJwt(
   const exp = nowSec + ttlSeconds;
   const fullClaims: JwtClaims = {
     ...payload,
-    iss: 'atlas-cloud',
+    iss: 'lavray-cloud',
     iat: nowSec,
     exp
   };
@@ -99,7 +99,7 @@ export function verifyJwt(token: string, secret: string): JwtClaims | null {
     if (header.alg !== 'HS256' || header.typ !== 'JWT') return null;
     const claims = JSON.parse(base64UrlDecode(payloadSeg)) as JwtClaims;
     const nowSec = Math.floor(Date.now() / 1000);
-    if (!claims.sub || !claims.exp || claims.exp <= nowSec || claims.iss !== 'atlas-cloud') {
+    if (!claims.sub || !claims.exp || claims.exp <= nowSec || claims.iss !== 'lavray-cloud') {
       return null;
     }
     return claims;
@@ -109,7 +109,7 @@ export function verifyJwt(token: string, secret: string): JwtClaims | null {
 }
 
 export function generateRefreshToken(): string {
-  return `atlas_rt_${randomBytes(32).toString('hex')}`;
+  return `lavray_rt_${randomBytes(32).toString('hex')}`;
 }
 
 export function hashToken(rawToken: string): string {

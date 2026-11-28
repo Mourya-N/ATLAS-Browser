@@ -5,7 +5,7 @@ import type {
   AgentMode,
   AgentRun,
   AppSettings,
-  AtlasIndexStats,
+  LavrayIndexStats,
   AuditEvent,
   BookmarkEntry,
   BookmarkFolder,
@@ -49,7 +49,7 @@ import type {
   TaskCheckpoint
 } from '@shared/types';
 
-export interface AtlasBridge {
+export interface LavrayBridge {
   listTabs: () => Promise<{ tabs: TabInfo[]; activeTabId: string | null; groups: TabGroup[]; isPrivate: boolean }>;
   createTab: (opts?: { url?: string; activate?: boolean; groupId?: string | null }) => Promise<TabInfo>;
   closeTab: (tabId: string) => Promise<boolean>;
@@ -251,7 +251,7 @@ export interface AtlasBridge {
   ) => Promise<ResearchReport>;
   listSearchHistory: () => Promise<CloudSearchHistoryRecord[]>;
   clearSearchHistory: () => Promise<boolean>;
-  getIndexStats: () => Promise<AtlasIndexStats>;
+  getIndexStats: () => Promise<LavrayIndexStats>;
   crawlIndexSeeds: (config: CrawlSeedConfig) => Promise<CrawlCheckpoint>;
   getCloudStatus: () => Promise<CloudConnectionStatus>;
   cloudRegister: (payload: {
@@ -281,6 +281,6 @@ export interface AtlasBridge {
 
 declare global {
   interface Window {
-    atlas: AtlasBridge;
+    lavray: LavrayBridge;
   }
 }

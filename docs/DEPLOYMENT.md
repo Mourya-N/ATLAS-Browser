@@ -1,6 +1,6 @@
 # Build & Deployment Guide
 
-Atlas Browser uses `esbuild` (main & preload scripts), `vite` (React renderer), and `electron-builder` (desktop installers).
+LAVRAY Browser uses `esbuild` (main & preload scripts), `vite` (React renderer), and `electron-builder` (desktop installers).
 
 ## Build Commands
 
@@ -33,7 +33,7 @@ npm run dist
 
 ## Logging, Crash Reporting & Updates
 
-- **Logs**: Redacted rotating logs stored locally in `userData/logs/atlas.log` (2 MB rotation).
+- **Logs**: Redacted rotating logs stored locally in `userData/logs/lavray.log` (2 MB rotation).
 - **Crash Reporting**: Electron `crashReporter` is initialized with `uploadToServer: false` (local dumps only; telemetry disabled by default).
 - **Update Strategy**: Configured for manual/signed release updates via GitHub Releases (`electron-updater` can be enabled once Developer ID signing credentials are provisioned).
 

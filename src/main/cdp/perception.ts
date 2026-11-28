@@ -53,7 +53,7 @@ export class PerceptionEngine {
       try {
         screenshotBase64 = await this.cdp.captureScreenshot(tabId, webContents);
         somTargets = raw.interactiveElements.slice(0, 60).map((el, idx) => ({
-          atlasId: el.atlasId,
+          lavrayId: el.lavrayId,
           label: idx + 1,
           box: el.boundingBox
         }));
@@ -89,7 +89,7 @@ export class PerceptionEngine {
 
   private async captureDomSnapshot(tabId: string, webContents: WebContents): Promise<RawPageSnapshot> {
     const script = `(() => {
-      if (!window.__atlasNextId) window.__atlasNextId = 1;
+      if (!window.__lavrayNextId) window.__lavrayNextId = 1;
       const interactive = [];
       const hiddenTexts = [];
       const comments = [];
@@ -158,10 +158,10 @@ export class PerceptionEngine {
 
           if (isInteractiveTag(el) && interactive.length < 150) {
             const visible = rect.width > 0 && rect.height > 0 && !isHidden;
-            let atlasId = el.getAttribute('data-atlas-id');
-            if (!atlasId) {
-              atlasId = 'el_' + (window.__atlasNextId++);
-              el.setAttribute('data-atlas-id', atlasId);
+            let lavrayId = el.getAttribute('data-lavray-id');
+            if (!lavrayId) {
+              lavrayId = 'el_' + (window.__lavrayNextId++);
+              el.setAttribute('data-lavray-id', lavrayId);
             }
             const attrs = {};
             for (const attr of ['id', 'name', 'type', 'placeholder', 'aria-label', 'role', 'href', 'value']) {
@@ -169,7 +169,7 @@ export class PerceptionEngine {
               if (v !== null && v !== '') attrs[attr] = attr === 'type' || el.type !== 'password' ? String(v).slice(0, 120) : '[MASKED]';
             }
             interactive.push({
-              atlasId,
+              lavrayId,
               tag: el.tagName.toLowerCase(),
               role: el.getAttribute('role') || el.tagName.toLowerCase(),
               type: el.getAttribute('type') || undefined,

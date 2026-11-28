@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach } from 'vitest';
-import { AtlasDatabase } from '@main/db/database';
+import { LavrayDatabase } from '@main/db/database';
 import { BrowserRepository } from '@main/db/repositories/browser-repo';
 import { PlatformRepository } from '@main/db/repositories/platform-repo';
 import { AuditLogger } from '@main/security/audit-logger';
@@ -16,13 +16,13 @@ import { getOmniboxSuggestions, getSecurityState, resolveNavigationInput } from 
 import type { AgentRun } from '@shared/types';
 
 describe('Platform & Browser Services', () => {
-  let db: AtlasDatabase;
+  let db: LavrayDatabase;
   let browserRepo: BrowserRepository;
   let platformRepo: PlatformRepository;
   let audit: AuditLogger;
 
   beforeEach(() => {
-    db = new AtlasDatabase(':memory:');
+    db = new LavrayDatabase(':memory:');
     browserRepo = new BrowserRepository(db.db);
     platformRepo = new PlatformRepository(db.db);
     audit = new AuditLogger(platformRepo);
@@ -123,8 +123,8 @@ describe('Platform & Browser Services', () => {
     expect(imported.id).not.toBe(recorded.id);
     expect(imported.steps).toHaveLength(1);
 
-    expect(interpolateSkillArgs({ url: 'https://{{host}}/docs' }, { host: 'atlas.dev' })).toEqual({
-      url: 'https://atlas.dev/docs'
+    expect(interpolateSkillArgs({ url: 'https://{{host}}/docs' }, { host: 'lavray.dev' })).toEqual({
+      url: 'https://lavray.dev/docs'
     });
 
     const gate = new PermissionGate(platformRepo, audit, new KillSwitch());
@@ -205,13 +205,13 @@ describe('Platform & Browser Services', () => {
   });
 
   it('extracts readable articles and resolves navigation/omnibox queries', () => {
-    const html = `<!doctype html><html><head><title>Atlas Architecture</title><meta name="author" content="Jane Doe"></head><body><nav>Menu Home</nav><article><h1>Atlas Architecture</h1><p>${'Atlas Browser integrates deterministic perception with verifiable agent execution. '.repeat(12)}</p></article></body></html>`;
-    const article = extractReadableArticle(html, 'https://atlas.dev/arch');
+    const html = `<!doctype html><html><head><title>LAVRAY Architecture</title><meta name="author" content="Jane Doe"></head><body><nav>Menu Home</nav><article><h1>LAVRAY Architecture</h1><p>${'LAVRAY Browser integrates deterministic perception with verifiable agent execution. '.repeat(12)}</p></article></body></html>`;
+    const article = extractReadableArticle(html, 'https://lavray.dev/arch');
     expect(article).not.toBeNull();
-    expect(article?.title).toContain('Atlas Architecture');
+    expect(article?.title).toContain('LAVRAY Architecture');
     expect(article?.textContent).toContain('deterministic perception');
 
-    expect(resolveNavigationInput('github.com/atlas', 'google')).toBe('https://github.com/atlas');
+    expect(resolveNavigationInput('github.com/lavray', 'google')).toBe('https://github.com/lavray');
     expect(resolveNavigationInput('localhost:3000', 'google')).toBe('http://localhost:3000');
     expect(resolveNavigationInput('spring boot security', 'duckduckgo')).toBe(
       'https://duckduckgo.com/?q=spring%20boot%20security'

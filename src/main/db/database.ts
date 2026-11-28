@@ -2,7 +2,7 @@ import Database from 'better-sqlite3';
 import fs from 'node:fs';
 import path from 'node:path';
 
-export class AtlasDatabase {
+export class LavrayDatabase {
   public readonly db: Database.Database;
 
   constructor(dbPath: string, migrationsDir?: string) {

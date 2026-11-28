@@ -1,8 +1,8 @@
-# Atlas Browser
+# LAVRAY Browser
 
 > **"Browse normally. Delegate intelligently. Stay in control."**
 
-Atlas Browser is an AI-native desktop web browser built with Electron (`WebContentsView`), TypeScript (strict), React, Tailwind CSS, Zustand, SQLite (`better-sqlite3`), and Chrome DevTools Protocol (`webContents.debugger`).
+LAVRAY Browser is an AI-native desktop web browser built with Electron (`WebContentsView`), TypeScript (strict), React, Tailwind CSS, Zustand, SQLite (`better-sqlite3`), and Chrome DevTools Protocol (`webContents.debugger`).
 
 ---
 
@@ -47,9 +47,9 @@ npm start
 
 ## API Key Configuration
 
-1. Open **Menu → Settings** inside Atlas Browser (or set `GEMINI_API_KEY` in the environment for CLI/development).
+1. Open **Menu → Settings** inside LAVRAY Browser (or set `GEMINI_API_KEY` in the environment for CLI/development).
 2. Enter your Gemini API key under **AI Provider & Encrypted Key Storage**.
-3. Atlas encrypts the key using Electron `safeStorage` (`atlas-secrets.enc` in `userData`) and never writes it to `localStorage`, cookies, logs, or plaintext config.
+3. LAVRAY encrypts the key using Electron `safeStorage` (`lavray-secrets.enc` in `userData`) and never writes it to `localStorage`, cookies, logs, or plaintext config.
 
 ## Testing & Packaging
 

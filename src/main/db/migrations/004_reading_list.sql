@@ -1,4 +1,4 @@
--- Atlas Browser Schema Migration 004: Local Reading List Persistence
+-- LAVRAY Browser Schema Migration 004: Local Reading List Persistence
 
 CREATE TABLE IF NOT EXISTS reading_list (
   id TEXT PRIMARY KEY,

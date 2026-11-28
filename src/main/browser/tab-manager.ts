@@ -34,7 +34,7 @@ const ALLOWED_PROTOCOLS = new Set(['http:', 'https:', 'about:', 'data:', 'file:'
 
 export function isAllowedNavigationUrl(url: string): boolean {
   if (!url) return false;
-  if (url === 'about:blank' || url.startsWith('atlas://')) return true;
+  if (url === 'about:blank' || url.startsWith('lavray://')) return true;
   try {
     const parsed = new URL(url);
     return ALLOWED_PROTOCOLS.has(parsed.protocol);
@@ -176,10 +176,10 @@ export class TabManager {
     if (!winMeta) throw new Error(`Window ${windowId} not registered`);
 
     const id = options.id ?? randomUUID();
-    const homeUrl = this.platformRepo.getSetting<string>('browser.homeUrl', 'atlas://newtab');
+    const homeUrl = this.platformRepo.getSetting<string>('browser.homeUrl', 'lavray://newtab');
     const searchEngine = this.platformRepo.getSetting<SearchEngineId>('browser.searchEngine', 'google');
     const targetUrl = options.url ? resolveNavigationInput(options.url, searchEngine) : homeUrl;
-    const isInternalNewTab = targetUrl === 'atlas://newtab';
+    const isInternalNewTab = targetUrl === 'lavray://newtab';
 
     const tabSession = winMeta.isPrivate && winMeta.partitionId
       ? session.fromPartition(winMeta.partitionId, { cache: false })
@@ -261,7 +261,7 @@ export class TabManager {
       info.canGoBack = wc.navigationHistory?.canGoBack() ?? wc.canGoBack();
       info.canGoForward = wc.navigationHistory?.canGoForward() ?? wc.canGoForward();
       const rawUrl = wc.getURL();
-      if (rawUrl === 'about:blank' && info.url === 'atlas://newtab') {
+      if (rawUrl === 'about:blank' && info.url === 'lavray://newtab') {
         info.title = 'New Tab';
         info.securityState = 'internal';
       } else {
@@ -309,29 +309,29 @@ export class TabManager {
     });
 
     wc.on('did-navigate', (_ev, url) => {
-      if (!(url === 'about:blank' && info.url === 'atlas://newtab')) {
+      if (!(url === 'about:blank' && info.url === 'lavray://newtab')) {
         info.url = url;
       }
       syncNavFlags();
-      if (!info.isPrivate && !url.startsWith('data:') && url !== 'about:blank' && !url.startsWith('atlas://')) {
+      if (!info.isPrivate && !url.startsWith('data:') && url !== 'about:blank' && !url.startsWith('lavray://')) {
         this.browserRepo.recordVisit(url, info.title, info.favicon);
       }
       this.emitState(info.windowId);
     });
 
     wc.on('did-navigate-in-page', (_ev, url) => {
-      if (!(url === 'about:blank' && info.url === 'atlas://newtab')) {
+      if (!(url === 'about:blank' && info.url === 'lavray://newtab')) {
         info.url = url;
       }
       syncNavFlags();
-      if (!info.isPrivate && !url.startsWith('data:') && url !== 'about:blank' && !url.startsWith('atlas://')) {
+      if (!info.isPrivate && !url.startsWith('data:') && url !== 'about:blank' && !url.startsWith('lavray://')) {
         this.browserRepo.recordVisit(url, info.title, info.favicon);
       }
       this.emitState(info.windowId);
     });
 
     wc.on('page-title-updated', (_ev, title) => {
-      if (info.url === 'atlas://newtab') {
+      if (info.url === 'lavray://newtab') {
         info.title = 'New Tab';
         this.emitState(info.windowId);
         return;
@@ -374,7 +374,7 @@ export class TabManager {
       info.isLoading = false;
       const safeMsg = `${errorDescription} (${errorCode})`.replace(/[<>&"]/g, '');
       const safeUrl = (validatedURL || info.url).replace(/[<>&"]/g, '');
-      const errorHtml = `<!doctype html><html><head><title>Navigation Error</title><style>body{font-family:-apple-system,sans-serif;background:#0f172a;color:#e2e8f0;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}main{max-width:520px;padding:32px;border:1px solid #334155;border-radius:14px;background:#1e293b}h1{margin:0 0 10px;font-size:20px}p{color:#94a3b8;line-height:1.5;word-break:break-word}code{background:#0f172a;padding:2px 6px;border-radius:4px}</style></head><body><main><h1>Unable to load page</h1><p>Atlas Browser could not load <code>${safeUrl}</code>.</p><p>Error: <strong>${safeMsg}</strong></p></main></body></html>`;
+      const errorHtml = `<!doctype html><html><head><title>Navigation Error</title><style>body{font-family:-apple-system,sans-serif;background:#0f172a;color:#e2e8f0;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}main{max-width:520px;padding:32px;border:1px solid #334155;border-radius:14px;background:#1e293b}h1{margin:0 0 10px;font-size:20px}p{color:#94a3b8;line-height:1.5;word-break:break-word}code{background:#0f172a;padding:2px 6px;border-radius:4px}</style></head><body><main><h1>Unable to load page</h1><p>LAVRAY Browser could not load <code>${safeUrl}</code>.</p><p>Error: <strong>${safeMsg}</strong></p></main></body></html>`;
       void wc.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(errorHtml)}`);
       this.emitState(info.windowId);
     });
@@ -390,7 +390,7 @@ export class TabManager {
       const selected = (params.selectionText || '').trim();
       const menu = Menu.buildFromTemplate([
         {
-          label: 'Ask Atlas about this page',
+          label: 'Ask HAYA about this page',
           click: () => this.emitContextAction('ask_page', info.id, info.url, selected)
         },
         {
@@ -475,7 +475,7 @@ export class TabManager {
 
     const remaining = this.getTabsForWindow(windowId);
     if (remaining.length === 0) {
-      this.createTab(windowId, { url: 'atlas://newtab', activate: true });
+      this.createTab(windowId, { url: 'lavray://newtab', activate: true });
       return true;
     }
 
@@ -642,17 +642,17 @@ export class TabManager {
     if (m.info.crashed) {
       m.view.webContents.reload();
     }
-    if (targetUrl === 'atlas://newtab') {
-      m.info.url = 'atlas://newtab';
+    if (targetUrl === 'lavray://newtab') {
+      m.info.url = 'lavray://newtab';
       m.info.title = 'New Tab';
       m.info.favicon = null;
       m.info.securityState = 'internal';
       m.info.isLoading = false;
       await m.view.webContents.loadURL('about:blank');
       this.emitState(m.info.windowId);
-      return 'atlas://newtab';
+      return 'lavray://newtab';
     }
-    if (m.info.url === 'atlas://newtab') {
+    if (m.info.url === 'lavray://newtab') {
       m.info.url = targetUrl;
     }
     await m.view.webContents.loadURL(targetUrl);

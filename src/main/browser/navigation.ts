@@ -41,7 +41,7 @@ export function resolveNavigationInput(input: string, searchEngine: SearchEngine
   const trimmed = input.trim();
   if (!trimmed) return 'about:blank';
 
-  if (trimmed === 'about:blank' || trimmed.startsWith('atlas://')) {
+  if (trimmed === 'about:blank' || trimmed.startsWith('lavray://')) {
     return trimmed;
   }
 
@@ -65,7 +65,7 @@ export function resolveNavigationInput(input: string, searchEngine: SearchEngine
 }
 
 export function getSecurityState(url: string): 'secure' | 'insecure' | 'internal' | 'unknown' {
-  if (!url || url === 'about:blank' || url.startsWith('atlas://')) return 'internal';
+  if (!url || url === 'about:blank' || url.startsWith('lavray://')) return 'internal';
   try {
     const parsed = new URL(url);
     if (parsed.protocol === 'https:') return 'secure';

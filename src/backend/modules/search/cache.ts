@@ -21,7 +21,7 @@ export class SearchCache {
 
     if (this.redis && this.redis.status === 'ready') {
       try {
-        const raw = await this.redis.get(`atlas:scache:${key}`);
+        const raw = await this.redis.get(`lavray:scache:${key}`);
         if (raw) {
           const parsed = JSON.parse(raw) as SearchResponse;
           this.setL1(key, parsed, 60_000);
@@ -38,7 +38,7 @@ export class SearchCache {
     this.setL1(key, value, ttlSeconds * 1000);
     if (this.redis && this.redis.status === 'ready') {
       try {
-        await this.redis.setex(`atlas:scache:${key}`, ttlSeconds, JSON.stringify(value));
+        await this.redis.setex(`lavray:scache:${key}`, ttlSeconds, JSON.stringify(value));
       } catch {
         // Non-fatal
       }

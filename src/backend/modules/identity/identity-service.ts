@@ -52,7 +52,7 @@ export class IdentityService {
     const userId = randomUUID();
     const profileId = randomUUID();
     const passwordHash = await hashPassword(input.password);
-    const displayName = (input.displayName || cleanEmail.split('@')[0] || 'Atlas User').trim();
+    const displayName = (input.displayName || cleanEmail.split('@')[0] || 'LAVRAY User').trim();
 
     const profile: CloudProfile = {
       id: profileId,

@@ -2,7 +2,7 @@ import { describe, expect, it, afterEach } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { AtlasDatabase } from '@main/db/database';
+import { LavrayDatabase } from '@main/db/database';
 import { BrowserRepository } from '@main/db/repositories/browser-repo';
 import { AgentRepository } from '@main/db/repositories/agent-repo';
 import { PlatformRepository } from '@main/db/repositories/platform-repo';
@@ -24,9 +24,9 @@ describe('Integration: Persistence, Session Isolation, Downloads & MCP Server', 
   });
 
   it('runs SQLite migrations, integrity checks, and excludes private tabs from session restore', () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-int-'));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lavray-int-'));
     tempDirs.push(dir);
-    const db = new AtlasDatabase(path.join(dir, 'atlas.db'));
+    const db = new LavrayDatabase(path.join(dir, 'lavray.db'));
     expect(db.checkIntegrity()).toBe(true);
 
     const browserRepo = new BrowserRepository(db.db);
@@ -74,9 +74,9 @@ describe('Integration: Persistence, Session Isolation, Downloads & MCP Server', 
   });
 
   it('enforces MCP localhost binding, Bearer token auth, token rotation, allowlist, and rate limiting', async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-mcp-'));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lavray-mcp-'));
     tempDirs.push(dir);
-    const db = new AtlasDatabase(':memory:');
+    const db = new LavrayDatabase(':memory:');
     const platformRepo = new PlatformRepository(db.db);
     const vault = new SecretVault(dir);
     const audit = new AuditLogger(platformRepo);
@@ -177,7 +177,7 @@ describe('Integration: Persistence, Session Isolation, Downloads & MCP Server', 
   });
 
   it('handles duplicate download filenames and dangerous download classification', () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-dl-'));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lavray-dl-'));
     tempDirs.push(dir);
     fs.writeFileSync(path.join(dir, 'report.pdf'), 'a');
     fs.writeFileSync(path.join(dir, 'report (1).pdf'), 'b');
@@ -190,7 +190,7 @@ describe('Integration: Persistence, Session Isolation, Downloads & MCP Server', 
   });
 
   it('persists full agent runs, steps, tool executions, and aggregates cost metrics', () => {
-    const db = new AtlasDatabase(':memory:');
+    const db = new LavrayDatabase(':memory:');
     const agentRepo = new AgentRepository(db.db);
     const conv = agentRepo.createConversation('Eval');
     agentRepo.saveRun({
