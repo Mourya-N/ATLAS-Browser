@@ -22,11 +22,13 @@ import {
   Square,
   Star,
   Unlock,
+  User,
   X
 } from 'lucide-react';
 import type { OmniboxSuggestion } from '@shared/types';
 import { useLavrayStore } from '../store/useLavrayStore';
 import { AdBlockerPopover } from './AdBlockerPopover';
+import { ProfilePopover } from './ProfilePopover';
 import { AskHayaLoopLabel, HayaMark, LavrayMark } from './BrandMarks';
 
 export const AddressBar: React.FC = () => {
@@ -45,6 +47,8 @@ export const AddressBar: React.FC = () => {
     adBlockStats,
     adBlockPopoverOpen,
     setAdBlockPopoverOpen,
+    profilePopoverOpen,
+    setProfilePopoverOpen,
     pushToast
   } = useLavrayStore();
 
@@ -404,10 +408,46 @@ export const AddressBar: React.FC = () => {
           <AskHayaLoopLabel />
         </button>
 
+        {/* Profile Icon & Dropdown between Ask HAYA and Hamburger Menu */}
         <div className="relative">
           <button
             type="button"
-            onClick={() => setMenuOpen((o) => !o)}
+            data-testid="profile-menu-btn"
+            onClick={() => {
+              setMenuOpen(false);
+              setProfilePopoverOpen(!profilePopoverOpen);
+            }}
+            title="LAVRAY Profile & Account"
+            aria-label="LAVRAY Profile & Account"
+            className={`flex h-7 w-7 items-center justify-center rounded-full p-[1.5px] transition-all ${
+              profilePopoverOpen
+                ? 'bg-gradient-to-tr from-blue-500 via-indigo-500 to-purple-500 ring-2 ring-lavray-accent/25'
+                : 'bg-gradient-to-tr from-blue-500/75 via-indigo-500/75 to-purple-500/75 hover:from-blue-500 hover:to-purple-500'
+            }`}
+          >
+            <span className="flex h-full w-full items-center justify-center rounded-full bg-lavray-surface text-[11px] font-semibold text-lavray-text">
+              <User className="h-3.5 w-3.5" strokeWidth={1.85} />
+            </span>
+          </button>
+
+          {profilePopoverOpen && (
+            <>
+              <div
+                className="fixed inset-0 z-40"
+                onClick={() => setProfilePopoverOpen(false)}
+              />
+              <ProfilePopover onClose={() => setProfilePopoverOpen(false)} />
+            </>
+          )}
+        </div>
+
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => {
+              setProfilePopoverOpen(false);
+              setMenuOpen((o) => !o);
+            }}
             title="Browser & Workspace Menu"
             aria-label="Browser Menu"
             className={`flex h-7 w-7 items-center justify-center rounded-[7px] transition-colors ${

@@ -9,16 +9,23 @@ import type {
   CloudProfile,
   CloudSearchHistoryRecord,
   CrawlCheckpoint,
+  E2eeKeyEnvelope,
   HybridIndexDocument,
   HybridSearchHit,
   MemoryItem,
-  ResearchReport
+  ResearchReport,
+  SyncEntityType,
+  SyncPushItem,
+  SyncPushResponse,
+  SyncPullResponse,
+  SyncRecordEnvelope
 } from '@shared/types';
 import { cosineSimilarity } from '@shared/text-utils';
 import type {
   CloudAuditEventRecord,
   CloudRepository,
   SavedSourceRecord,
+  StoredAccountToken,
   StoredRefreshToken,
   StoredUserRecord
 } from './repository';
@@ -39,6 +46,10 @@ export class InMemoryCloudRepository implements CloudRepository {
   private readonly profiles = new Map<string, CloudProfile>();
   private readonly devices = new Map<string, CloudDevice>();
   private readonly refreshTokens = new Map<string, StoredRefreshToken>();
+  private readonly accountTokens = new Map<string, StoredAccountToken>();
+  private readonly syncRecords = new Map<string, SyncRecordEnvelope & { userId: string; profileId: string }>();
+  private readonly syncClientChangeMap = new Map<string, SyncRecordEnvelope>();
+  private readonly syncVersionCounters = new Map<string, number>();
   private readonly bookmarks = new Map<string, CloudBookmarkRecord>();
   private readonly notes = new Map<string, CloudNoteRecord>();
   private readonly searchHistory: CloudSearchHistoryRecord[] = [];
@@ -81,6 +92,78 @@ export class InMemoryCloudRepository implements CloudRepository {
     return this.users.get(userId) ?? null;
   }
 
+  public async getAuthSessionState(
+    userId: string,
+    deviceId?: string | null
+  ): Promise<{ exists: boolean; tokenEpoch: number; deviceRevoked: boolean }> {
+    const u = this.users.get(userId);
+    if (!u) return { exists: false, tokenEpoch: 0, deviceRevoked: false };
+    let deviceRevoked = false;
+    if (deviceId) {
+      const d = this.devices.get(deviceId);
+      if (d && d.userId === userId && d.revokedAt) {
+        deviceRevoked = true;
+      }
+    }
+    return {
+      exists: true,
+      tokenEpoch: u.tokenEpoch ?? 1,
+      deviceRevoked
+    };
+  }
+
+  public async updateUserProfile(
+    userId: string,
+    patch: { displayName?: string; avatarUrl?: string | null }
+  ): Promise<StoredUserRecord | null> {
+    const u = this.users.get(userId);
+    if (!u) return null;
+    const updated: StoredUserRecord = {
+      ...u,
+      displayName: patch.displayName !== undefined ? patch.displayName : u.displayName,
+      avatarUrl: patch.avatarUrl !== undefined ? patch.avatarUrl : u.avatarUrl,
+      updatedAt: Date.now()
+    };
+    this.users.set(userId, updated);
+    return updated;
+  }
+
+  public async updateUserPassword(userId: string, passwordHash: string): Promise<void> {
+    const u = this.users.get(userId);
+    if (!u) return;
+    this.users.set(userId, { ...u, passwordHash, updatedAt: Date.now() });
+  }
+
+  public async markEmailVerified(userId: string, verifiedAt: number): Promise<StoredUserRecord | null> {
+    const u = this.users.get(userId);
+    if (!u) return null;
+    const updated: StoredUserRecord = {
+      ...u,
+      emailVerified: true,
+      emailVerifiedAt: verifiedAt,
+      updatedAt: verifiedAt
+    };
+    this.users.set(userId, updated);
+    return updated;
+  }
+
+  public async setUserE2eeEnvelope(
+    userId: string,
+    params: { e2eeEnabled: boolean; e2eeKeyVersion: number; envelope: E2eeKeyEnvelope | null }
+  ): Promise<StoredUserRecord | null> {
+    const u = this.users.get(userId);
+    if (!u) return null;
+    const updated: StoredUserRecord = {
+      ...u,
+      e2eeEnabled: params.e2eeEnabled,
+      e2eeKeyVersion: params.e2eeKeyVersion,
+      e2eeKeyEnvelope: params.envelope,
+      updatedAt: Date.now()
+    };
+    this.users.set(userId, updated);
+    return updated;
+  }
+
   public async listProfiles(userId: string): Promise<CloudProfile[]> {
     return Array.from(this.profiles.values()).filter((p) => p.userId === userId);
   }
@@ -108,12 +191,43 @@ export class InMemoryCloudRepository implements CloudRepository {
   }
 
   public async registerDevice(device: CloudDevice): Promise<CloudDevice> {
-    this.devices.set(device.id, device);
-    return device;
+    const existing = this.devices.get(device.id);
+    const merged: CloudDevice = existing && existing.userId === device.userId
+      ? {
+          ...existing,
+          deviceName: device.deviceName,
+          platform: device.platform,
+          appVersion: device.appVersion,
+          lastSeenAt: device.lastSeenAt,
+          revokedAt: null
+        }
+      : { ...device, revokedAt: device.revokedAt ?? null };
+    this.devices.set(merged.id, merged);
+    return merged;
+  }
+
+  public async getDevice(userId: string, deviceId: string): Promise<CloudDevice | null> {
+    const d = this.devices.get(deviceId);
+    return d && d.userId === userId ? d : null;
   }
 
   public async listDevices(userId: string): Promise<CloudDevice[]> {
-    return Array.from(this.devices.values()).filter((d) => d.userId === userId);
+    return Array.from(this.devices.values())
+      .filter((d) => d.userId === userId)
+      .sort((a, b) => b.lastSeenAt - a.lastSeenAt);
+  }
+
+  public async revokeDevice(userId: string, deviceId: string, revokedAt: number): Promise<CloudDevice | null> {
+    const d = this.devices.get(deviceId);
+    if (!d || d.userId !== userId) return null;
+    const updated: CloudDevice = { ...d, revokedAt };
+    this.devices.set(deviceId, updated);
+    for (const rt of this.refreshTokens.values()) {
+      if (rt.userId === userId && rt.deviceId === deviceId && !rt.revokedAt) {
+        rt.revokedAt = revokedAt;
+      }
+    }
+    return updated;
   }
 
   public async saveRefreshToken(rec: StoredRefreshToken): Promise<void> {
@@ -127,6 +241,158 @@ export class InMemoryCloudRepository implements CloudRepository {
   public async revokeRefreshToken(tokenHash: string): Promise<void> {
     const rec = this.refreshTokens.get(tokenHash);
     if (rec) rec.revokedAt = Date.now();
+  }
+
+  public async revokeAllRefreshTokensForUser(userId: string, exceptDeviceId?: string): Promise<void> {
+    const now = Date.now();
+    for (const rt of this.refreshTokens.values()) {
+      if (rt.userId === userId && !rt.revokedAt && (!exceptDeviceId || rt.deviceId !== exceptDeviceId)) {
+        rt.revokedAt = now;
+      }
+    }
+  }
+
+  public async incrementTokenEpoch(userId: string): Promise<number> {
+    const u = this.users.get(userId);
+    if (!u) return 1;
+    const nextEpoch = (u.tokenEpoch ?? 1) + 1;
+    this.users.set(userId, { ...u, tokenEpoch: nextEpoch, updatedAt: Date.now() });
+    return nextEpoch;
+  }
+
+  public async saveAccountToken(rec: StoredAccountToken): Promise<void> {
+    this.accountTokens.set(rec.tokenHash, rec);
+  }
+
+  public async consumeAccountToken(
+    tokenHash: string,
+    purpose: 'email_verify' | 'password_reset',
+    usedAt: number
+  ): Promise<StoredAccountToken | null> {
+    const rec = this.accountTokens.get(tokenHash);
+    if (!rec || rec.purpose !== purpose || rec.usedAt || rec.expiresAt <= usedAt) {
+      return null;
+    }
+    rec.usedAt = usedAt;
+    return { ...rec };
+  }
+
+  public async pushSyncRecords(params: {
+    userId: string;
+    profileId: string;
+    items: SyncPushItem[];
+  }): Promise<SyncPushResponse> {
+    const counterKey = `${params.userId}:${params.profileId}`;
+    let currentVersion = this.syncVersionCounters.get(counterKey) ?? 0;
+    const applied: SyncRecordEnvelope[] = [];
+    const conflicts: SyncPushResponse['conflicts'] = [];
+
+    for (const item of params.items) {
+      const changeKey = `${counterKey}:${item.clientChangeId}`;
+      const existingChange = this.syncClientChangeMap.get(changeKey);
+      if (existingChange) {
+        if (
+          existingChange.id !== item.id ||
+          existingChange.entityType !== item.entityType ||
+          JSON.stringify(existingChange.payload) !== JSON.stringify(item.payload)
+        ) {
+          throw new Error(`Idempotency conflict: clientChangeId "${item.clientChangeId}" reused with different payload`);
+        }
+        applied.push(existingChange);
+        continue;
+      }
+
+      const recordKey = `${counterKey}:${item.entityType}:${item.id}`;
+      const existing = this.syncRecords.get(recordKey);
+      if (existing && existing.version > item.baseVersion) {
+        conflicts.push({
+          clientItem: item,
+          serverItem: {
+            id: existing.id,
+            entityType: existing.entityType,
+            version: existing.version,
+            updatedAt: existing.updatedAt,
+            deletedAt: existing.deletedAt ?? null,
+            clientChangeId: existing.clientChangeId ?? null,
+            encrypted: existing.encrypted,
+            payload: existing.payload
+          }
+        });
+        continue;
+      }
+
+      currentVersion += 1;
+      const stored: SyncRecordEnvelope & { userId: string; profileId: string } = {
+        id: item.id,
+        userId: params.userId,
+        profileId: params.profileId,
+        entityType: item.entityType,
+        version: currentVersion,
+        updatedAt: item.updatedAt,
+        deletedAt: item.deletedAt ?? null,
+        clientChangeId: item.clientChangeId,
+        encrypted: item.encrypted,
+        payload: item.payload
+      };
+      this.syncRecords.set(recordKey, stored);
+      const envelope: SyncRecordEnvelope = {
+        id: stored.id,
+        entityType: stored.entityType,
+        version: stored.version,
+        updatedAt: stored.updatedAt,
+        deletedAt: stored.deletedAt,
+        clientChangeId: stored.clientChangeId,
+        encrypted: stored.encrypted,
+        payload: stored.payload
+      };
+      this.syncClientChangeMap.set(changeKey, envelope);
+      applied.push(envelope);
+    }
+
+    this.syncVersionCounters.set(counterKey, currentVersion);
+    return { applied, conflicts, serverVersion: currentVersion };
+  }
+
+  public async pullSyncRecords(params: {
+    userId: string;
+    profileId: string;
+    sinceVersion: number;
+    limit: number;
+    entityTypes?: SyncEntityType[];
+  }): Promise<SyncPullResponse> {
+    const counterKey = `${params.userId}:${params.profileId}`;
+    const serverVersion = this.syncVersionCounters.get(counterKey) ?? 0;
+    const allowedTypes = params.entityTypes ? new Set(params.entityTypes) : null;
+
+    const matching = Array.from(this.syncRecords.values())
+      .filter(
+        (r) =>
+          r.userId === params.userId &&
+          r.profileId === params.profileId &&
+          r.version > params.sinceVersion &&
+          (!allowedTypes || allowedTypes.has(r.entityType))
+      )
+      .sort((a, b) => a.version - b.version);
+
+    const slice = matching.slice(0, params.limit);
+    const hasMore = matching.length > params.limit;
+    const nextCursor = slice.length > 0 ? slice[slice.length - 1].version : params.sinceVersion;
+
+    return {
+      items: slice.map((r) => ({
+        id: r.id,
+        entityType: r.entityType,
+        version: r.version,
+        updatedAt: r.updatedAt,
+        deletedAt: r.deletedAt ?? null,
+        clientChangeId: r.clientChangeId ?? null,
+        encrypted: r.encrypted,
+        payload: r.payload
+      })),
+      serverVersion,
+      hasMore,
+      nextCursor
+    };
   }
 
   public async upsertBookmark(bm: CloudBookmarkRecord): Promise<CloudBookmarkRecord> {
@@ -515,11 +781,20 @@ export class InMemoryCloudRepository implements CloudRepository {
     const memoryItems = Array.from(this.memoryItems.values())
       .filter((m) => m.userId === userId)
       .map((m) => m.item);
+    const syncRecords = Array.from(this.syncRecords.values()).filter((r) => r.userId === userId);
 
     return {
       exportedAt: new Date().toISOString(),
       user: user
-        ? { id: user.id, email: user.email, displayName: user.displayName, createdAt: user.createdAt }
+        ? {
+            id: user.id,
+            email: user.email,
+            displayName: user.displayName,
+            avatarUrl: user.avatarUrl ?? null,
+            emailVerified: Boolean(user.emailVerified),
+            e2eeEnabled: Boolean(user.e2eeEnabled),
+            createdAt: user.createdAt
+          }
         : null,
       profiles,
       devices,
@@ -527,7 +802,8 @@ export class InMemoryCloudRepository implements CloudRepository {
       notes,
       searchHistory,
       researchReports,
-      memoryItems
+      memoryItems,
+      syncRecords
     };
   }
 
@@ -538,6 +814,14 @@ export class InMemoryCloudRepository implements CloudRepository {
     for (const [k, v] of this.profiles.entries()) if (v.userId === userId) this.profiles.delete(k);
     for (const [k, v] of this.devices.entries()) if (v.userId === userId) this.devices.delete(k);
     for (const [k, v] of this.refreshTokens.entries()) if (v.userId === userId) this.refreshTokens.delete(k);
+    for (const [k, v] of this.accountTokens.entries()) if (v.userId === userId) this.accountTokens.delete(k);
+    for (const [k, v] of this.syncRecords.entries()) if (v.userId === userId) this.syncRecords.delete(k);
+    for (const [k] of this.syncClientChangeMap.entries()) {
+      if (k.startsWith(`${userId}:`)) this.syncClientChangeMap.delete(k);
+    }
+    for (const [k] of this.syncVersionCounters.entries()) {
+      if (k.startsWith(`${userId}:`)) this.syncVersionCounters.delete(k);
+    }
     for (const [k, v] of this.bookmarks.entries()) if (v.userId === userId) this.bookmarks.delete(k);
     for (const [k, v] of this.notes.entries()) if (v.userId === userId) this.notes.delete(k);
     for (const [k, v] of this.researchReports.entries()) if (v.userId === userId) this.researchReports.delete(k);

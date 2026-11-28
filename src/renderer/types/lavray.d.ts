@@ -258,11 +258,16 @@ export interface LavrayBridge {
     email: string;
     password: string;
     displayName?: string;
-  }) => Promise<CloudConnectionStatus>;
+  }) => Promise<CloudConnectionStatus & { devVerificationToken?: string | null }>;
   cloudLogin: (payload: { email: string; password: string }) => Promise<CloudConnectionStatus>;
   cloudLogout: () => Promise<CloudConnectionStatus>;
   updateCloudConsent: (patch: Partial<CloudConsentSettings>) => Promise<CloudConnectionStatus>;
-  syncCloudNow: () => Promise<{ synced: Record<string, number>; skipped: string[] }>;
+  syncCloudNow: () => Promise<{
+    synced: Record<string, number>;
+    pulled?: number;
+    conflictsResolved?: number;
+    skipped: string[];
+  }>;
   exportCloudData: () => Promise<string>;
   deleteCloudAccount: () => Promise<CloudConnectionStatus>;
   listCloudNotes: () => Promise<CloudNoteRecord[]>;
@@ -272,6 +277,17 @@ export interface LavrayBridge {
     sourceUrl?: string | null;
     tags?: string[];
   }) => Promise<CloudNoteRecord>;
+  updateCloudProfile: (patch: { displayName?: string; avatarUrl?: string | null }) => Promise<CloudConnectionStatus>;
+  requestEmailVerification: () => Promise<{ sent: boolean; devToken?: string | null }>;
+  verifyCloudEmail: (token: string) => Promise<CloudConnectionStatus>;
+  forgotCloudPassword: (email: string) => Promise<{ accepted: boolean; devResetToken?: string | null }>;
+  resetCloudPassword: (payload: { token: string; newPassword: string }) => Promise<{ ok: boolean }>;
+  changeCloudPassword: (payload: { currentPassword: string; newPassword: string }) => Promise<{ ok: boolean }>;
+  listCloudDevices: () => Promise<import('@shared/types').CloudDevice[]>;
+  revokeCloudDevice: (deviceId: string) => Promise<{ revoked: boolean }>;
+  revokeOtherCloudSessions: () => Promise<{ ok: boolean }>;
+  setupCloudE2ee: (customRecoveryKey?: string) => Promise<{ recoveryKey: string; keyVersion: number }>;
+  unlockCloudE2ee: (recoveryKey: string) => Promise<CloudConnectionStatus>;
 
   onContentSelection: (cb: (data: { tabId: string; text: string; x: number; y: number }) => void) => () => void;
   onContentContextAction: (

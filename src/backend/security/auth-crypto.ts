@@ -38,9 +38,14 @@ export interface JwtClaims {
   sub: string;
   email: string;
   profileId: string;
+  deviceId?: string | null;
+  epoch?: number;
+  typ?: 'access';
   iat: number;
+  nbf: number;
   exp: number;
   iss: string;
+  aud: string;
 }
 
 function base64UrlEncode(input: string | Buffer): string {
@@ -58,7 +63,7 @@ function base64UrlDecode(input: string): string {
 }
 
 export function signJwt(
-  payload: Omit<JwtClaims, 'iat' | 'exp' | 'iss'>,
+  payload: Omit<JwtClaims, 'iat' | 'nbf' | 'exp' | 'iss' | 'aud' | 'typ'>,
   secret: string,
   ttlSeconds: number
 ): { token: string; exp: number } {
@@ -66,8 +71,11 @@ export function signJwt(
   const exp = nowSec + ttlSeconds;
   const fullClaims: JwtClaims = {
     ...payload,
+    typ: 'access',
     iss: 'lavray-cloud',
+    aud: 'lavray-api',
     iat: nowSec,
+    nbf: nowSec,
     exp
   };
 
@@ -99,7 +107,15 @@ export function verifyJwt(token: string, secret: string): JwtClaims | null {
     if (header.alg !== 'HS256' || header.typ !== 'JWT') return null;
     const claims = JSON.parse(base64UrlDecode(payloadSeg)) as JwtClaims;
     const nowSec = Math.floor(Date.now() / 1000);
-    if (!claims.sub || !claims.exp || claims.exp <= nowSec || claims.iss !== 'lavray-cloud') {
+    if (
+      !claims.sub ||
+      !claims.exp ||
+      claims.exp <= nowSec ||
+      (typeof claims.nbf === 'number' && claims.nbf > nowSec + 5) ||
+      claims.iss !== 'lavray-cloud' ||
+      claims.aud !== 'lavray-api' ||
+      (claims.typ && claims.typ !== 'access')
+    ) {
       return null;
     }
     return claims;

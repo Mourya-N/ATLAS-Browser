@@ -5,17 +5,35 @@ import type {
   CloudAuthSession,
   CloudConnectionStatus,
   CloudConsentSettings,
+  CloudDevice,
   CloudNoteRecord,
   CloudSearchHistoryRecord,
+  CloudSyncState,
+  CloudUser,
   CrawlCheckpoint,
   CrawlSeedConfig,
+  E2eeKeyEnvelope,
+  EncryptedPayloadEnvelope,
   SearchFilterOptions,
   SearchMode,
   SearchResponse,
   SearchSuggestion,
-  SelfHostedRuntimeStatus
+  SelfHostedRuntimeStatus,
+  SyncEntityType,
+  SyncPullResponse,
+  SyncPushItem,
+  SyncPushResponse,
+  SyncRecordEnvelope
 } from '@shared/types';
 import { DEFAULT_CLOUD_CONSENT } from '@shared/types';
+import {
+  decryptSyncPayload,
+  encryptSyncPayload,
+  generateMasterKeyB64,
+  generateRecoveryKey,
+  unwrapMasterKeyWithRecoveryKey,
+  wrapMasterKeyWithRecoveryKey
+} from './e2ee-crypto';
 import type { AgentRepository } from '@main/db/repositories/agent-repo';
 import type { BrowserRepository } from '@main/db/repositories/browser-repo';
 import type { PlatformRepository } from '@main/db/repositories/platform-repo';
@@ -51,8 +69,14 @@ export class CloudClientService {
   private readonly hasInjectedWebDiscovery: boolean;
   private lastSyncedAt: number | null = null;
   private lastError: string | null = null;
+  private cachedUserId: string | null = null;
   private cachedUserEmail: string | null = null;
+  private cachedDisplayName: string | null = null;
+  private cachedAvatarUrl: string | null = null;
+  private cachedEmailVerified = false;
+  private cachedE2eeEnabled = false;
   private cachedProfileId: string | null = null;
+  private syncState: CloudSyncState = 'idle';
 
   constructor(
     private readonly platformRepo: PlatformRepository,
@@ -92,21 +116,9 @@ export class CloudClientService {
     const cloudEndpointUrl = this.getEndpointUrl();
     const consent = this.getConsent();
     const tokens = this.vault.getCloudTokens();
-
-    if (!cloudEnabled) {
-      return {
-        cloudEnabled: false,
-        cloudEndpointUrl,
-        reachable: false,
-        authenticated: Boolean(tokens.accessToken),
-        operatingMode: 'local_only',
-        userEmail: this.cachedUserEmail,
-        profileId: this.cachedProfileId,
-        lastSyncedAt: this.lastSyncedAt,
-        lastError: null,
-        consent
-      };
-    }
+    const deviceId = this.vault.getOrCreateDeviceId();
+    const e2eeKey = this.vault.getE2eeMasterKey();
+    const pendingQueue = this.platformRepo.getSetting<SyncPushItem[]>('cloud.pendingQueue', []);
 
     let reachable = false;
     try {
@@ -116,15 +128,54 @@ export class CloudClientService {
       clearTimeout(timer);
       reachable = res.ok;
       if (!res.ok) this.lastError = `Cloud health HTTP ${res.status}`;
-      else this.lastError = null;
+      else if (this.syncState === 'offline') this.syncState = 'idle';
     } catch (err) {
       reachable = false;
-      this.lastError = err instanceof Error ? err.message : 'Cloud backend unreachable';
+      if (cloudEnabled) {
+        this.syncState = 'offline';
+        this.lastError = err instanceof Error ? err.message : 'Cloud backend unreachable';
+      }
+    }
+
+    if (!cloudEnabled) {
+      return {
+        cloudEnabled: false,
+        cloudEndpointUrl,
+        reachable,
+        authenticated: Boolean(tokens.accessToken),
+        operatingMode: 'local_only',
+        userId: this.cachedUserId,
+        userEmail: this.cachedUserEmail,
+        displayName: this.cachedDisplayName,
+        avatarUrl: this.cachedAvatarUrl,
+        emailVerified: this.cachedEmailVerified,
+        profileId: this.cachedProfileId,
+        deviceId,
+        e2eeEnabled: this.cachedE2eeEnabled || consent.e2eeEnabled,
+        e2eeUnlocked: Boolean(e2eeKey.keyB64),
+        syncState: this.syncState,
+        pendingSyncCount: pendingQueue.length,
+        lastSyncedAt: this.lastSyncedAt,
+        lastError: null,
+        consent
+      };
     }
 
     const authenticated = Boolean(tokens.accessToken);
+    if (authenticated && reachable && !this.cachedUserEmail) {
+      try {
+        const meRes = await this.authorizedFetch('/api/v1/account/me', { method: 'GET' });
+        if (meRes.ok) {
+          const me = (await meRes.json()) as { user: CloudUser; profile: { id: string } };
+          this.applyCachedUser(me.user, me.profile.id);
+        }
+      } catch {
+        // Non-fatal
+      }
+    }
+
     const operatingMode: CloudConnectionStatus['operatingMode'] =
-      reachable && authenticated ? 'cloud_connected' : reachable ? 'cloud_degraded' : 'cloud_degraded';
+      reachable && authenticated ? 'cloud_connected' : 'cloud_degraded';
 
     return {
       cloudEnabled,
@@ -132,25 +183,46 @@ export class CloudClientService {
       reachable,
       authenticated,
       operatingMode,
+      userId: this.cachedUserId,
       userEmail: this.cachedUserEmail,
+      displayName: this.cachedDisplayName,
+      avatarUrl: this.cachedAvatarUrl,
+      emailVerified: this.cachedEmailVerified,
       profileId: this.cachedProfileId,
+      deviceId,
+      e2eeEnabled: this.cachedE2eeEnabled || consent.e2eeEnabled,
+      e2eeUnlocked: Boolean(e2eeKey.keyB64),
+      syncState: !reachable ? 'offline' : this.syncState,
+      pendingSyncCount: pendingQueue.length,
       lastSyncedAt: this.lastSyncedAt,
       lastError: this.lastError,
       consent
     };
   }
 
+  private applyCachedUser(user: CloudUser, profileId: string): void {
+    this.cachedUserId = user.id;
+    this.cachedUserEmail = user.email;
+    this.cachedDisplayName = user.displayName;
+    this.cachedAvatarUrl = user.avatarUrl ?? null;
+    this.cachedEmailVerified = Boolean(user.emailVerified);
+    this.cachedE2eeEnabled = Boolean(user.e2eeEnabled);
+    this.cachedProfileId = profileId;
+  }
+
   public async register(input: {
     email: string;
     password: string;
     displayName?: string;
-  }): Promise<CloudConnectionStatus> {
+  }): Promise<CloudConnectionStatus & { devVerificationToken?: string | null }> {
     const endpoint = this.getEndpointUrl();
+    const deviceId = this.vault.getOrCreateDeviceId();
     const res = await fetch(`${endpoint}/api/v1/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         ...input,
+        deviceId,
         deviceName: process.env.HOSTNAME || 'LAVRAY Desktop',
         platform: process.platform,
         appVersion: '1.0.0'
@@ -159,8 +231,9 @@ export class CloudClientService {
     const body = (await res.json()) as CloudAuthSession & { error?: string };
     if (!res.ok) throw new Error(body.error || `Registration failed (${res.status})`);
     this.vault.setCloudTokens(body.accessToken, body.refreshToken);
-    this.cachedUserEmail = body.user.email;
-    this.cachedProfileId = body.profile.id;
+    this.applyCachedUser(body.user, body.profile.id);
+    this.syncState = 'idle';
+    this.lastError = null;
     this.platformRepo.setSetting('cloud.enabled', true);
     this.auditLogger.log({
       category: 'security',
@@ -168,16 +241,19 @@ export class CloudClientService {
       actor: 'user',
       details: { endpoint }
     });
-    return this.getStatus();
+    const status = await this.getStatus();
+    return { ...status, devVerificationToken: body.devVerificationToken ?? null };
   }
 
   public async login(input: { email: string; password: string }): Promise<CloudConnectionStatus> {
     const endpoint = this.getEndpointUrl();
+    const deviceId = this.vault.getOrCreateDeviceId();
     const res = await fetch(`${endpoint}/api/v1/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         ...input,
+        deviceId,
         deviceName: process.env.HOSTNAME || 'LAVRAY Desktop',
         platform: process.platform,
         appVersion: '1.0.0'
@@ -186,9 +262,16 @@ export class CloudClientService {
     const body = (await res.json()) as CloudAuthSession & { error?: string };
     if (!res.ok) throw new Error(body.error || `Login failed (${res.status})`);
     this.vault.setCloudTokens(body.accessToken, body.refreshToken);
-    this.cachedUserEmail = body.user.email;
-    this.cachedProfileId = body.profile.id;
+    this.applyCachedUser(body.user, body.profile.id);
+    this.syncState = 'idle';
+    this.lastError = null;
     this.platformRepo.setSetting('cloud.enabled', true);
+    if (body.profile.consent) {
+      this.platformRepo.setSetting('cloud.consent', {
+        ...DEFAULT_CLOUD_CONSENT,
+        ...body.profile.consent
+      });
+    }
     return this.getStatus();
   }
 
@@ -206,9 +289,170 @@ export class CloudClientService {
       }
     }
     this.vault.clearCloudTokens();
+    this.cachedUserId = null;
     this.cachedUserEmail = null;
+    this.cachedDisplayName = null;
+    this.cachedAvatarUrl = null;
+    this.cachedEmailVerified = false;
+    this.cachedE2eeEnabled = false;
     this.cachedProfileId = null;
+    this.syncState = 'idle';
+    this.lastError = null;
     return this.getStatus();
+  }
+
+  public async updateProfile(patch: {
+    displayName?: string;
+    avatarUrl?: string | null;
+  }): Promise<CloudConnectionStatus> {
+    const res = await this.authorizedFetch('/api/v1/profile', {
+      method: 'PUT',
+      body: JSON.stringify(patch)
+    });
+    const body = (await res.json()) as { user?: CloudUser; profile?: { id: string }; error?: string };
+    if (!res.ok || !body.user || !body.profile) {
+      throw new Error(body.error || 'Failed to update profile');
+    }
+    this.applyCachedUser(body.user, body.profile.id);
+    return this.getStatus();
+  }
+
+  public async requestEmailVerification(): Promise<{ sent: boolean; devToken?: string | null }> {
+    const res = await this.authorizedFetch('/api/v1/auth/request-verification', { method: 'POST', body: '{}' });
+    const body = (await res.json()) as { sent: boolean; devToken?: string | null; error?: string };
+    if (!res.ok) throw new Error(body.error || 'Failed to request verification');
+    return body;
+  }
+
+  public async verifyEmail(token: string): Promise<CloudConnectionStatus> {
+    const res = await fetch(`${this.getEndpointUrl()}/api/v1/auth/verify-email`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token })
+    });
+    const body = (await res.json()) as { user?: CloudUser; error?: string };
+    if (!res.ok || !body.user) throw new Error(body.error || 'Email verification failed');
+    this.cachedEmailVerified = Boolean(body.user.emailVerified);
+    return this.getStatus();
+  }
+
+  public async forgotPassword(email: string): Promise<{ accepted: boolean; devResetToken?: string | null }> {
+    const res = await fetch(`${this.getEndpointUrl()}/api/v1/auth/forgot-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email })
+    });
+    const body = (await res.json()) as { accepted: boolean; devResetToken?: string | null; error?: string };
+    if (!res.ok) throw new Error(body.error || 'Password reset request failed');
+    return body;
+  }
+
+  public async resetPassword(token: string, newPassword: string): Promise<{ ok: boolean }> {
+    const res = await fetch(`${this.getEndpointUrl()}/api/v1/auth/reset-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token, newPassword })
+    });
+    const body = (await res.json()) as { ok?: boolean; error?: string };
+    if (!res.ok) throw new Error(body.error || 'Password reset failed');
+    return { ok: true };
+  }
+
+  public async changePassword(currentPassword: string, newPassword: string): Promise<{ ok: boolean }> {
+    const res = await this.authorizedFetch('/api/v1/auth/change-password', {
+      method: 'POST',
+      body: JSON.stringify({ currentPassword, newPassword })
+    });
+    const body = (await res.json()) as { ok?: boolean; error?: string };
+    if (!res.ok) throw new Error(body.error || 'Failed to change password');
+    return { ok: true };
+  }
+
+  public async listDevices(): Promise<CloudDevice[]> {
+    const res = await this.authorizedFetch('/api/v1/devices', { method: 'GET' });
+    const body = (await res.json()) as { devices?: CloudDevice[]; error?: string };
+    if (!res.ok) throw new Error(body.error || 'Failed to list devices');
+    return body.devices ?? [];
+  }
+
+  public async revokeDevice(deviceId: string): Promise<{ revoked: boolean }> {
+    const res = await this.authorizedFetch(`/api/v1/devices/${encodeURIComponent(deviceId)}`, {
+      method: 'DELETE'
+    });
+    const body = (await res.json()) as { revoked?: boolean; error?: string };
+    if (!res.ok) throw new Error(body.error || 'Failed to revoke device');
+    if (deviceId === this.vault.getOrCreateDeviceId()) {
+      await this.logout();
+    }
+    return { revoked: true };
+  }
+
+  public async revokeAllOtherSessions(): Promise<{ ok: boolean }> {
+    const res = await this.authorizedFetch('/api/v1/auth/revoke-all-sessions', {
+      method: 'POST',
+      body: '{}'
+    });
+    const body = (await res.json()) as { ok?: boolean; error?: string };
+    if (!res.ok) throw new Error(body.error || 'Failed to revoke other sessions');
+    return { ok: true };
+  }
+
+  public async setupE2ee(customRecoveryKey?: string): Promise<{ recoveryKey: string; keyVersion: number }> {
+    const recoveryKey = customRecoveryKey?.trim() || generateRecoveryKey();
+    const existing = this.vault.getE2eeMasterKey();
+    const masterKeyB64 = existing.keyB64 || generateMasterKeyB64();
+    const keyVersion = existing.keyB64 ? existing.keyVersion : 1;
+    const envelope: E2eeKeyEnvelope = wrapMasterKeyWithRecoveryKey(masterKeyB64, recoveryKey, keyVersion);
+
+    const res = await this.authorizedFetch('/api/v1/account/e2ee', {
+      method: 'PUT',
+      body: JSON.stringify({
+        e2eeEnabled: true,
+        e2eeKeyVersion: keyVersion,
+        envelope
+      })
+    });
+    const body = (await res.json()) as { user?: CloudUser; error?: string };
+    if (!res.ok) throw new Error(body.error || 'Failed to enable E2EE');
+
+    this.vault.setE2eeMasterKey(masterKeyB64, keyVersion);
+    this.cachedE2eeEnabled = true;
+    await this.updateConsent({ e2eeEnabled: true });
+    return { recoveryKey, keyVersion };
+  }
+
+  public async unlockE2eeWithRecoveryKey(recoveryKey: string): Promise<CloudConnectionStatus> {
+    const res = await this.authorizedFetch('/api/v1/account/e2ee', { method: 'GET' });
+    const body = (await res.json()) as {
+      e2eeEnabled: boolean;
+      e2eeKeyVersion: number;
+      envelope: E2eeKeyEnvelope | null;
+      error?: string;
+    };
+    if (!res.ok) throw new Error(body.error || 'Failed to fetch E2EE key envelope');
+    if (!body.envelope) throw new Error('No E2EE recovery envelope is configured for this account');
+
+    const masterKeyB64 = unwrapMasterKeyWithRecoveryKey(body.envelope, recoveryKey);
+    this.vault.setE2eeMasterKey(masterKeyB64, body.envelope.keyVersion);
+    this.cachedE2eeEnabled = true;
+    return this.getStatus();
+  }
+
+  public queueSyncTombstone(entityType: SyncEntityType, id: string): void {
+    const queue = this.platformRepo.getSetting<SyncPushItem[]>('cloud.pendingQueue', []);
+    const versions = this.platformRepo.getSetting<Record<string, number>>('cloud.syncEntityVersions', {});
+    const now = Date.now();
+    queue.push({
+      id,
+      entityType,
+      baseVersion: versions[`${entityType}:${id}`] ?? 0,
+      updatedAt: now,
+      deletedAt: now,
+      clientChangeId: randomUUID(),
+      encrypted: false,
+      payload: { deleted: true }
+    });
+    this.platformRepo.setSetting('cloud.pendingQueue', queue.slice(-500));
   }
 
   public async updateConsent(patch: Partial<CloudConsentSettings>): Promise<CloudConnectionStatus> {
@@ -229,33 +473,379 @@ export class CloudClientService {
     return this.getStatus();
   }
 
-  public async syncApprovedData(): Promise<{ synced: Record<string, number>; skipped: string[] }> {
+  private async withBackoff<T>(fn: () => Promise<T>, maxAttempts = 3): Promise<T> {
+    let lastErr: unknown;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        return await fn();
+      } catch (err) {
+        lastErr = err;
+        const msg = err instanceof Error ? err.message : '';
+        if (msg.includes('401') || msg.includes('403')) throw err;
+        if (attempt < maxAttempts - 1) {
+          await new Promise((r) => setTimeout(r, 200 * Math.pow(2, attempt)));
+        }
+      }
+    }
+    throw lastErr;
+  }
+
+  public async syncApprovedData(): Promise<{
+    synced: Record<string, number>;
+    pulled: number;
+    conflictsResolved: number;
+    skipped: string[];
+  }> {
     const consent = this.getConsent();
     const skipped: string[] = [];
     const synced: Record<string, number> = {};
+    let pulled = 0;
+    let conflictsResolved = 0;
 
     if (!this.isCloudEnabled()) {
       throw new Error('Enable LAVRAY Cloud mode before syncing');
     }
-
-    // Bookmarks (only if explicit opt-in)
-    if (consent.syncBookmarks) {
-      const { bookmarks } = this.browserRepo.listBookmarks('');
-      let count = 0;
-      for (const bm of bookmarks.slice(0, 100)) {
-        const res = await this.authorizedFetch('/api/v1/userdata/bookmarks', {
-          method: 'POST',
-          body: JSON.stringify({ id: bm.id, url: bm.url, title: bm.title, isPrivate: false })
-        });
-        if (res.ok) count += 1;
-      }
-      synced.bookmarks = count;
-    } else {
-      skipped.push('bookmarks (consent off)');
+    if (!this.vault.getCloudTokens().accessToken) {
+      this.syncState = 'expired';
+      throw new Error('Sign in to LAVRAY Account before syncing');
     }
 
-    this.lastSyncedAt = Date.now();
-    return { synced, skipped };
+    this.syncState = 'syncing';
+    this.lastError = null;
+
+    try {
+      const entityVersions = this.platformRepo.getSetting<Record<string, number>>('cloud.syncEntityVersions', {});
+      const entityUpdatedAt = this.platformRepo.getSetting<Record<string, number>>('cloud.syncEntityUpdatedAt', {});
+      const pendingQueue = this.platformRepo.getSetting<SyncPushItem[]>('cloud.pendingQueue', []);
+      const e2eeKey = this.vault.getE2eeMasterKey();
+      const e2eeRequired = Boolean(consent.e2eeEnabled || this.cachedE2eeEnabled);
+      if (e2eeRequired && !e2eeKey.keyB64) {
+        throw new Error(
+          'E2EE is enabled for this account, but the vault is locked on this device. Enter your Recovery Key before syncing.'
+        );
+      }
+      const useE2ee = Boolean(e2eeRequired && e2eeKey.keyB64);
+
+      const pushItems: SyncPushItem[] = [...pendingQueue];
+      const pushCounts: Record<string, number> = {};
+
+      const addPushItem = (
+        entityType: SyncEntityType,
+        id: string,
+        updatedAt: number,
+        rawPayload: Record<string, unknown>,
+        sensitiveForE2ee = false
+      ) => {
+        const key = `${entityType}:${id}`;
+        if ((entityUpdatedAt[key] ?? 0) >= updatedAt) return;
+        const shouldEncrypt = useE2ee && sensitiveForE2ee;
+        const payload = shouldEncrypt
+          ? (encryptSyncPayload(
+              rawPayload,
+              e2eeKey.keyB64!,
+              e2eeKey.keyVersion,
+              `lavray:sync:${entityType}:${id}`
+            ) as unknown as Record<string, unknown>)
+          : rawPayload;
+
+        pushItems.push({
+          id,
+          entityType,
+          baseVersion: entityVersions[key] ?? 0,
+          updatedAt,
+          deletedAt: null,
+          clientChangeId: `${entityType}:${id}:${updatedAt}`,
+          encrypted: shouldEncrypt,
+          payload
+        });
+        pushCounts[entityType] = (pushCounts[entityType] ?? 0) + 1;
+      };
+
+      if (consent.syncBookmarks) {
+        const { bookmarks, folders } = this.browserRepo.listBookmarks('');
+        for (const f of folders) {
+          addPushItem('bookmark_folder', f.id, f.createdAt, {
+            id: f.id,
+            name: f.name,
+            parentId: f.parentId,
+            createdAt: f.createdAt
+          });
+        }
+        for (const bm of bookmarks) {
+          addPushItem('bookmark', bm.id, bm.updatedAt, {
+            id: bm.id,
+            url: bm.url,
+            title: bm.title,
+            folderId: bm.folderId,
+            favicon: bm.favicon,
+            createdAt: bm.createdAt,
+            updatedAt: bm.updatedAt
+          });
+        }
+      } else {
+        skipped.push('bookmarks (consent off)');
+      }
+
+      if (consent.syncPreferences) {
+        const prefUpdatedAt = this.platformRepo.getSetting<number>('cloud.prefUpdatedAt', Date.now());
+        addPushItem('preference', 'browser-prefs', prefUpdatedAt, {
+          theme: this.platformRepo.getSetting('ui.theme', 'system'),
+          searchEngine: this.platformRepo.getSetting('search.engine', 'lavray'),
+          verticalTabs: this.platformRepo.getSetting('ui.verticalTabs', false),
+          adBlockEnabled: this.platformRepo.getSetting('privacy.adBlockEnabled', true),
+          updatedAt: prefUpdatedAt
+        });
+      } else {
+        skipped.push('preferences (consent off)');
+      }
+
+      if (consent.syncReadingList) {
+        for (const item of this.browserRepo.listReadingList(200)) {
+          addPushItem('reading_list', item.id, item.updatedAt, { ...item });
+        }
+      } else {
+        skipped.push('reading_list (consent off)');
+      }
+
+      if (consent.syncHistory) {
+        for (const h of this.browserRepo.searchHistory('', 200)) {
+          addPushItem(
+            'history',
+            h.id,
+            h.lastVisitedAt,
+            { ...h },
+            true
+          );
+        }
+      } else {
+        skipped.push('history (consent off)');
+      }
+
+      if (consent.syncTabs) {
+        const openTabs = this.tabManager.getAllTabs().filter((t) => !t.isPrivate && t.url && t.url !== 'about:blank');
+        for (const t of openTabs.slice(0, 50)) {
+          addPushItem('open_tab', t.id, t.lastActiveAt, {
+            id: t.id,
+            url: t.url,
+            title: t.title,
+            isPinned: t.isPinned,
+            lastActiveAt: t.lastActiveAt
+          });
+        }
+      } else {
+        skipped.push('open_tabs (consent off)');
+      }
+
+      if (consent.syncHayaConversations) {
+        for (const conv of this.agentRepo.listConversations(50)) {
+          if (conv.isPrivate) continue;
+          const messages = this.agentRepo.getMessages(conv.id);
+          addPushItem(
+            'haya_conversation',
+            conv.id,
+            conv.updatedAt,
+            { conversation: conv, messages },
+            true
+          );
+        }
+      } else {
+        skipped.push('haya_conversations (consent off)');
+      }
+
+      if (consent.syncHayaPreferences) {
+        const hayaPrefUpdatedAt = this.platformRepo.getSetting<number>('cloud.hayaPrefUpdatedAt', Date.now());
+        addPushItem(
+          'haya_preference',
+          'haya-prefs',
+          hayaPrefUpdatedAt,
+          {
+            modelProvider: this.platformRepo.getSetting('ai.provider', 'ollama'),
+            selfHostedModel: this.platformRepo.getSetting('ai.selfHostedModel', 'qwen2.5:7b'),
+            customInstructions: this.platformRepo.getSetting('ai.customInstructions', ''),
+            updatedAt: hayaPrefUpdatedAt
+          },
+          true
+        );
+      } else {
+        skipped.push('haya_preferences (consent off)');
+      }
+
+      if (consent.syncMemory) {
+        for (const m of this.memoryService.retrieveRelevant('', null, 100)) {
+          if (!m.userApproved) continue;
+          addPushItem('haya_memory', m.id, m.lastUsedAt, { ...m }, true);
+        }
+      } else {
+        skipped.push('haya_memory (consent off)');
+      }
+
+      // Push in batches of 100 with conflict resolution & exponential backoff
+      const retryConflicts: SyncPushItem[] = [];
+      for (let i = 0; i < pushItems.length; i += 100) {
+        const batch = pushItems.slice(i, i + 100);
+        const res = await this.withBackoff(async () => {
+          const r = await this.authorizedFetch('/api/v1/sync/push', {
+            method: 'POST',
+            body: JSON.stringify({
+              deviceId: this.vault.getOrCreateDeviceId(),
+              items: batch
+            })
+          });
+          if (!r.ok) {
+            const errBody = (await r.json().catch(() => ({}))) as { error?: string };
+            throw new Error(errBody.error || `Sync push failed (${r.status})`);
+          }
+          return (await r.json()) as SyncPushResponse;
+        });
+
+        for (const app of res.applied) {
+          const key = `${app.entityType}:${app.id}`;
+          entityVersions[key] = app.version;
+          entityUpdatedAt[key] = app.updatedAt;
+          const summaryKey = app.entityType === 'bookmark' ? 'bookmarks' : app.entityType;
+          synced[summaryKey] = (synced[summaryKey] ?? 0) + 1;
+        }
+
+        for (const conflict of res.conflicts) {
+          conflictsResolved += 1;
+          if (conflict.clientItem.updatedAt > conflict.serverItem.updatedAt) {
+            retryConflicts.push({
+              ...conflict.clientItem,
+              baseVersion: conflict.serverItem.version,
+              clientChangeId: `${conflict.clientItem.entityType}:${conflict.clientItem.id}:${conflict.clientItem.updatedAt}:r${conflict.serverItem.version}`
+            });
+          } else {
+            await this.applyRemoteSyncRecord(conflict.serverItem, entityVersions, entityUpdatedAt, e2eeKey.keyB64);
+          }
+        }
+      }
+
+      if (retryConflicts.length > 0) {
+        const retryRes = await this.withBackoff(async () => {
+          const r = await this.authorizedFetch('/api/v1/sync/push', {
+            method: 'POST',
+            body: JSON.stringify({ deviceId: this.vault.getOrCreateDeviceId(), items: retryConflicts })
+          });
+          if (!r.ok) throw new Error(`Sync conflict retry failed (${r.status})`);
+          return (await r.json()) as SyncPushResponse;
+        });
+        for (const app of retryRes.applied) {
+          const key = `${app.entityType}:${app.id}`;
+          entityVersions[key] = app.version;
+          entityUpdatedAt[key] = app.updatedAt;
+          const summaryKey = app.entityType === 'bookmark' ? 'bookmarks' : app.entityType;
+          synced[summaryKey] = (synced[summaryKey] ?? 0) + 1;
+        }
+      }
+
+      // Clear pending offline queue after successful push
+      this.platformRepo.setSetting('cloud.pendingQueue', []);
+
+      // Paginated Pull from server
+      let cursor = this.platformRepo.getSetting<number>('cloud.syncCursor', 0);
+      let hasMore = true;
+      while (hasMore) {
+        const pullRes = await this.withBackoff(async () => {
+          const r = await this.authorizedFetch(`/api/v1/sync/pull?sinceVersion=${cursor}&limit=100`, {
+            method: 'GET'
+          });
+          if (!r.ok) throw new Error(`Sync pull failed (${r.status})`);
+          return (await r.json()) as SyncPullResponse;
+        });
+        for (const item of pullRes.items) {
+          const applied = await this.applyRemoteSyncRecord(item, entityVersions, entityUpdatedAt, e2eeKey.keyB64);
+          if (applied) pulled += 1;
+        }
+        cursor = pullRes.nextCursor;
+        hasMore = pullRes.hasMore;
+      }
+
+      this.platformRepo.setSetting('cloud.syncCursor', cursor);
+      this.platformRepo.setSetting('cloud.syncEntityVersions', entityVersions);
+      this.platformRepo.setSetting('cloud.syncEntityUpdatedAt', entityUpdatedAt);
+      this.lastSyncedAt = Date.now();
+      this.syncState = 'idle';
+      return { synced, pulled, conflictsResolved, skipped };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Sync failed';
+      this.lastError = msg;
+      this.syncState = msg.includes('401') || msg.includes('Sign in') ? 'expired' : 'error';
+      throw err;
+    }
+  }
+
+  private async applyRemoteSyncRecord(
+    record: SyncRecordEnvelope,
+    entityVersions: Record<string, number>,
+    entityUpdatedAt: Record<string, number>,
+    masterKeyB64?: string
+  ): Promise<boolean> {
+    const key = `${record.entityType}:${record.id}`;
+    const localUpdated = entityUpdatedAt[key] ?? 0;
+    entityVersions[key] = Math.max(entityVersions[key] ?? 0, record.version);
+
+    if (localUpdated > record.updatedAt) {
+      return false;
+    }
+    entityUpdatedAt[key] = record.updatedAt;
+
+    if (record.deletedAt) {
+      if (record.entityType === 'bookmark') {
+        this.browserRepo.deleteBookmark(record.id);
+      } else if (record.entityType === 'reading_list') {
+        this.browserRepo.deleteReadingListItem(record.id);
+      } else if (record.entityType === 'history') {
+        this.browserRepo.deleteHistoryItem(record.id);
+      }
+      return true;
+    }
+
+    let payload = record.payload as Record<string, unknown>;
+    if (record.encrypted) {
+      if (!masterKeyB64) {
+        this.lastError = 'E2EE vault is locked; enter your Recovery Key to decrypt synced records.';
+        return false;
+      }
+      payload = decryptSyncPayload(
+        record.payload as EncryptedPayloadEnvelope,
+        masterKeyB64,
+        `lavray:sync:${record.entityType}:${record.id}`
+      );
+    }
+
+    const consent = this.getConsent();
+    if (record.entityType === 'bookmark' && consent.syncBookmarks) {
+      const url = typeof payload.url === 'string' ? payload.url : null;
+      const title = typeof payload.title === 'string' ? payload.title : null;
+      if (url && title) {
+        const existing = this.browserRepo.listBookmarks('').bookmarks.find((b) => b.url === url);
+        if (!existing) {
+          this.browserRepo.addBookmark(url, title, (payload.folderId as string | null) ?? null);
+        }
+      }
+    } else if (record.entityType === 'reading_list' && consent.syncReadingList) {
+      const url = typeof payload.url === 'string' ? payload.url : null;
+      const title = typeof payload.title === 'string' ? payload.title : null;
+      if (url && title) {
+        this.browserRepo.saveReadingListItem({
+          url,
+          title,
+          siteName: (payload.siteName as string | null) ?? null,
+          excerpt: (payload.excerpt as string | null) ?? null,
+          progress: typeof payload.progress === 'number' ? payload.progress : 0
+        });
+      }
+    } else if (record.entityType === 'preference' && consent.syncPreferences) {
+      if (typeof payload.theme === 'string') this.platformRepo.setSetting('ui.theme', payload.theme);
+      if (typeof payload.searchEngine === 'string') this.platformRepo.setSetting('search.engine', payload.searchEngine);
+      if (typeof payload.verticalTabs === 'boolean') this.platformRepo.setSetting('ui.verticalTabs', payload.verticalTabs);
+      if (typeof payload.adBlockEnabled === 'boolean') this.platformRepo.setSetting('privacy.adBlockEnabled', payload.adBlockEnabled);
+    } else if (record.entityType === 'haya_preference' && consent.syncHayaPreferences) {
+      if (typeof payload.modelProvider === 'string') this.platformRepo.setSetting('ai.provider', payload.modelProvider);
+      if (typeof payload.selfHostedModel === 'string') this.platformRepo.setSetting('ai.selfHostedModel', payload.selfHostedModel);
+      if (typeof payload.customInstructions === 'string') this.platformRepo.setSetting('ai.customInstructions', payload.customInstructions);
+    }
+    return true;
   }
 
   public async listNotes(): Promise<CloudNoteRecord[]> {

@@ -27,6 +27,7 @@ export type OverlayView =
   | 'runs'
   | 'dashboard'
   | 'settings'
+  | 'account'
   | 'reader'
   | 'extract'
   | 'scheduler'
@@ -86,6 +87,8 @@ interface LavrayState {
   setFindBarOpen: (open: boolean) => void;
   setTabSearchOpen: (open: boolean) => void;
   setAdBlockPopoverOpen: (open: boolean) => void;
+  profilePopoverOpen: boolean;
+  setProfilePopoverOpen: (open: boolean) => void;
   setConversations: (c: AgentConversation[]) => void;
   setActiveConversationId: (id: string | null) => void;
   setMessages: (m: AgentMessage[]) => void;
@@ -125,6 +128,7 @@ export const useLavrayStore = create<LavrayState>((set) => ({
   findBarOpen: false,
   tabSearchOpen: false,
   adBlockPopoverOpen: false,
+  profilePopoverOpen: false,
 
   conversations: [],
   activeConversationId: null,
@@ -163,6 +167,7 @@ export const useLavrayStore = create<LavrayState>((set) => ({
   setFindBarOpen: (findBarOpen) => set({ findBarOpen }),
   setTabSearchOpen: (tabSearchOpen) => set({ tabSearchOpen }),
   setAdBlockPopoverOpen: (adBlockPopoverOpen) => set({ adBlockPopoverOpen }),
+  setProfilePopoverOpen: (profilePopoverOpen) => set({ profilePopoverOpen }),
   setConversations: (conversations) => set({ conversations }),
   setActiveConversationId: (activeConversationId) => set({ activeConversationId }),
   setMessages: (messages) => set({ messages }),

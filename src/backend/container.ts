@@ -23,6 +23,7 @@ import type { CloudRepository } from './db/repository';
 import { BackendLogger } from './observability/logger';
 import { MetricsRegistry } from './observability/metrics';
 import { RateLimiter } from './security/rate-limiter';
+import { EmailDeliveryService } from './modules/identity/email-delivery';
 import { SsrfGuard } from './security/ssrf-guard';
 import { IdentityService } from './modules/identity/identity-service';
 import { AiOrchestrator } from './modules/ai/ai-orchestrator';
@@ -93,9 +94,22 @@ export async function createBackendContainer(opts?: {
     }
   }
 
+  const emailDelivery = new EmailDeliveryService({
+    provider: config.emailProvider,
+    from: config.emailFrom,
+    resendApiKey: config.resendApiKey,
+    webhookUrl: config.emailWebhookUrl,
+    webhookBearer: config.emailWebhookBearer
+  });
+  if (config.nodeEnv === 'production' && !emailDelivery.isConfigured()) {
+    throw new Error(
+      'LAVRAY_EMAIL_PROVIDER (resend or webhook) and provider credentials are required in production mode.'
+    );
+  }
+
   const rateLimiter = new RateLimiter(redis);
   const ssrfGuard = new SsrfGuard();
-  const identity = new IdentityService(repo, config);
+  const identity = new IdentityService(repo, config, emailDelivery);
   const ai = new AiOrchestrator(config, metrics, opts?.aiOverrideProvider);
   const extractor = new ResearchExtractorService(ssrfGuard);
   const hybridIndex = new HybridIndexService(repo);

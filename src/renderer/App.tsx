@@ -17,6 +17,7 @@ import { ExtractionView, MemoryView, SkillsView } from './components/views/Skill
 import { AuditAndRulesView, DashboardView, McpServerView, RunsAndReplayView, SchedulerView } from './components/views/OperationsViews';
 import { IntelligenceView } from './components/views/IntelligenceView';
 import { SearchView } from './components/views/SearchView';
+import { AccountView } from './components/views/AccountView';
 import { WebSearchView } from './components/WebSearchView';
 
 export const App: React.FC = () => {
@@ -33,6 +34,7 @@ export const App: React.FC = () => {
     tabSearchOpen,
     adBlockPopoverOpen,
     setAdBlockPopoverOpen,
+    profilePopoverOpen,
     hitlPause,
     settings,
     toasts,
@@ -217,9 +219,15 @@ export const App: React.FC = () => {
       topInset,
       leftInset,
       rightInset,
-      hideBrowserView: Boolean(activeOverlayView) || isNewTab || isSearchTab || adBlockPopoverOpen || tabSearchOpen
+      hideBrowserView:
+        Boolean(activeOverlayView) ||
+        isNewTab ||
+        isSearchTab ||
+        adBlockPopoverOpen ||
+        profilePopoverOpen ||
+        tabSearchOpen
     });
-  }, [verticalTabs, sidebarOpen, agentPanelOpen, agentPanelWidth, activeOverlayView, isNewTab, isSearchTab, hitlPause, adBlockPopoverOpen, tabSearchOpen]);
+  }, [verticalTabs, sidebarOpen, agentPanelOpen, agentPanelWidth, activeOverlayView, isNewTab, isSearchTab, hitlPause, adBlockPopoverOpen, profilePopoverOpen, tabSearchOpen]);
 
   // Global browser keyboard shortcuts
   useEffect(() => {
@@ -295,6 +303,8 @@ export const App: React.FC = () => {
         return <IntelligenceView />;
       case 'search':
         return <SearchView />;
+      case 'account':
+        return <AccountView />;
       default:
         return null;
     }

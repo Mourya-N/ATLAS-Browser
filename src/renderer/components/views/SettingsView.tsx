@@ -757,6 +757,13 @@ export const SettingsView: React.FC = () => {
                     <div className="flex flex-wrap gap-2">
                       <button
                         type="button"
+                        onClick={() => setOverlayView('account')}
+                        className="rounded-lg border border-lavray-border px-3 py-1.5 text-[12px] font-medium hover:bg-lavray-elevated"
+                      >
+                        Manage Account, Devices & E2EE
+                      </button>
+                      <button
+                        type="button"
                         disabled={cloudBusy}
                         onClick={async () => {
                           setCloudBusy(true);

@@ -179,6 +179,17 @@ export const IPC_CHANNELS = {
   CLOUD_DELETE_ACCOUNT_DATA: 'lavray:cloud:delete-account-data',
   CLOUD_NOTES_LIST: 'lavray:cloud:notes-list',
   CLOUD_NOTES_SAVE: 'lavray:cloud:notes-save',
+  CLOUD_UPDATE_PROFILE: 'lavray:cloud:update-profile',
+  CLOUD_REQUEST_VERIFICATION: 'lavray:cloud:request-verification',
+  CLOUD_VERIFY_EMAIL: 'lavray:cloud:verify-email',
+  CLOUD_FORGOT_PASSWORD: 'lavray:cloud:forgot-password',
+  CLOUD_RESET_PASSWORD: 'lavray:cloud:reset-password',
+  CLOUD_CHANGE_PASSWORD: 'lavray:cloud:change-password',
+  CLOUD_LIST_DEVICES: 'lavray:cloud:list-devices',
+  CLOUD_REVOKE_DEVICE: 'lavray:cloud:revoke-device',
+  CLOUD_REVOKE_OTHER_SESSIONS: 'lavray:cloud:revoke-other-sessions',
+  CLOUD_SETUP_E2EE: 'lavray:cloud:setup-e2ee',
+  CLOUD_UNLOCK_E2EE: 'lavray:cloud:unlock-e2ee',
 
   // Content events (page -> main -> UI)
   CONTENT_SELECTION: 'lavray:content:selection',

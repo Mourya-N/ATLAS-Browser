@@ -1124,4 +1124,68 @@ export function registerAllIpcHandlers(services: MainServices): void {
       return cloudClient.saveNote(p);
     }
   );
+
+  handleTrusted(
+    IPC_CHANNELS.CLOUD_UPDATE_PROFILE,
+    async (_e, patch: { displayName?: string; avatarUrl?: string | null }) => {
+      if (!cloudClient) throw new Error('Cloud client unavailable');
+      return cloudClient.updateProfile(patch);
+    }
+  );
+
+  handleTrusted(IPC_CHANNELS.CLOUD_REQUEST_VERIFICATION, async () => {
+    if (!cloudClient) throw new Error('Cloud client unavailable');
+    return cloudClient.requestEmailVerification();
+  });
+
+  handleTrusted(IPC_CHANNELS.CLOUD_VERIFY_EMAIL, async (_e, token: string) => {
+    if (!cloudClient) throw new Error('Cloud client unavailable');
+    return cloudClient.verifyEmail(token);
+  });
+
+  handleTrusted(IPC_CHANNELS.CLOUD_FORGOT_PASSWORD, async (_e, email: string) => {
+    if (!cloudClient) throw new Error('Cloud client unavailable');
+    return cloudClient.forgotPassword(email);
+  });
+
+  handleTrusted(
+    IPC_CHANNELS.CLOUD_RESET_PASSWORD,
+    async (_e, payload: { token: string; newPassword: string }) => {
+      if (!cloudClient) throw new Error('Cloud client unavailable');
+      return cloudClient.resetPassword(payload.token, payload.newPassword);
+    }
+  );
+
+  handleTrusted(
+    IPC_CHANNELS.CLOUD_CHANGE_PASSWORD,
+    async (_e, payload: { currentPassword: string; newPassword: string }) => {
+      if (!cloudClient) throw new Error('Cloud client unavailable');
+      return cloudClient.changePassword(payload.currentPassword, payload.newPassword);
+    }
+  );
+
+  handleTrusted(IPC_CHANNELS.CLOUD_LIST_DEVICES, async () => {
+    if (!cloudClient) throw new Error('Cloud client unavailable');
+    return cloudClient.listDevices();
+  });
+
+  handleTrusted(IPC_CHANNELS.CLOUD_REVOKE_DEVICE, async (_e, deviceId: string) => {
+    if (!cloudClient) throw new Error('Cloud client unavailable');
+    return cloudClient.revokeDevice(deviceId);
+  });
+
+  handleTrusted(IPC_CHANNELS.CLOUD_REVOKE_OTHER_SESSIONS, async () => {
+    if (!cloudClient) throw new Error('Cloud client unavailable');
+    return cloudClient.revokeAllOtherSessions();
+  });
+
+  handleTrusted(IPC_CHANNELS.CLOUD_SETUP_E2EE, async (_e, customRecoveryKey?: string) => {
+    if (!cloudClient) throw new Error('Cloud client unavailable');
+    return cloudClient.setupE2ee(customRecoveryKey);
+  });
+
+  handleTrusted(IPC_CHANNELS.CLOUD_UNLOCK_E2EE, async (_e, recoveryKey: string) => {
+    if (!cloudClient) throw new Error('Cloud client unavailable');
+    return cloudClient.unlockE2eeWithRecoveryKey(recoveryKey);
+  });
 }

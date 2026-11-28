@@ -21,12 +21,18 @@ export interface BackendConfig {
   allowMockSearch: boolean;
   allowMockAi: boolean;
   rateLimitPerMinute: number;
+  authRateLimitPerMinute: number;
   searchRateLimitPerMinute: number;
   fetchTimeoutMs: number;
   maxFetchBytes: number;
   searchCacheTtlSeconds: number;
   workerPollIntervalMs: number;
   corsAllowedOrigins: string[];
+  emailProvider: 'none' | 'resend' | 'webhook';
+  emailFrom: string;
+  resendApiKey: string | null;
+  emailWebhookUrl: string | null;
+  emailWebhookBearer: string | null;
 }
 
 export function loadBackendConfig(env: NodeJS.ProcessEnv = process.env): BackendConfig {
@@ -52,12 +58,17 @@ export function loadBackendConfig(env: NodeJS.ProcessEnv = process.env): Backend
   const allowMockAi = nodeEnv !== 'production' && env.LAVRAY_ALLOW_MOCK_AI === 'true';
 
   const corsRaw = env.LAVRAY_CORS_ORIGINS || 'http://localhost:5173,http://127.0.0.1:5173,file://';
+  const emailProviderRaw = env.LAVRAY_EMAIL_PROVIDER?.trim().toLowerCase();
+  const emailProvider: 'none' | 'resend' | 'webhook' =
+    emailProviderRaw === 'resend' || emailProviderRaw === 'webhook' ? emailProviderRaw : 'none';
+
+  const databaseUrl = env.DATABASE_URL?.trim() || null;
 
   return {
     nodeEnv,
     port: Number(env.LAVRAY_BACKEND_PORT || env.PORT || 48080),
     host: env.LAVRAY_BACKEND_HOST || '0.0.0.0',
-    databaseUrl: env.DATABASE_URL?.trim() || null,
+    databaseUrl,
     redisUrl: env.REDIS_URL?.trim() || null,
     jwtSecret,
     jwtAccessTtlSeconds: Number(env.LAVRAY_JWT_ACCESS_TTL || 900),
@@ -74,6 +85,7 @@ export function loadBackendConfig(env: NodeJS.ProcessEnv = process.env): Backend
     allowMockSearch,
     allowMockAi,
     rateLimitPerMinute: Number(env.LAVRAY_RATE_LIMIT_PER_MIN || 120),
+    authRateLimitPerMinute: Number(env.LAVRAY_AUTH_RATE_LIMIT_PER_MIN || 20),
     searchRateLimitPerMinute: Number(env.LAVRAY_SEARCH_RATE_LIMIT_PER_MIN || 40),
     fetchTimeoutMs: Number(env.LAVRAY_FETCH_TIMEOUT_MS || 8000),
     maxFetchBytes: Number(env.LAVRAY_MAX_FETCH_BYTES || 2 * 1024 * 1024),
@@ -82,6 +94,11 @@ export function loadBackendConfig(env: NodeJS.ProcessEnv = process.env): Backend
     corsAllowedOrigins: corsRaw
       .split(',')
       .map((s) => s.trim())
-      .filter(Boolean)
+      .filter(Boolean),
+    emailProvider,
+    emailFrom: env.LAVRAY_EMAIL_FROM?.trim() || 'LAVRAY Account <no-reply@lavray.app>',
+    resendApiKey: env.RESEND_API_KEY?.trim() || null,
+    emailWebhookUrl: env.LAVRAY_EMAIL_WEBHOOK_URL?.trim() || null,
+    emailWebhookBearer: env.LAVRAY_EMAIL_WEBHOOK_BEARER?.trim() || null
   };
 }

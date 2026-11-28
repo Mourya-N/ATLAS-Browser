@@ -336,6 +336,13 @@ export interface CloudConsentSettings {
   syncResearch: boolean;
   syncMemory: boolean;
   syncSkills: boolean;
+  syncPreferences: boolean;
+  syncReadingList: boolean;
+  syncHistory: boolean;
+  syncTabs: boolean;
+  syncHayaConversations: boolean;
+  syncHayaPreferences: boolean;
+  e2eeEnabled: boolean;
   allowCloudSearch: boolean;
   allowCloudAi: boolean;
 }
@@ -348,6 +355,13 @@ export const DEFAULT_CLOUD_CONSENT: CloudConsentSettings = {
   syncResearch: false,
   syncMemory: false,
   syncSkills: false,
+  syncPreferences: false,
+  syncReadingList: false,
+  syncHistory: false,
+  syncTabs: false,
+  syncHayaConversations: false,
+  syncHayaPreferences: false,
+  e2eeEnabled: false,
   allowCloudSearch: false,
   allowCloudAi: false
 };
@@ -356,6 +370,11 @@ export interface CloudUser {
   id: string;
   email: string;
   displayName: string;
+  avatarUrl?: string | null;
+  emailVerified?: boolean;
+  emailVerifiedAt?: number | null;
+  e2eeEnabled?: boolean;
+  e2eeKeyVersion?: number;
   createdAt: number;
   updatedAt: number;
 }
@@ -378,16 +397,23 @@ export interface CloudDevice {
   platform: string;
   appVersion: string;
   lastSeenAt: number;
+  revokedAt?: number | null;
+  isCurrent?: boolean;
   createdAt: number;
 }
 
 export interface CloudAuthSession {
   user: CloudUser;
   profile: CloudProfile;
+  deviceId?: string | null;
   accessToken: string;
   refreshToken: string;
   expiresAt: number;
+  verificationRequired?: boolean;
+  devVerificationToken?: string | null;
 }
+
+export type CloudSyncState = 'idle' | 'syncing' | 'offline' | 'error' | 'expired';
 
 export interface CloudConnectionStatus {
   cloudEnabled: boolean;
@@ -395,11 +421,89 @@ export interface CloudConnectionStatus {
   reachable: boolean;
   authenticated: boolean;
   operatingMode: 'local_only' | 'cloud_connected' | 'cloud_degraded';
+  userId?: string | null;
   userEmail?: string | null;
+  displayName?: string | null;
+  avatarUrl?: string | null;
+  emailVerified?: boolean;
   profileId?: string | null;
+  deviceId?: string | null;
+  e2eeEnabled?: boolean;
+  e2eeUnlocked?: boolean;
+  syncState?: CloudSyncState;
+  pendingSyncCount?: number;
   lastSyncedAt?: number | null;
   lastError?: string | null;
   consent: CloudConsentSettings;
+}
+
+export interface E2eeKeyEnvelope {
+  keyVersion: number;
+  saltB64: string;
+  ivB64: string;
+  tagB64: string;
+  ciphertextB64: string;
+  iterations: number;
+  updatedAt: number;
+}
+
+export interface EncryptedPayloadEnvelope {
+  v: 1;
+  alg: 'aes-256-gcm';
+  keyVersion: number;
+  iv: string;
+  tag: string;
+  ciphertext: string;
+}
+
+export type SyncEntityType =
+  | 'bookmark'
+  | 'bookmark_folder'
+  | 'preference'
+  | 'reading_list'
+  | 'history'
+  | 'open_tab'
+  | 'note'
+  | 'haya_conversation'
+  | 'haya_preference'
+  | 'haya_memory';
+
+export interface SyncRecordEnvelope {
+  id: string;
+  entityType: SyncEntityType;
+  version: number;
+  updatedAt: number;
+  deletedAt?: number | null;
+  clientChangeId?: string | null;
+  encrypted: boolean;
+  payload: Record<string, unknown> | EncryptedPayloadEnvelope;
+}
+
+export interface SyncPushItem {
+  id: string;
+  entityType: SyncEntityType;
+  baseVersion: number;
+  updatedAt: number;
+  deletedAt?: number | null;
+  clientChangeId: string;
+  encrypted: boolean;
+  payload: Record<string, unknown> | EncryptedPayloadEnvelope;
+}
+
+export interface SyncPushResponse {
+  applied: SyncRecordEnvelope[];
+  conflicts: Array<{
+    clientItem: SyncPushItem;
+    serverItem: SyncRecordEnvelope;
+  }>;
+  serverVersion: number;
+}
+
+export interface SyncPullResponse {
+  items: SyncRecordEnvelope[];
+  serverVersion: number;
+  hasMore: boolean;
+  nextCursor: number;
 }
 
 export interface CloudBookmarkRecord {

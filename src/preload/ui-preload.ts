@@ -265,6 +265,20 @@ const lavrayApi = {
   listCloudNotes: () => invoke(IPC_CHANNELS.CLOUD_NOTES_LIST),
   saveCloudNote: (note: { title: string; content: string; sourceUrl?: string | null; tags?: string[] }) =>
     invoke(IPC_CHANNELS.CLOUD_NOTES_SAVE, note),
+  updateCloudProfile: (patch: { displayName?: string; avatarUrl?: string | null }) =>
+    invoke(IPC_CHANNELS.CLOUD_UPDATE_PROFILE, patch),
+  requestEmailVerification: () => invoke(IPC_CHANNELS.CLOUD_REQUEST_VERIFICATION),
+  verifyCloudEmail: (token: string) => invoke(IPC_CHANNELS.CLOUD_VERIFY_EMAIL, token),
+  forgotCloudPassword: (email: string) => invoke(IPC_CHANNELS.CLOUD_FORGOT_PASSWORD, email),
+  resetCloudPassword: (payload: { token: string; newPassword: string }) =>
+    invoke(IPC_CHANNELS.CLOUD_RESET_PASSWORD, payload),
+  changeCloudPassword: (payload: { currentPassword: string; newPassword: string }) =>
+    invoke(IPC_CHANNELS.CLOUD_CHANGE_PASSWORD, payload),
+  listCloudDevices: () => invoke(IPC_CHANNELS.CLOUD_LIST_DEVICES),
+  revokeCloudDevice: (deviceId: string) => invoke(IPC_CHANNELS.CLOUD_REVOKE_DEVICE, deviceId),
+  revokeOtherCloudSessions: () => invoke(IPC_CHANNELS.CLOUD_REVOKE_OTHER_SESSIONS),
+  setupCloudE2ee: (customRecoveryKey?: string) => invoke(IPC_CHANNELS.CLOUD_SETUP_E2EE, customRecoveryKey),
+  unlockCloudE2ee: (recoveryKey: string) => invoke(IPC_CHANNELS.CLOUD_UNLOCK_E2EE, recoveryKey),
 
   // Page selection / context menu actions
   onContentSelection: (cb: (data: { tabId: string; text: string; x: number; y: number }) => void) =>

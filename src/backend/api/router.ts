@@ -44,8 +44,46 @@ const ConsentPatchSchema = z.object({
   syncResearch: z.boolean().optional(),
   syncMemory: z.boolean().optional(),
   syncSkills: z.boolean().optional(),
+  syncPreferences: z.boolean().optional(),
+  syncReadingList: z.boolean().optional(),
+  syncHistory: z.boolean().optional(),
+  syncTabs: z.boolean().optional(),
+  syncHayaConversations: z.boolean().optional(),
+  syncHayaPreferences: z.boolean().optional(),
+  e2eeEnabled: z.boolean().optional(),
   allowCloudSearch: z.boolean().optional(),
   allowCloudAi: z.boolean().optional()
+});
+
+const SyncEntityTypeSchema = z.enum([
+  'bookmark',
+  'bookmark_folder',
+  'preference',
+  'reading_list',
+  'history',
+  'open_tab',
+  'note',
+  'haya_conversation',
+  'haya_preference',
+  'haya_memory'
+]);
+
+const SyncPushSchema = z.object({
+  deviceId: z.string().max(128).optional(),
+  items: z
+    .array(
+      z.object({
+        id: z.string().min(1).max(200),
+        entityType: SyncEntityTypeSchema,
+        baseVersion: z.number().int().min(0),
+        updatedAt: z.number().int().min(0),
+        deletedAt: z.number().int().nullable().optional(),
+        clientChangeId: z.string().min(1).max(200),
+        encrypted: z.boolean(),
+        payload: z.record(z.string(), z.unknown())
+      })
+    )
+    .max(250)
 });
 
 const BookmarkInputSchema = z.object({
@@ -141,11 +179,12 @@ export function createCloudApiRouter(services: BackendServicesContainer) {
     }
   }
 
-  function requireAuth(req: http.IncomingMessage) {
+  async function requireAuth(req: http.IncomingMessage) {
     const claims = identity.verifyAccessToken(req.headers.authorization);
     if (!claims) {
       throw new AuthError('Authentication required or token expired', 401);
     }
+    await identity.validateActiveAccessToken(claims);
     return claims;
   }
 
@@ -169,10 +208,14 @@ export function createCloudApiRouter(services: BackendServicesContainer) {
       // Rate limit per IP / path bucket
       const clientKey = req.socket.remoteAddress || 'unknown';
       const isSearchRoute = pathname.startsWith('/api/v1/search');
-      const rl = await rateLimiter.consume(
-        `${clientKey}:${isSearchRoute ? 'search' : 'api'}`,
-        isSearchRoute ? config.searchRateLimitPerMinute : config.rateLimitPerMinute
-      );
+      const isAuthRoute = pathname.startsWith('/api/v1/auth/');
+      const rlBucket = isSearchRoute ? 'search' : isAuthRoute ? 'auth' : 'api';
+      const rlLimit = isSearchRoute
+        ? config.searchRateLimitPerMinute
+        : isAuthRoute
+          ? config.authRateLimitPerMinute
+          : config.rateLimitPerMinute;
+      const rl = await rateLimiter.consume(`${clientKey}:${rlBucket}`, rlLimit);
       res.setHeader('X-RateLimit-Limit', String(rl.limit));
       res.setHeader('X-RateLimit-Remaining', String(rl.remaining));
       if (!rl.allowed) {
@@ -218,7 +261,7 @@ export function createCloudApiRouter(services: BackendServicesContainer) {
       }
 
       if (method === 'POST' && pathname === '/api/v1/index/crawl') {
-        requireAuth(req);
+        await requireAuth(req);
         const body = z
           .object({
             seedUrls: z.array(z.string().url().max(4096)).min(1).max(20),
@@ -240,7 +283,7 @@ export function createCloudApiRouter(services: BackendServicesContainer) {
       }
 
       if (method === 'DELETE' && pathname === '/api/v1/index/documents') {
-        requireAuth(req);
+        await requireAuth(req);
         const body = z.object({ canonicalUrl: z.string().min(1).max(4096) }).parse(await readJsonBody(req));
         const removed = await firstPartyIndex.removeDocument(body.canonicalUrl);
         sendJson(res, 200, { removed }, requestId);
@@ -301,6 +344,7 @@ export function createCloudApiRouter(services: BackendServicesContainer) {
       // Identity & Profile Routes
       if (method === 'POST' && pathname === '/api/v1/auth/register') {
         const body = CloudAuthSchema.extend({
+          deviceId: z.string().max(128).optional(),
           deviceName: z.string().max(120).optional(),
           platform: z.string().max(64).optional(),
           appVersion: z.string().max(32).optional()
@@ -312,6 +356,7 @@ export function createCloudApiRouter(services: BackendServicesContainer) {
 
       if (method === 'POST' && pathname === '/api/v1/auth/login') {
         const body = CloudAuthSchema.extend({
+          deviceId: z.string().max(128).optional(),
           deviceName: z.string().max(120).optional(),
           platform: z.string().max(64).optional(),
           appVersion: z.string().max(32).optional()
@@ -335,30 +380,238 @@ export function createCloudApiRouter(services: BackendServicesContainer) {
         return;
       }
 
+      if (method === 'POST' && pathname === '/api/v1/auth/request-verification') {
+        const claims = await requireAuth(req);
+        const result = await identity.requestEmailVerification(claims.sub);
+        sendJson(res, 200, result, requestId);
+        return;
+      }
+
+      if (method === 'POST' && pathname === '/api/v1/auth/verify-email') {
+        const body = z.object({ token: z.string().min(6).max(256) }).parse(await readJsonBody(req));
+        const user = await identity.verifyEmail(body.token);
+        sendJson(res, 200, { user, verified: true }, requestId);
+        return;
+      }
+
+      if (method === 'POST' && pathname === '/api/v1/auth/forgot-password') {
+        const body = z.object({ email: z.string().email().max(255) }).parse(await readJsonBody(req));
+        const result = await identity.requestPasswordReset(body.email);
+        sendJson(res, 200, result, requestId);
+        return;
+      }
+
+      if (method === 'POST' && pathname === '/api/v1/auth/reset-password') {
+        const body = z
+          .object({
+            token: z.string().min(6).max(256),
+            newPassword: z.string().min(8).max(200)
+          })
+          .parse(await readJsonBody(req));
+        await identity.resetPassword(body.token, body.newPassword);
+        sendJson(res, 200, { ok: true }, requestId);
+        return;
+      }
+
+      if (method === 'POST' && pathname === '/api/v1/auth/change-password') {
+        const claims = await requireAuth(req);
+        const body = z
+          .object({
+            currentPassword: z.string().min(1).max(200),
+            newPassword: z.string().min(8).max(200)
+          })
+          .parse(await readJsonBody(req));
+        await identity.changePassword(claims.sub, body.currentPassword, body.newPassword, claims.deviceId);
+        sendJson(res, 200, { ok: true }, requestId);
+        return;
+      }
+
+      if (method === 'POST' && pathname === '/api/v1/auth/revoke-all-sessions') {
+        const claims = await requireAuth(req);
+        await identity.revokeAllOtherSessions(claims.sub, claims.deviceId);
+        sendJson(res, 200, { ok: true }, requestId);
+        return;
+      }
+
+      if (method === 'GET' && pathname === '/api/v1/account/me') {
+        const claims = await requireAuth(req);
+        const data = await identity.getUserAndProfile(claims.sub, claims.profileId);
+        sendJson(res, 200, data, requestId);
+        return;
+      }
+
       if (method === 'GET' && pathname === '/api/v1/profile') {
-        const claims = requireAuth(req);
+        const claims = await requireAuth(req);
         const profile = await identity.getProfile(claims.sub, claims.profileId);
         sendJson(res, 200, { profile }, requestId);
         return;
       }
 
+      if (method === 'PUT' && pathname === '/api/v1/profile') {
+        const claims = await requireAuth(req);
+        const body = z
+          .object({
+            displayName: z.string().min(1).max(120).optional(),
+            avatarUrl: z.string().max(4096).nullable().optional()
+          })
+          .parse(await readJsonBody(req));
+        const updated = await identity.updateProfile(claims.sub, claims.profileId, body);
+        sendJson(res, 200, updated, requestId);
+        return;
+      }
+
       if (method === 'PUT' && pathname === '/api/v1/profile/consent') {
-        const claims = requireAuth(req);
+        const claims = await requireAuth(req);
         const body = ConsentPatchSchema.parse(await readJsonBody(req));
         const profile = await identity.updateConsent(claims.sub, claims.profileId, body);
         sendJson(res, 200, { profile }, requestId);
         return;
       }
 
+      if (method === 'GET' && pathname === '/api/v1/devices') {
+        const claims = await requireAuth(req);
+        const devices = await identity.listDevices(claims.sub, claims.deviceId);
+        sendJson(res, 200, { devices }, requestId);
+        return;
+      }
+
+      if (method === 'DELETE' && pathname.startsWith('/api/v1/devices/')) {
+        const claims = await requireAuth(req);
+        const deviceId = decodeURIComponent(pathname.slice('/api/v1/devices/'.length));
+        const device = await identity.revokeDevice(claims.sub, deviceId);
+        sendJson(res, 200, { device, revoked: true }, requestId);
+        return;
+      }
+
+      if (method === 'GET' && pathname === '/api/v1/account/e2ee') {
+        const claims = await requireAuth(req);
+        const data = await identity.getE2eeEnvelope(claims.sub);
+        sendJson(res, 200, data, requestId);
+        return;
+      }
+
+      if (method === 'PUT' && pathname === '/api/v1/account/e2ee') {
+        const claims = await requireAuth(req);
+        const body = z
+          .object({
+            e2eeEnabled: z.boolean(),
+            e2eeKeyVersion: z.number().int().min(1),
+            envelope: z
+              .object({
+                keyVersion: z.number().int().min(1),
+                saltB64: z.string().min(8).max(512),
+                ivB64: z.string().min(8).max(512),
+                tagB64: z.string().min(8).max(512),
+                ciphertextB64: z.string().min(8).max(4096),
+                iterations: z.number().int().min(10_000).max(2_000_000),
+                updatedAt: z.number().int().min(0)
+              })
+              .nullable()
+          })
+          .parse(await readJsonBody(req));
+        const user = await identity.setE2eeEnvelope(claims.sub, body);
+        sendJson(res, 200, { user }, requestId);
+        return;
+      }
+
+      if (method === 'POST' && pathname === '/api/v1/sync/push') {
+        const claims = await requireAuth(req);
+        const body = SyncPushSchema.parse(await readJsonBody(req));
+        const profile = await identity.getProfile(claims.sub, claims.profileId);
+        if (!profile) {
+          throw new AuthError('Active profile not found', 404);
+        }
+        const consentMap: Record<string, keyof typeof profile.consent> = {
+          bookmark: 'syncBookmarks',
+          bookmark_folder: 'syncBookmarks',
+          preference: 'syncPreferences',
+          reading_list: 'syncReadingList',
+          history: 'syncHistory',
+          open_tab: 'syncTabs',
+          note: 'syncNotes',
+          haya_conversation: 'syncHayaConversations',
+          haya_preference: 'syncHayaPreferences',
+          haya_memory: 'syncMemory'
+        };
+        for (const item of body.items) {
+          const flag = consentMap[item.entityType];
+          if (flag && !profile.consent[flag]) {
+            throw new ConsentRequiredError(
+              flag,
+              `Cloud synchronization consent (${flag}) is disabled for ${item.entityType}.`
+            );
+          }
+        }
+        const result = await repo.pushSyncRecords({
+          userId: claims.sub,
+          profileId: claims.profileId,
+          items: body.items as unknown as import('@shared/types').SyncPushItem[]
+        });
+        sendJson(res, 200, result, requestId);
+        return;
+      }
+
+      if (method === 'GET' && pathname === '/api/v1/sync/pull') {
+        const claims = await requireAuth(req);
+        const profile = await identity.getProfile(claims.sub, claims.profileId);
+        if (!profile) {
+          throw new AuthError('Active profile not found', 404);
+        }
+        const consentMap: Record<string, keyof typeof profile.consent> = {
+          bookmark: 'syncBookmarks',
+          bookmark_folder: 'syncBookmarks',
+          preference: 'syncPreferences',
+          reading_list: 'syncReadingList',
+          history: 'syncHistory',
+          open_tab: 'syncTabs',
+          note: 'syncNotes',
+          haya_conversation: 'syncHayaConversations',
+          haya_preference: 'syncHayaPreferences',
+          haya_memory: 'syncMemory'
+        };
+        const sinceVersion = Math.max(0, Number(url.searchParams.get('sinceVersion') || 0));
+        const limit = Math.min(250, Math.max(1, Number(url.searchParams.get('limit') || 100)));
+        const typesRaw = url.searchParams.get('entityTypes');
+        const requestedTypes = typesRaw
+          ? typesRaw
+              .split(',')
+              .map((s) => s.trim())
+              .filter(Boolean)
+              .map((s) => SyncEntityTypeSchema.parse(s))
+          : (Object.keys(consentMap) as Array<z.infer<typeof SyncEntityTypeSchema>>);
+        const entityTypes = requestedTypes.filter((t) => {
+          const flag = consentMap[t];
+          return !flag || Boolean(profile.consent[flag]);
+        });
+        if (entityTypes.length === 0) {
+          sendJson(
+            res,
+            200,
+            { items: [], serverVersion: sinceVersion, hasMore: false, nextCursor: sinceVersion },
+            requestId
+          );
+          return;
+        }
+        const result = await repo.pullSyncRecords({
+          userId: claims.sub,
+          profileId: claims.profileId,
+          sinceVersion,
+          limit,
+          entityTypes
+        });
+        sendJson(res, 200, result, requestId);
+        return;
+      }
+
       if (method === 'GET' && pathname === '/api/v1/account/export') {
-        const claims = requireAuth(req);
+        const claims = await requireAuth(req);
         const data = await identity.exportUserData(claims.sub);
         sendJson(res, 200, data, requestId);
         return;
       }
 
       if (method === 'DELETE' && pathname === '/api/v1/account') {
-        const claims = requireAuth(req);
+        const claims = await requireAuth(req);
         await identity.deleteAccount(claims.sub);
         sendJson(res, 200, { deleted: true }, requestId);
         return;
@@ -446,7 +699,7 @@ export function createCloudApiRouter(services: BackendServicesContainer) {
 
       // Research / Extraction Route (SSRF-hardened)
       if (method === 'POST' && pathname === '/api/v1/research/extract') {
-        requireAuth(req);
+        await requireAuth(req);
         const body = ExtractUrlSchema.parse(await readJsonBody(req));
         const extracted = await extractor.fetchAndExtract(body.url, {
           timeoutMs: config.fetchTimeoutMs,
@@ -459,14 +712,14 @@ export function createCloudApiRouter(services: BackendServicesContainer) {
 
       // User Data Sync Routes (strict consent + auth enforced)
       if (method === 'GET' && pathname === '/api/v1/userdata/bookmarks') {
-        const claims = requireAuth(req);
+        const claims = await requireAuth(req);
         const items = await userData.listBookmarks(claims.sub, claims.profileId);
         sendJson(res, 200, { bookmarks: items }, requestId);
         return;
       }
 
       if (method === 'POST' && pathname === '/api/v1/userdata/bookmarks') {
-        const claims = requireAuth(req);
+        const claims = await requireAuth(req);
         const body = BookmarkInputSchema.parse(await readJsonBody(req));
         const saved = await userData.saveBookmark({
           ...body,
@@ -478,7 +731,7 @@ export function createCloudApiRouter(services: BackendServicesContainer) {
       }
 
       if (method === 'DELETE' && pathname.startsWith('/api/v1/userdata/bookmarks/')) {
-        const claims = requireAuth(req);
+        const claims = await requireAuth(req);
         const id = decodeURIComponent(pathname.slice('/api/v1/userdata/bookmarks/'.length));
         await userData.deleteBookmark(claims.sub, claims.profileId, id);
         sendJson(res, 200, { deleted: true }, requestId);
@@ -486,14 +739,14 @@ export function createCloudApiRouter(services: BackendServicesContainer) {
       }
 
       if (method === 'GET' && pathname === '/api/v1/userdata/notes') {
-        const claims = requireAuth(req);
+        const claims = await requireAuth(req);
         const notes = await userData.listNotes(claims.sub, claims.profileId);
         sendJson(res, 200, { notes }, requestId);
         return;
       }
 
       if (method === 'POST' && pathname === '/api/v1/userdata/notes') {
-        const claims = requireAuth(req);
+        const claims = await requireAuth(req);
         const body = NoteInputSchema.parse(await readJsonBody(req));
         const note = await userData.saveNote({
           ...body,
@@ -505,21 +758,21 @@ export function createCloudApiRouter(services: BackendServicesContainer) {
       }
 
       if (method === 'GET' && pathname === '/api/v1/userdata/search-history') {
-        const claims = requireAuth(req);
+        const claims = await requireAuth(req);
         const history = await userData.listSearchHistory(claims.sub, claims.profileId);
         sendJson(res, 200, { history }, requestId);
         return;
       }
 
       if (method === 'DELETE' && pathname === '/api/v1/userdata/search-history') {
-        const claims = requireAuth(req);
+        const claims = await requireAuth(req);
         await userData.clearSearchHistory(claims.sub, claims.profileId);
         sendJson(res, 200, { cleared: true }, requestId);
         return;
       }
 
       if (method === 'POST' && pathname === '/api/v1/knowledge/search') {
-        const claims = requireAuth(req);
+        const claims = await requireAuth(req);
         const body = z
           .object({
             query: z.string().min(1).max(1000),
@@ -538,7 +791,7 @@ export function createCloudApiRouter(services: BackendServicesContainer) {
 
       // Background Worker Jobs
       if (method === 'POST' && pathname === '/api/v1/jobs') {
-        const claims = requireAuth(req);
+        const claims = await requireAuth(req);
         const body = JobEnqueueSchema.parse(await readJsonBody(req));
         const job = await worker.enqueue({
           userId: claims.sub,
@@ -551,7 +804,7 @@ export function createCloudApiRouter(services: BackendServicesContainer) {
       }
 
       if (method === 'GET' && pathname === '/api/v1/jobs/stats') {
-        requireAuth(req);
+        await requireAuth(req);
         const stats = await repo.getJobStats();
         sendJson(res, 200, stats, requestId);
         return;
@@ -577,6 +830,8 @@ export function createCloudApiRouter(services: BackendServicesContainer) {
           { error: 'Validation error', issues: err.issues, requestId },
           requestId
         );
+      } else if (err instanceof Error && err.message.startsWith('Idempotency conflict:')) {
+        sendJson(res, 409, { error: err.message, requestId }, requestId);
       } else {
         logger.log(
           'error',

@@ -10,7 +10,8 @@ import {
   Search,
   Settings,
   Shield,
-  Sparkles
+  Sparkles,
+  UserCircle2
 } from 'lucide-react';
 import { useLavrayStore, type OverlayView } from '../store/useLavrayStore';
 import { LavrayMark } from './BrandMarks';
@@ -139,6 +140,12 @@ export const SidebarRail: React.FC = () => {
           `Privacy & Shield (${adBlockStats?.totalBlocked ?? 0} blocked)`,
           <Shield className="h-[15px] w-[15px]" strokeWidth={1.75} />,
           () => toggleOverlay('audit')
+        )}
+        {navBtn(
+          activeOverlayView === 'account',
+          'LAVRAY Account & Sync',
+          <UserCircle2 className="h-[15px] w-[15px]" strokeWidth={1.75} />,
+          () => toggleOverlay('account')
         )}
         {navBtn(
           activeOverlayView === 'settings',

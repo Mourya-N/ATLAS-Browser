@@ -1,5 +1,5 @@
 import { safeStorage } from 'electron';
-import { randomBytes, createCipheriv, createDecipheriv, scryptSync } from 'node:crypto';
+import { randomBytes, randomUUID, createCipheriv, createDecipheriv, scryptSync } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { redactSecrets, redactObjectSecrets } from '@shared/redaction';
@@ -13,6 +13,9 @@ export interface SecretVaultData {
   mcpAuthToken?: string;
   cloudAccessToken?: string;
   cloudRefreshToken?: string;
+  cloudDeviceId?: string;
+  cloudE2eeMasterKeyB64?: string;
+  cloudE2eeKeyVersion?: number;
 }
 
 export class SecretVault {
@@ -31,10 +34,18 @@ export class SecretVault {
     }
   }
 
-  private getMachineKey(): Buffer {
-    // Only used in headless/test environments when OS safeStorage is unavailable
-    const seed = `${process.env.USER || 'lavray'}:${this.vaultPath}:lavray-vault-v1`;
-    return scryptSync(seed, 'lavray-salt-v1', 32);
+  private isTestEnvironment(): boolean {
+    return process.env.NODE_ENV === 'test' || Boolean(process.env.VITEST);
+  }
+
+  private getTestFallbackKey(): Buffer {
+    if (!this.isTestEnvironment()) {
+      throw new Error(
+        'OS secure credential storage (safeStorage) is unavailable. Refusing to store secrets without OS keychain protection.'
+      );
+    }
+    const seed = `${process.env.USER || 'lavray'}:${this.vaultPath}:lavray-test-vault-v1`;
+    return scryptSync(seed, 'lavray-test-salt-v1', 32);
   }
 
   private encryptPayload(plaintext: string): Buffer {
@@ -43,7 +54,7 @@ export class SecretVault {
       return Buffer.concat([Buffer.from('SS01'), encrypted]);
     }
     const iv = randomBytes(12);
-    const key = this.getMachineKey();
+    const key = this.getTestFallbackKey();
     const cipher = createCipheriv('aes-256-gcm', key, iv);
     const encrypted = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
     const tag = cipher.getAuthTag();
@@ -62,7 +73,7 @@ export class SecretVault {
       const iv = raw.subarray(4, 16);
       const tag = raw.subarray(16, 32);
       const data = raw.subarray(32);
-      const decipher = createDecipheriv('aes-256-gcm', this.getMachineKey(), iv);
+      const decipher = createDecipheriv('aes-256-gcm', this.getTestFallbackKey(), iv);
       decipher.setAuthTag(tag);
       return Buffer.concat([decipher.update(data), decipher.final()]).toString('utf8');
     }
@@ -181,6 +192,37 @@ export class SecretVault {
     const data = this.load();
     delete data.cloudAccessToken;
     delete data.cloudRefreshToken;
+    this.save(data);
+  }
+
+  public getOrCreateDeviceId(): string {
+    const data = this.load();
+    if (!data.cloudDeviceId) {
+      data.cloudDeviceId = randomUUID();
+      this.save(data);
+    }
+    return data.cloudDeviceId;
+  }
+
+  public setE2eeMasterKey(keyB64: string, keyVersion = 1): void {
+    const data = this.load();
+    data.cloudE2eeMasterKeyB64 = keyB64;
+    data.cloudE2eeKeyVersion = keyVersion;
+    this.save(data);
+  }
+
+  public getE2eeMasterKey(): { keyB64?: string; keyVersion: number } {
+    const data = this.load();
+    return {
+      keyB64: data.cloudE2eeMasterKeyB64,
+      keyVersion: data.cloudE2eeKeyVersion ?? 1
+    };
+  }
+
+  public clearE2eeMasterKey(): void {
+    const data = this.load();
+    delete data.cloudE2eeMasterKeyB64;
+    delete data.cloudE2eeKeyVersion;
     this.save(data);
   }
 }

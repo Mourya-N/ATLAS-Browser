@@ -12,16 +12,23 @@ import type {
   CloudProfile,
   CloudSearchHistoryRecord,
   CrawlCheckpoint,
+  E2eeKeyEnvelope,
   HybridIndexDocument,
   HybridSearchHit,
   MemoryItem,
-  ResearchReport
+  ResearchReport,
+  SyncEntityType,
+  SyncPushItem,
+  SyncPushResponse,
+  SyncPullResponse,
+  SyncRecordEnvelope
 } from '@shared/types';
 import { cosineSimilarity } from '@shared/text-utils';
 import type {
   CloudAuditEventRecord,
   CloudRepository,
   SavedSourceRecord,
+  StoredAccountToken,
   StoredRefreshToken,
   StoredUserRecord
 } from './repository';
@@ -129,46 +136,107 @@ export class PostgresCloudRepository implements CloudRepository {
     }
   }
 
-  public async findUserByEmail(email: string): Promise<StoredUserRecord | null> {
-    const res = await this.pool.query<{
-      id: string;
-      email: string;
-      password_hash: string;
-      display_name: string;
-      created_at: string;
-      updated_at: string;
-    }>('SELECT * FROM users WHERE email = $1 LIMIT 1', [email.toLowerCase()]);
-    const row = res.rows[0];
-    if (!row) return null;
+  private mapUserRow(row: Record<string, any>): StoredUserRecord {
     return {
       id: row.id,
       email: row.email,
       passwordHash: row.password_hash,
       displayName: row.display_name,
+      avatarUrl: row.avatar_url ?? null,
+      emailVerified: Boolean(row.email_verified),
+      emailVerifiedAt: row.email_verified_at ? Number(row.email_verified_at) : null,
+      e2eeEnabled: Boolean(row.e2ee_enabled),
+      e2eeKeyVersion: Number(row.e2ee_key_version ?? 1),
+      e2eeKeyEnvelope: (row.e2ee_key_envelope as E2eeKeyEnvelope | null) ?? null,
+      tokenEpoch: Number(row.token_epoch ?? 1),
       createdAt: Number(row.created_at),
       updatedAt: Number(row.updated_at)
     };
   }
 
+  public async findUserByEmail(email: string): Promise<StoredUserRecord | null> {
+    const res = await this.pool.query('SELECT * FROM users WHERE email = $1 LIMIT 1', [email.toLowerCase()]);
+    return res.rows[0] ? this.mapUserRow(res.rows[0]) : null;
+  }
+
   public async findUserById(userId: string): Promise<StoredUserRecord | null> {
-    const res = await this.pool.query<{
-      id: string;
-      email: string;
-      password_hash: string;
-      display_name: string;
-      created_at: string;
-      updated_at: string;
-    }>('SELECT * FROM users WHERE id = $1 LIMIT 1', [userId]);
-    const row = res.rows[0];
-    if (!row) return null;
+    const res = await this.pool.query('SELECT * FROM users WHERE id = $1 LIMIT 1', [userId]);
+    return res.rows[0] ? this.mapUserRow(res.rows[0]) : null;
+  }
+
+  public async getAuthSessionState(
+    userId: string,
+    deviceId?: string | null
+  ): Promise<{ exists: boolean; tokenEpoch: number; deviceRevoked: boolean }> {
+    const res = await this.pool.query<{ token_epoch: number; revoked_at: string | null }>(
+      `SELECT u.token_epoch, d.revoked_at
+       FROM users u
+       LEFT JOIN devices d ON d.id = $2 AND d.user_id = u.id
+       WHERE u.id = $1
+       LIMIT 1`,
+      [userId, deviceId ?? null]
+    );
+    const r = res.rows[0];
+    if (!r) return { exists: false, tokenEpoch: 0, deviceRevoked: false };
     return {
-      id: row.id,
-      email: row.email,
-      passwordHash: row.password_hash,
-      displayName: row.display_name,
-      createdAt: Number(row.created_at),
-      updatedAt: Number(row.updated_at)
+      exists: true,
+      tokenEpoch: Number(r.token_epoch ?? 1),
+      deviceRevoked: Boolean(r.revoked_at)
     };
+  }
+
+  public async updateUserProfile(
+    userId: string,
+    patch: { displayName?: string; avatarUrl?: string | null }
+  ): Promise<StoredUserRecord | null> {
+    const now = Date.now();
+    const current = await this.findUserById(userId);
+    if (!current) return null;
+    const res = await this.pool.query(
+      `UPDATE users SET display_name = $1, avatar_url = $2, updated_at = $3 WHERE id = $4 RETURNING *`,
+      [
+        patch.displayName !== undefined ? patch.displayName : current.displayName,
+        patch.avatarUrl !== undefined ? patch.avatarUrl : current.avatarUrl ?? null,
+        now,
+        userId
+      ]
+    );
+    return res.rows[0] ? this.mapUserRow(res.rows[0]) : null;
+  }
+
+  public async updateUserPassword(userId: string, passwordHash: string): Promise<void> {
+    await this.pool.query('UPDATE users SET password_hash = $1, updated_at = $2 WHERE id = $3', [
+      passwordHash,
+      Date.now(),
+      userId
+    ]);
+  }
+
+  public async markEmailVerified(userId: string, verifiedAt: number): Promise<StoredUserRecord | null> {
+    const res = await this.pool.query(
+      `UPDATE users SET email_verified = TRUE, email_verified_at = $1, updated_at = $1 WHERE id = $2 RETURNING *`,
+      [verifiedAt, userId]
+    );
+    return res.rows[0] ? this.mapUserRow(res.rows[0]) : null;
+  }
+
+  public async setUserE2eeEnvelope(
+    userId: string,
+    params: { e2eeEnabled: boolean; e2eeKeyVersion: number; envelope: E2eeKeyEnvelope | null }
+  ): Promise<StoredUserRecord | null> {
+    const res = await this.pool.query(
+      `UPDATE users
+       SET e2ee_enabled = $1, e2ee_key_version = $2, e2ee_key_envelope = $3::jsonb, updated_at = $4
+       WHERE id = $5 RETURNING *`,
+      [
+        params.e2eeEnabled,
+        params.e2eeKeyVersion,
+        params.envelope ? JSON.stringify(params.envelope) : null,
+        Date.now(),
+        userId
+      ]
+    );
+    return res.rows[0] ? this.mapUserRow(res.rows[0]) : null;
   }
 
   private mapProfileRow(row: {
@@ -238,10 +306,15 @@ export class PostgresCloudRepository implements CloudRepository {
   }
 
   public async registerDevice(device: CloudDevice): Promise<CloudDevice> {
-    await this.pool.query(
-      `INSERT INTO devices (id, user_id, profile_id, device_name, platform, app_version, last_seen_at, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-       ON CONFLICT (id) DO UPDATE SET last_seen_at = EXCLUDED.last_seen_at, app_version = EXCLUDED.app_version`,
+    const res = await this.pool.query(
+      `INSERT INTO devices (id, user_id, profile_id, device_name, platform, app_version, last_seen_at, revoked_at, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, NULL, $8)
+       ON CONFLICT (id) DO UPDATE
+         SET device_name = EXCLUDED.device_name,
+             app_version = EXCLUDED.app_version,
+             last_seen_at = EXCLUDED.last_seen_at,
+             revoked_at = NULL
+       RETURNING *`,
       [
         device.id,
         device.userId,
@@ -253,7 +326,38 @@ export class PostgresCloudRepository implements CloudRepository {
         device.createdAt
       ]
     );
-    return device;
+    const r = res.rows[0];
+    return {
+      id: r.id,
+      userId: r.user_id,
+      profileId: r.profile_id,
+      deviceName: r.device_name,
+      platform: r.platform,
+      appVersion: r.app_version,
+      lastSeenAt: Number(r.last_seen_at),
+      revokedAt: r.revoked_at ? Number(r.revoked_at) : null,
+      createdAt: Number(r.created_at)
+    };
+  }
+
+  public async getDevice(userId: string, deviceId: string): Promise<CloudDevice | null> {
+    const res = await this.pool.query('SELECT * FROM devices WHERE user_id = $1 AND id = $2 LIMIT 1', [
+      userId,
+      deviceId
+    ]);
+    const r = res.rows[0];
+    if (!r) return null;
+    return {
+      id: r.id,
+      userId: r.user_id,
+      profileId: r.profile_id,
+      deviceName: r.device_name,
+      platform: r.platform,
+      appVersion: r.app_version,
+      lastSeenAt: Number(r.last_seen_at),
+      revokedAt: r.revoked_at ? Number(r.revoked_at) : null,
+      createdAt: Number(r.created_at)
+    };
   }
 
   public async listDevices(userId: string): Promise<CloudDevice[]> {
@@ -268,15 +372,49 @@ export class PostgresCloudRepository implements CloudRepository {
       platform: r.platform,
       appVersion: r.app_version,
       lastSeenAt: Number(r.last_seen_at),
+      revokedAt: r.revoked_at ? Number(r.revoked_at) : null,
       createdAt: Number(r.created_at)
     }));
   }
 
+  public async revokeDevice(userId: string, deviceId: string, revokedAt: number): Promise<CloudDevice | null> {
+    const res = await this.pool.query(
+      'UPDATE devices SET revoked_at = $1 WHERE user_id = $2 AND id = $3 RETURNING *',
+      [revokedAt, userId, deviceId]
+    );
+    await this.pool.query(
+      'UPDATE refresh_tokens SET revoked_at = $1 WHERE user_id = $2 AND device_id = $3 AND revoked_at IS NULL',
+      [revokedAt, userId, deviceId]
+    );
+    const r = res.rows[0];
+    if (!r) return null;
+    return {
+      id: r.id,
+      userId: r.user_id,
+      profileId: r.profile_id,
+      deviceName: r.device_name,
+      platform: r.platform,
+      appVersion: r.app_version,
+      lastSeenAt: Number(r.last_seen_at),
+      revokedAt: r.revoked_at ? Number(r.revoked_at) : null,
+      createdAt: Number(r.created_at)
+    };
+  }
+
   public async saveRefreshToken(rec: StoredRefreshToken): Promise<void> {
     await this.pool.query(
-      `INSERT INTO refresh_tokens (id, user_id, profile_id, token_hash, expires_at, revoked_at, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [rec.id, rec.userId, rec.profileId, rec.tokenHash, rec.expiresAt, rec.revokedAt ?? null, rec.createdAt]
+      `INSERT INTO refresh_tokens (id, user_id, profile_id, device_id, token_hash, expires_at, revoked_at, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [
+        rec.id,
+        rec.userId,
+        rec.profileId,
+        rec.deviceId ?? null,
+        rec.tokenHash,
+        rec.expiresAt,
+        rec.revokedAt ?? null,
+        rec.createdAt
+      ]
     );
   }
 
@@ -290,6 +428,7 @@ export class PostgresCloudRepository implements CloudRepository {
       id: r.id,
       userId: r.user_id,
       profileId: r.profile_id,
+      deviceId: r.device_id ?? null,
       tokenHash: r.token_hash,
       expiresAt: Number(r.expires_at),
       revokedAt: r.revoked_at ? Number(r.revoked_at) : null,
@@ -302,6 +441,226 @@ export class PostgresCloudRepository implements CloudRepository {
       Date.now(),
       tokenHash
     ]);
+  }
+
+  public async revokeAllRefreshTokensForUser(userId: string, exceptDeviceId?: string): Promise<void> {
+    const now = Date.now();
+    if (exceptDeviceId) {
+      await this.pool.query(
+        'UPDATE refresh_tokens SET revoked_at = $1 WHERE user_id = $2 AND (device_id IS NULL OR device_id <> $3) AND revoked_at IS NULL',
+        [now, userId, exceptDeviceId]
+      );
+    } else {
+      await this.pool.query(
+        'UPDATE refresh_tokens SET revoked_at = $1 WHERE user_id = $2 AND revoked_at IS NULL',
+        [now, userId]
+      );
+    }
+  }
+
+  public async incrementTokenEpoch(userId: string): Promise<number> {
+    const res = await this.pool.query<{ token_epoch: number }>(
+      'UPDATE users SET token_epoch = COALESCE(token_epoch, 1) + 1, updated_at = $1 WHERE id = $2 RETURNING token_epoch',
+      [Date.now(), userId]
+    );
+    return Number(res.rows[0]?.token_epoch ?? 1);
+  }
+
+  public async saveAccountToken(rec: StoredAccountToken): Promise<void> {
+    await this.pool.query(
+      `INSERT INTO account_tokens (id, user_id, purpose, token_hash, expires_at, used_at, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [rec.id, rec.userId, rec.purpose, rec.tokenHash, rec.expiresAt, rec.usedAt ?? null, rec.createdAt]
+    );
+  }
+
+  public async consumeAccountToken(
+    tokenHash: string,
+    purpose: 'email_verify' | 'password_reset',
+    usedAt: number
+  ): Promise<StoredAccountToken | null> {
+    const res = await this.pool.query(
+      `UPDATE account_tokens
+       SET used_at = $1
+       WHERE token_hash = $2
+         AND purpose = $3
+         AND used_at IS NULL
+         AND expires_at > $1
+       RETURNING *`,
+      [usedAt, tokenHash, purpose]
+    );
+    const r = res.rows[0];
+    if (!r) return null;
+    return {
+      id: r.id,
+      userId: r.user_id,
+      purpose: r.purpose,
+      tokenHash: r.token_hash,
+      expiresAt: Number(r.expires_at),
+      usedAt: r.used_at ? Number(r.used_at) : null,
+      createdAt: Number(r.created_at)
+    };
+  }
+
+  public async pushSyncRecords(params: {
+    userId: string;
+    profileId: string;
+    items: SyncPushItem[];
+  }): Promise<SyncPushResponse> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('SELECT pg_advisory_xact_lock(hashtext($1 || \':\' || $2))', [
+        params.userId,
+        params.profileId
+      ]);
+      const maxRes = await client.query<{ max_v: string | null }>(
+        'SELECT MAX(version)::text AS max_v FROM sync_records WHERE user_id = $1 AND profile_id = $2',
+        [params.userId, params.profileId]
+      );
+      let currentVersion = Number(maxRes.rows[0]?.max_v ?? 0);
+      const applied: SyncRecordEnvelope[] = [];
+      const conflicts: SyncPushResponse['conflicts'] = [];
+
+      for (const item of params.items) {
+        const dupRes = await client.query(
+          'SELECT * FROM sync_records WHERE user_id = $1 AND profile_id = $2 AND client_change_id = $3 LIMIT 1',
+          [params.userId, params.profileId, item.clientChangeId]
+        );
+        if (dupRes.rows[0]) {
+          const r = dupRes.rows[0];
+          if (
+            r.id !== item.id ||
+            r.entity_type !== item.entityType ||
+            JSON.stringify(r.payload_json) !== JSON.stringify(item.payload)
+          ) {
+            throw new Error(`Idempotency conflict: clientChangeId "${item.clientChangeId}" reused with different payload`);
+          }
+          applied.push({
+            id: r.id,
+            entityType: r.entity_type,
+            version: Number(r.version),
+            updatedAt: Number(r.updated_at),
+            deletedAt: r.deleted_at ? Number(r.deleted_at) : null,
+            clientChangeId: r.client_change_id,
+            encrypted: Boolean(r.encrypted),
+            payload: r.payload_json
+          });
+          continue;
+        }
+
+        const existingRes = await client.query(
+          'SELECT * FROM sync_records WHERE user_id = $1 AND profile_id = $2 AND entity_type = $3 AND id = $4 LIMIT 1',
+          [params.userId, params.profileId, item.entityType, item.id]
+        );
+        const existing = existingRes.rows[0];
+        if (existing && Number(existing.version) > item.baseVersion) {
+          conflicts.push({
+            clientItem: item,
+            serverItem: {
+              id: existing.id,
+              entityType: existing.entity_type,
+              version: Number(existing.version),
+              updatedAt: Number(existing.updated_at),
+              deletedAt: existing.deleted_at ? Number(existing.deleted_at) : null,
+              clientChangeId: existing.client_change_id,
+              encrypted: Boolean(existing.encrypted),
+              payload: existing.payload_json
+            }
+          });
+          continue;
+        }
+
+        currentVersion += 1;
+        await client.query(
+          `INSERT INTO sync_records (id, user_id, profile_id, entity_type, version, updated_at, deleted_at, client_change_id, encrypted, payload_json)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb)
+           ON CONFLICT (user_id, profile_id, entity_type, id) DO UPDATE
+             SET version = EXCLUDED.version,
+                 updated_at = EXCLUDED.updated_at,
+                 deleted_at = EXCLUDED.deleted_at,
+                 client_change_id = EXCLUDED.client_change_id,
+                 encrypted = EXCLUDED.encrypted,
+                 payload_json = EXCLUDED.payload_json`,
+          [
+            item.id,
+            params.userId,
+            params.profileId,
+            item.entityType,
+            currentVersion,
+            item.updatedAt,
+            item.deletedAt ?? null,
+            item.clientChangeId,
+            item.encrypted,
+            JSON.stringify(item.payload)
+          ]
+        );
+        applied.push({
+          id: item.id,
+          entityType: item.entityType,
+          version: currentVersion,
+          updatedAt: item.updatedAt,
+          deletedAt: item.deletedAt ?? null,
+          clientChangeId: item.clientChangeId,
+          encrypted: item.encrypted,
+          payload: item.payload
+        });
+      }
+
+      await client.query('COMMIT');
+      return { applied, conflicts, serverVersion: currentVersion };
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  public async pullSyncRecords(params: {
+    userId: string;
+    profileId: string;
+    sinceVersion: number;
+    limit: number;
+    entityTypes?: SyncEntityType[];
+  }): Promise<SyncPullResponse> {
+    const maxRes = await this.pool.query<{ max_v: string | null }>(
+      'SELECT MAX(version)::text AS max_v FROM sync_records WHERE user_id = $1 AND profile_id = $2',
+      [params.userId, params.profileId]
+    );
+    const serverVersion = Number(maxRes.rows[0]?.max_v ?? 0);
+
+    const values: unknown[] = [params.userId, params.profileId, params.sinceVersion, params.limit + 1];
+    let filterSql = '';
+    if (params.entityTypes && params.entityTypes.length > 0) {
+      values.push(params.entityTypes);
+      filterSql = ` AND entity_type = ANY($5)`;
+    }
+
+    const res = await this.pool.query(
+      `SELECT * FROM sync_records
+       WHERE user_id = $1 AND profile_id = $2 AND version > $3${filterSql}
+       ORDER BY version ASC LIMIT $4`,
+      values
+    );
+    const hasMore = res.rows.length > params.limit;
+    const rows = res.rows.slice(0, params.limit);
+    const nextCursor = rows.length > 0 ? Number(rows[rows.length - 1].version) : params.sinceVersion;
+    return {
+      items: rows.map((r) => ({
+        id: r.id,
+        entityType: r.entity_type,
+        version: Number(r.version),
+        updatedAt: Number(r.updated_at),
+        deletedAt: r.deleted_at ? Number(r.deleted_at) : null,
+        clientChangeId: r.client_change_id,
+        encrypted: Boolean(r.encrypted),
+        payload: r.payload_json
+      })),
+      serverVersion,
+      hasMore,
+      nextCursor
+    };
   }
 
   public async upsertBookmark(bm: CloudBookmarkRecord): Promise<CloudBookmarkRecord> {
@@ -765,11 +1124,21 @@ export class PostgresCloudRepository implements CloudRepository {
     ).rows;
     const memoryItems = (await this.pool.query('SELECT * FROM memory_items WHERE user_id = $1', [userId]))
       .rows;
+    const syncRecords = (await this.pool.query('SELECT * FROM sync_records WHERE user_id = $1', [userId]))
+      .rows;
 
     return {
       exportedAt: new Date().toISOString(),
       user: user
-        ? { id: user.id, email: user.email, displayName: user.displayName, createdAt: user.createdAt }
+        ? {
+            id: user.id,
+            email: user.email,
+            displayName: user.displayName,
+            avatarUrl: user.avatarUrl ?? null,
+            emailVerified: Boolean(user.emailVerified),
+            e2eeEnabled: Boolean(user.e2eeEnabled),
+            createdAt: user.createdAt
+          }
         : null,
       profiles,
       devices,
@@ -777,7 +1146,8 @@ export class PostgresCloudRepository implements CloudRepository {
       notes,
       searchHistory,
       researchReports,
-      memoryItems
+      memoryItems,
+      syncRecords
     };
   }
 

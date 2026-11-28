@@ -10,23 +10,41 @@ import type {
   CloudSearchHistoryRecord,
   CloudUser,
   CrawlCheckpoint,
+  E2eeKeyEnvelope,
   HybridIndexDocument,
   HybridSearchHit,
   MemoryItem,
-  ResearchReport
+  ResearchReport,
+  SyncEntityType,
+  SyncPushItem,
+  SyncPushResponse,
+  SyncPullResponse
 } from '@shared/types';
 
 export interface StoredUserRecord extends CloudUser {
   passwordHash: string;
+  e2eeKeyEnvelope?: E2eeKeyEnvelope | null;
+  tokenEpoch?: number;
 }
 
 export interface StoredRefreshToken {
   id: string;
   userId: string;
   profileId: string;
+  deviceId?: string | null;
   tokenHash: string;
   expiresAt: number;
   revokedAt?: number | null;
+  createdAt: number;
+}
+
+export interface StoredAccountToken {
+  id: string;
+  userId: string;
+  purpose: 'email_verify' | 'password_reset';
+  tokenHash: string;
+  expiresAt: number;
+  usedAt?: number | null;
   createdAt: number;
 }
 
@@ -65,6 +83,20 @@ export interface CloudRepository {
   }): Promise<void>;
   findUserByEmail(email: string): Promise<StoredUserRecord | null>;
   findUserById(userId: string): Promise<StoredUserRecord | null>;
+  getAuthSessionState(
+    userId: string,
+    deviceId?: string | null
+  ): Promise<{ exists: boolean; tokenEpoch: number; deviceRevoked: boolean }>;
+  updateUserProfile(
+    userId: string,
+    patch: { displayName?: string; avatarUrl?: string | null }
+  ): Promise<StoredUserRecord | null>;
+  updateUserPassword(userId: string, passwordHash: string): Promise<void>;
+  markEmailVerified(userId: string, verifiedAt: number): Promise<StoredUserRecord | null>;
+  setUserE2eeEnvelope(
+    userId: string,
+    params: { e2eeEnabled: boolean; e2eeKeyVersion: number; envelope: E2eeKeyEnvelope | null }
+  ): Promise<StoredUserRecord | null>;
   listProfiles(userId: string): Promise<CloudProfile[]>;
   getProfile(userId: string, profileId: string): Promise<CloudProfile | null>;
   createProfile(profile: CloudProfile): Promise<CloudProfile>;
@@ -74,12 +106,36 @@ export interface CloudRepository {
     consent: CloudConsentSettings
   ): Promise<CloudProfile | null>;
   registerDevice(device: CloudDevice): Promise<CloudDevice>;
+  getDevice(userId: string, deviceId: string): Promise<CloudDevice | null>;
   listDevices(userId: string): Promise<CloudDevice[]>;
+  revokeDevice(userId: string, deviceId: string, revokedAt: number): Promise<CloudDevice | null>;
 
-  // Auth tokens
+  // Auth & Account tokens
   saveRefreshToken(rec: StoredRefreshToken): Promise<void>;
   findRefreshToken(tokenHash: string): Promise<StoredRefreshToken | null>;
   revokeRefreshToken(tokenHash: string): Promise<void>;
+  revokeAllRefreshTokensForUser(userId: string, exceptDeviceId?: string): Promise<void>;
+  incrementTokenEpoch(userId: string): Promise<number>;
+  saveAccountToken(rec: StoredAccountToken): Promise<void>;
+  consumeAccountToken(
+    tokenHash: string,
+    purpose: 'email_verify' | 'password_reset',
+    usedAt: number
+  ): Promise<StoredAccountToken | null>;
+
+  // Versioned Sync (with tombstones & idempotency)
+  pushSyncRecords(params: {
+    userId: string;
+    profileId: string;
+    items: SyncPushItem[];
+  }): Promise<SyncPushResponse>;
+  pullSyncRecords(params: {
+    userId: string;
+    profileId: string;
+    sinceVersion: number;
+    limit: number;
+    entityTypes?: SyncEntityType[];
+  }): Promise<SyncPullResponse>;
 
   // Bookmarks, Notes, Search History, Research, Memory
   upsertBookmark(bm: CloudBookmarkRecord): Promise<CloudBookmarkRecord>;
