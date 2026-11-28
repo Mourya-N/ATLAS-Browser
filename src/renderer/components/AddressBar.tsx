@@ -27,7 +27,7 @@ import {
 import type { OmniboxSuggestion } from '@shared/types';
 import { useLavrayStore } from '../store/useLavrayStore';
 import { AdBlockerPopover } from './AdBlockerPopover';
-import { HayaMark, LavrayMark } from './BrandMarks';
+import { AskHayaLoopLabel, HayaMark, LavrayMark } from './BrandMarks';
 
 export const AddressBar: React.FC = () => {
   const {
@@ -92,17 +92,6 @@ export const AddressBar: React.FC = () => {
     if (!activeTab) return;
     setSuggestions([]);
     setFocused(false);
-    const trimmed = target.trim();
-    if (trimmed.toLowerCase().startsWith('lavray://search')) {
-      try {
-        const parsed = new URL(trimmed);
-        openLavraySearch(parsed.searchParams.get('q') || '');
-        return;
-      } catch {
-        openLavraySearch('');
-        return;
-      }
-    }
     setOverlayView(null);
     await window.lavray.navigate(activeTab.id, target);
   };
@@ -333,15 +322,13 @@ export const AddressBar: React.FC = () => {
               type="button"
               onMouseDown={(e) => {
                 e.preventDefault();
-                setSuggestions([]);
-                setFocused(false);
-                openLavraySearch(inputValue);
+                void navigateTo(`lavray://search?q=${encodeURIComponent(inputValue.trim())}`);
               }}
               className="flex w-full items-center justify-between gap-3 rounded-lg bg-lavray-accent/10 px-3 py-2 text-left text-xs text-lavray-accent hover:bg-lavray-accent/15 transition-colors"
             >
               <span className="flex items-center gap-2 truncate font-medium">
                 <Search className="h-3.5 w-3.5 shrink-0" />
-                Search LAVRAY Index for &ldquo;{inputValue}&rdquo;
+                Search LAVRAY for &ldquo;{inputValue}&rdquo;
               </span>
               <span className="shrink-0 text-[10.5px] font-medium opacity-80">LAVRAY Search</span>
             </button>
@@ -409,7 +396,7 @@ export const AddressBar: React.FC = () => {
           }`}
         >
           <HayaMark className="h-3.5 w-3.5" />
-          <span>Ask HAYA</span>
+          <AskHayaLoopLabel />
         </button>
 
         <div className="relative">
@@ -443,7 +430,7 @@ export const AddressBar: React.FC = () => {
               <div className="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-lavray-muted">
                 Research & Automation
               </div>
-              <MenuBtn icon={<Search className="h-3.5 w-3.5" />} label="LAVRAY Search" onClick={() => { openLavraySearch(''); setMenuOpen(false); }} />
+              <MenuBtn icon={<Search className="h-3.5 w-3.5" />} label="LAVRAY Intelligent Search" onClick={() => { openLavraySearch(''); setMenuOpen(false); }} />
               <MenuBtn icon={<Sparkles className="h-3.5 w-3.5" />} label="Research Workspace" onClick={() => { setOverlayView('intelligence'); setMenuOpen(false); }} />
               <MenuBtn icon={<Code2 className="h-3.5 w-3.5" />} label="Structured Extraction" onClick={() => { setOverlayView('extract'); setMenuOpen(false); }} />
               <MenuBtn icon={<Bot className="h-3.5 w-3.5" />} label="Skills Library" onClick={() => { setOverlayView('skills'); setMenuOpen(false); }} />

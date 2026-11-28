@@ -9,6 +9,16 @@ export interface RawSearchCandidate {
   contentType?: 'web' | 'news' | 'docs' | 'knowledge' | 'tab' | 'bookmark' | 'research';
   language?: string;
   favicon?: string | null;
+  thumbnailUrl?: string | null;
+  mediaUrl?: string | null;
+  durationSeconds?: number | null;
+  priceText?: string | null;
+  coordinates?: {
+    lat: number;
+    lon: number;
+    displayName?: string;
+    category?: string;
+  } | null;
   rawRank?: number;
 }
 

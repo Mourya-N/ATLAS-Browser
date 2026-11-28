@@ -1,7 +1,7 @@
 import React from 'react';
 import { BookOpen, Globe, HelpCircle, PenLine, Search, X } from 'lucide-react';
 import { useLavrayStore } from '../store/useLavrayStore';
-import { HayaMark } from './BrandMarks';
+import { AskHayaLoopLabel, HayaMark } from './BrandMarks';
 
 export const SelectionOverlay: React.FC = () => {
   const {
@@ -54,7 +54,7 @@ export const SelectionOverlay: React.FC = () => {
       />
       <ActionBtn
         icon={<HayaMark className="h-3 w-3" />}
-        label="Ask HAYA"
+        label={<AskHayaLoopLabel />}
         onClick={() => void runSelectionPrompt('Answer key insights and context about this selection')}
       />
       <ActionBtn
@@ -78,7 +78,7 @@ export const SelectionOverlay: React.FC = () => {
   );
 };
 
-const ActionBtn: React.FC<{ icon: React.ReactNode; label: string; onClick: () => void }> = ({
+const ActionBtn: React.FC<{ icon: React.ReactNode; label: React.ReactNode; onClick: () => void }> = ({
   icon,
   label,
   onClick

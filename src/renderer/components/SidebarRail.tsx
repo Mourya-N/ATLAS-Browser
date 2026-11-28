@@ -78,7 +78,7 @@ export const SidebarRail: React.FC = () => {
         )}
         {navBtn(
           activeOverlayView === 'search',
-          'LAVRAY Search Workspace',
+          'LAVRAY Intelligent Search (Advanced Research)',
           <Search className="h-[15px] w-[15px]" strokeWidth={1.75} />,
           () => (activeOverlayView === 'search' ? setOverlayView(null) : openLavraySearch(''))
         )}

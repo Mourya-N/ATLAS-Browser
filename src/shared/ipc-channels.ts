@@ -240,7 +240,7 @@ export const DomainRuleSetSchema = z.object({
 });
 
 export const SettingsSetApiKeySchema = z.object({
-  provider: z.enum(['gemini', 'self_hosted', 'custom_openai_compatible']),
+  provider: z.enum(['gemini', 'self_hosted', 'custom_openai_compatible', 'brave_search']),
   apiKey: z.string().min(4).max(512)
 });
 
@@ -253,7 +253,19 @@ export const ContentSelectionSchema = z.object({
 export const SearchExecuteSchema = z.object({
   query: z.string().min(1).max(2000),
   mode: z
-    .enum(['web', 'news', 'docs', 'research', 'current_page', 'cross_tab', 'personal_knowledge'])
+    .enum([
+      'web',
+      'images',
+      'videos',
+      'maps',
+      'shopping',
+      'news',
+      'docs',
+      'research',
+      'current_page',
+      'cross_tab',
+      'personal_knowledge'
+    ])
     .optional(),
   filters: z
     .object({
@@ -267,6 +279,7 @@ export const SearchExecuteSchema = z.object({
       includeOpenTabs: z.boolean().optional(),
       includePersonalKnowledge: z.boolean().optional(),
       includeAiAnswer: z.boolean().optional(),
+      disableTypoCorrection: z.boolean().optional(),
       limit: z.number().int().min(1).max(50).optional()
     })
     .optional(),

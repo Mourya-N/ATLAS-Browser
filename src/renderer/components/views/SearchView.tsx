@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   AlertTriangle,
   BookOpenCheck,
@@ -44,6 +44,35 @@ const ORIGIN_STYLES: Record<string, { label: string; cls: string }> = {
   personal_knowledge: { label: 'Personal Knowledge', cls: 'bg-lavray-warning/12 text-lavray-warning border-lavray-warning/25' }
 };
 
+const STARTER_PACKS = [
+  {
+    id: 'web-mdn',
+    label: 'MDN Web Docs',
+    seedUrls: ['https://developer.mozilla.org/en-US/docs/Web/JavaScript'],
+    allowedDomains: ['developer.mozilla.org']
+  },
+  {
+    id: 'postgres',
+    label: 'PostgreSQL Docs',
+    seedUrls: ['https://www.postgresql.org/docs/current/textsearch.html'],
+    allowedDomains: ['postgresql.org']
+  },
+  {
+    id: 'electron',
+    label: 'Electron Security',
+    seedUrls: ['https://www.electronjs.org/docs/latest/tutorial/security'],
+    allowedDomains: ['electronjs.org']
+  },
+  {
+    id: 'owasp',
+    label: 'OWASP Cheat Sheets',
+    seedUrls: [
+      'https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html'
+    ],
+    allowedDomains: ['cheatsheetseries.owasp.org', 'owasp.org']
+  }
+];
+
 export const SearchView: React.FC = () => {
   const { activeTabId, searchInitialQuery, setOverlayView, pushToast } = useLavrayStore();
 
@@ -69,6 +98,7 @@ export const SearchView: React.FC = () => {
   const [seedUrlInput, setSeedUrlInput] = useState('https://www.postgresql.org/docs/current/textsearch.html');
   const [allowedDomainInput, setAllowedDomainInput] = useState('postgresql.org');
   const [crawling, setCrawling] = useState(false);
+  const searchSeqRef = useRef(0);
 
   const refreshMetadata = async () => {
     const [st, hist] = await Promise.all([
@@ -86,6 +116,7 @@ export const SearchView: React.FC = () => {
   const runSearch = async (overrideQuery?: string, overrideMode?: SearchMode, targetPage = 1) => {
     const q = (overrideQuery ?? query).trim();
     if (!q) return;
+    const seq = ++searchSeqRef.current;
     setLoading(true);
     setErrorMsg(null);
     setPage(targetPage);
@@ -94,29 +125,46 @@ export const SearchView: React.FC = () => {
         .split(',')
         .map((s) => s.trim())
         .filter(Boolean);
-      const res = await window.lavray.executeSearch({
+      const baseFilters = {
+        domains: domains.length > 0 ? domains : undefined,
+        timeRange,
+        safeSearch,
+        page: targetPage,
+        includeOpenTabs,
+        includePersonalKnowledge,
+        limit: 10
+      };
+      // Phase 1: Render ranked search results immediately without waiting for HAYA LLM synthesis
+      const fastRes = await window.lavray.executeSearch({
         query: q,
         mode: overrideMode ?? mode,
-        filters: {
-          domains: domains.length > 0 ? domains : undefined,
-          timeRange,
-          safeSearch,
-          page: targetPage,
-          includeOpenTabs,
-          includePersonalKnowledge,
-          includeAiAnswer,
-          limit: 10
-        }
+        filters: { ...baseFilters, includeAiAnswer: false }
       });
-      setResponse(res);
+      if (seq !== searchSeqRef.current) return;
+      setResponse(fastRes);
       setSelectedUrls([]);
+      setLoading(false);
       void refreshMetadata();
+
+      // Phase 2: Progressively attach HAYA evidence-grounded synthesis in background
+      if (includeAiAnswer && (fastRes.results.length > 0 || fastRes.instantAnswer)) {
+        const aiRes = await window.lavray.executeSearch({
+          query: q,
+          mode: overrideMode ?? mode,
+          filters: { ...baseFilters, includeAiAnswer: true }
+        });
+        if (seq !== searchSeqRef.current) return;
+        setResponse(aiRes);
+      }
     } catch (err) {
+      if (seq !== searchSeqRef.current) return;
       const msg = err instanceof Error ? err.message : 'Search failed';
       setErrorMsg(msg);
       pushToast(msg, 'danger');
     } finally {
-      setLoading(false);
+      if (seq === searchSeqRef.current) {
+        setLoading(false);
+      }
     }
   };
 
@@ -195,13 +243,11 @@ export const SearchView: React.FC = () => {
     pushToast('Saved search results to Research & Evidence collection', 'success');
   };
 
-  const runCrawler = async () => {
-    const seeds = seedUrlInput
-      .split(',')
+  const runCrawler = async (overrideSeeds?: string[], overrideDomains?: string[]) => {
+    const seeds = (overrideSeeds ?? seedUrlInput.split(','))
       .map((s) => s.trim())
       .filter(Boolean);
-    const domains = allowedDomainInput
-      .split(',')
+    const domains = (overrideDomains ?? allowedDomainInput.split(','))
       .map((s) => s.trim())
       .filter(Boolean);
     if (seeds.length === 0 || domains.length === 0) {
@@ -291,12 +337,30 @@ export const SearchView: React.FC = () => {
 
       {/* Optional First-Party Index Crawler Panel */}
       {showCrawlerPanel && (
-        <div className="border-b border-lavray-border bg-lavray-surface/90 px-6 py-3 text-xs space-y-2">
+        <div className="border-b border-lavray-border bg-lavray-surface/90 px-6 py-3 text-xs space-y-2.5">
           <div className="flex items-center justify-between">
             <div className="font-semibold">
               First-Party LAVRAY Index & Seed Crawler (Respects robots.txt & SSRF protections)
             </div>
             <span className="text-[11px] text-lavray-muted">{indexStats?.notice}</span>
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-[11px] text-lavray-muted mr-1">Starter Index Packs:</span>
+            {STARTER_PACKS.map((pack) => (
+              <button
+                key={pack.id}
+                type="button"
+                disabled={crawling}
+                onClick={() => {
+                  setSeedUrlInput(pack.seedUrls.join(', '));
+                  setAllowedDomainInput(pack.allowedDomains.join(', '));
+                  void runCrawler(pack.seedUrls, pack.allowedDomains);
+                }}
+                className="rounded-md border border-lavray-border bg-lavray-bg px-2.5 py-1 text-[11px] font-medium text-lavray-text hover:border-lavray-accent disabled:opacity-50"
+              >
+                + Index {pack.label}
+              </button>
+            ))}
           </div>
           <div className="flex flex-wrap gap-2">
             <input
@@ -548,7 +612,7 @@ export const SearchView: React.FC = () => {
                 <div className="rounded-xl border border-lavray-border bg-lavray-surface p-6 text-center text-lavray-muted space-y-2">
                   <div>No results matched your query and filters.</div>
                   <div className="text-[11px]">
-                    Click "LAVRAY Index" above to crawl public documentation seeds or configure Brave/Google/Bing APIs in the backend `.env`.
+                    Click "LAVRAY Index" above to crawl starter documentation packs, browse pages to auto-index them, or configure a custom SearXNG endpoint in Settings.
                   </div>
                 </div>
               ) : (

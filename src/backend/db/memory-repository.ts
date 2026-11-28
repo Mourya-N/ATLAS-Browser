@@ -379,9 +379,10 @@ export class InMemoryCloudRepository implements CloudRepository {
     limit?: number;
   }): Promise<Array<{ document: LavrayIndexDocument; lexicalScore: number; semanticScore: number }>> {
     const queryTokens = Array.from(new Set(tokenize(params.query)));
+    const queryLower = params.query.toLowerCase().trim();
     const domainFilters = params.domains?.map((d) => d.toLowerCase()) ?? [];
-    const results: Array<{ document: LavrayIndexDocument; lexicalScore: number; semanticScore: number }> = [];
 
+    const eligibleDocs: LavrayIndexDocument[] = [];
     for (const doc of this.lavrayIndexDocs.values()) {
       if (
         domainFilters.length > 0 &&
@@ -389,31 +390,80 @@ export class InMemoryCloudRepository implements CloudRepository {
       ) {
         continue;
       }
+      eligibleDocs.push(doc);
+    }
 
-      const hayTokens = tokenize(`${doc.title} ${doc.headings.join(' ')} ${doc.mainContent}`);
-      const titleLower = doc.title.toLowerCase();
-      let matched = 0;
+    if (eligibleDocs.length === 0) return [];
+
+    // Compute BM25 corpus statistics (document frequencies & average field-weighted length)
+    const docTokensList = eligibleDocs.map((doc) => {
+      const titleToks = tokenize(doc.title);
+      const headingToks = tokenize(doc.headings.join(' '));
+      const bodyToks = tokenize(doc.mainContent);
+      // Weight title 3x and headings 2x in term-frequency map
+      const tfMap = new Map<string, number>();
+      const addWeighted = (toks: string[], weight: number) => {
+        for (const t of toks) tfMap.set(t, (tfMap.get(t) ?? 0) + weight);
+      };
+      addWeighted(titleToks, 3);
+      addWeighted(headingToks, 2);
+      addWeighted(bodyToks, 1);
+      const docLen = titleToks.length * 3 + headingToks.length * 2 + bodyToks.length;
+      return { doc, tfMap, docLen, titleLower: doc.title.toLowerCase(), fullLower: `${doc.title} ${doc.mainContent}`.toLowerCase() };
+    });
+
+    const N = docTokensList.length;
+    const avgDl = Math.max(1, docTokensList.reduce((acc, d) => acc + d.docLen, 0) / N);
+    const dfMap = new Map<string, number>();
+    for (const qt of queryTokens) {
+      let df = 0;
+      for (const entry of docTokensList) {
+        if (entry.tfMap.has(qt)) df += 1;
+      }
+      dfMap.set(qt, df);
+    }
+
+    const k1 = 1.2;
+    const b = 0.75;
+    const maxTheoreticalIdf = queryTokens.reduce((acc, qt) => {
+      const df = dfMap.get(qt) ?? 0;
+      return acc + Math.log(1 + (N - df + 0.5) / (df + 0.5));
+    }, 0);
+
+    const results: Array<{ document: LavrayIndexDocument; lexicalScore: number; semanticScore: number }> = [];
+
+    for (const entry of docTokensList) {
+      let bm25Raw = 0;
+      let matchedCount = 0;
       let titleMatches = 0;
       for (const qt of queryTokens) {
-        if (titleLower.includes(qt)) titleMatches += 1;
-        if (hayTokens.includes(qt)) matched += 1;
+        const tf = entry.tfMap.get(qt) ?? 0;
+        if (tf > 0) {
+          matchedCount += 1;
+          if (entry.titleLower.includes(qt)) titleMatches += 1;
+          const df = dfMap.get(qt) ?? 0;
+          const idf = Math.log(1 + (N - df + 0.5) / (df + 0.5));
+          const tfSat = (tf * (k1 + 1)) / (tf + k1 * (1 - b + (b * entry.docLen) / avgDl));
+          bm25Raw += idf * tfSat;
+        }
       }
-      // BM25-like saturation on matched terms vs query length
-      const lexicalScore =
-        queryTokens.length > 0
-          ? Math.min(1, (matched / queryTokens.length) * 0.65 + (titleMatches / queryTokens.length) * 0.35)
-          : 0;
-      const semanticScore = cosineSimilarity(params.queryEmbedding, doc.embedding);
 
-      if (lexicalScore > 0.05 || semanticScore > 0.45) {
-        results.push({ document: doc, lexicalScore, semanticScore });
+      const normBm25 = maxTheoreticalIdf > 0 ? Math.min(1, bm25Raw / (maxTheoreticalIdf * 1.45)) : 0;
+      const coverage = queryTokens.length > 0 ? matchedCount / queryTokens.length : 0;
+      const titleRatio = queryTokens.length > 0 ? titleMatches / queryTokens.length : 0;
+      const phraseHit = queryLower.length >= 4 && entry.fullLower.includes(queryLower) ? 0.15 : 0;
+      const lexicalScore = Math.min(1, normBm25 * 0.55 + coverage * 0.25 + titleRatio * 0.2 + phraseHit);
+      const semanticScore = cosineSimilarity(params.queryEmbedding, entry.doc.embedding);
+
+      if (lexicalScore > 0.08 || semanticScore > 0.45) {
+        results.push({ document: entry.doc, lexicalScore, semanticScore });
       }
     }
 
     return results
       .sort(
         (a, b) =>
-          b.lexicalScore * 0.6 + b.semanticScore * 0.4 - (a.lexicalScore * 0.6 + a.semanticScore * 0.4)
+          b.lexicalScore * 0.7 + b.semanticScore * 0.3 - (a.lexicalScore * 0.7 + a.semanticScore * 0.3)
       )
       .slice(0, params.limit ?? 20);
   }

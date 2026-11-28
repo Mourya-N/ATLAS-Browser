@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 
 interface MarkProps {
   className?: string;
@@ -67,3 +67,39 @@ export const HayaMark: React.FC<MarkProps> = ({ className = 'h-4 w-4' }) => (
     />
   </svg>
 );
+
+/**
+ * Alternates cleanly between "Ask HAYA" and "Ask AI" every 1.5 seconds
+ * without causing button width jitter.
+ */
+export const AskHayaLoopLabel: React.FC<{ className?: string }> = ({ className = '' }) => {
+  const [showAskAi, setShowAskAi] = useState(false);
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      setShowAskAi((prev) => !prev);
+    }, 1500);
+    return () => window.clearInterval(id);
+  }, []);
+
+  return (
+    <span className={`inline-grid items-center whitespace-nowrap ${className}`}>
+      <span
+        aria-hidden={showAskAi}
+        className={`col-start-1 row-start-1 transition-opacity duration-300 ${
+          showAskAi ? 'opacity-0' : 'opacity-100'
+        }`}
+      >
+        Ask HAYA
+      </span>
+      <span
+        aria-hidden={!showAskAi}
+        className={`col-start-1 row-start-1 text-center transition-opacity duration-300 ${
+          showAskAi ? 'opacity-100' : 'opacity-0'
+        }`}
+      >
+        Ask AI
+      </span>
+    </span>
+  );
+};

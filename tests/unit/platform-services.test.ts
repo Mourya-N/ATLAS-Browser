@@ -213,6 +213,9 @@ describe('Platform & Browser Services', () => {
 
     expect(resolveNavigationInput('github.com/lavray', 'google')).toBe('https://github.com/lavray');
     expect(resolveNavigationInput('localhost:3000', 'google')).toBe('http://localhost:3000');
+    expect(resolveNavigationInput('rust ownership model')).toBe(
+      'lavray://search?q=rust%20ownership%20model'
+    );
     expect(resolveNavigationInput('spring boot security', 'duckduckgo')).toBe(
       'https://duckduckgo.com/?q=spring%20boot%20security'
     );
@@ -220,7 +223,8 @@ describe('Platform & Browser Services', () => {
     expect(getSecurityState('http://example.com')).toBe('insecure');
 
     browserRepo.recordVisit('https://spring.io/security', 'Spring Security Docs');
-    const sugg = getOmniboxSuggestions(browserRepo, 'spring', 'google');
+    const sugg = getOmniboxSuggestions(browserRepo, 'spring');
     expect(sugg.some((s) => s.url === 'https://spring.io/security')).toBe(true);
+    expect(sugg.some((s) => s.url === 'lavray://search?q=spring')).toBe(true);
   });
 });

@@ -312,9 +312,9 @@ export function registerAllIpcHandlers(services: MainServices): void {
     return tabManager.navigate(tabId, homeUrl);
   });
   handleTrusted(IPC_CHANNELS.NAV_SUGGESTIONS, (_e, p: { query: string }) => {
-    const engine = platformRepo.getSetting<'google' | 'duckduckgo' | 'bing' | 'brave' | 'startpage'>(
+    const engine = platformRepo.getSetting<import('@shared/types').SearchEngineId>(
       'browser.searchEngine',
-      'google'
+      'lavray'
     );
     return getOmniboxSuggestions(browserRepo, String(p?.query || ''), engine);
   });
@@ -689,7 +689,9 @@ export function registerAllIpcHandlers(services: MainServices): void {
     const model = getConfiguredModel();
     return {
       theme: platformRepo.getSetting('ui.theme', 'light'),
-      searchEngine: platformRepo.getSetting('browser.searchEngine', 'google'),
+      searchEngine: platformRepo.getSetting('browser.searchEngine', 'lavray'),
+      autoIndexVisitedPages: platformRepo.getSetting('browser.autoIndexVisitedPages', true),
+      searxngEndpointUrl: platformRepo.getSetting('search.searxngEndpointUrl', ''),
       homeUrl: platformRepo.getSetting('browser.homeUrl', 'lavray://newtab'),
       downloadDir: downloadManager.getDownloadDir(),
       verticalTabs: platformRepo.getSetting('ui.verticalTabs', false),
@@ -707,8 +709,9 @@ export function registerAllIpcHandlers(services: MainServices): void {
       customEndpointUrl: platformRepo.getSetting('agent.customEndpointUrl', ''),
       selfHostedEndpointUrl: platformRepo.getSetting('agent.selfHostedEndpointUrl', 'http://127.0.0.1:11434/v1'),
       selfHostedModel: model,
-      hasGeminiApiKey: false,
+      hasGeminiApiKey: Boolean(vault.getGeminiApiKey()),
       hasSelfHostedApiKey: Boolean(vault.getCustomApiKey()),
+      hasBraveSearchApiKey: Boolean(vault.getBraveSearchApiKey()),
       cloudModeEnabled: platformRepo.getSetting('cloud.enabled', false),
       cloudEndpointUrl: platformRepo.getSetting('cloud.endpointUrl', 'http://127.0.0.1:48080'),
       cloudConsent: {
@@ -724,6 +727,10 @@ export function registerAllIpcHandlers(services: MainServices): void {
   handleTrusted(IPC_CHANNELS.SETTINGS_UPDATE, async (_e, patch: Partial<AppSettings>) => {
     if (patch.theme !== undefined) platformRepo.setSetting('ui.theme', patch.theme);
     if (patch.searchEngine !== undefined) platformRepo.setSetting('browser.searchEngine', patch.searchEngine);
+    if (patch.autoIndexVisitedPages !== undefined)
+      platformRepo.setSetting('browser.autoIndexVisitedPages', patch.autoIndexVisitedPages);
+    if (patch.searxngEndpointUrl !== undefined)
+      platformRepo.setSetting('search.searxngEndpointUrl', patch.searxngEndpointUrl);
     if (patch.homeUrl !== undefined) platformRepo.setSetting('browser.homeUrl', patch.homeUrl);
     if (patch.downloadDir !== undefined) platformRepo.setSetting('browser.downloadDir', patch.downloadDir);
     if (patch.verticalTabs !== undefined) platformRepo.setSetting('ui.verticalTabs', patch.verticalTabs);
@@ -770,12 +777,18 @@ export function registerAllIpcHandlers(services: MainServices): void {
 
   handleTrusted(IPC_CHANNELS.SETTINGS_SET_API_KEY, (_e, p) => {
     const data = validateIpcPayload(SettingsSetApiKeySchema, p);
-    vault.setCustomApiKey(data.apiKey);
+    if (data.provider === 'brave_search') {
+      vault.setBraveSearchApiKey(data.apiKey);
+    } else if (data.provider === 'gemini') {
+      vault.setGeminiApiKey(data.apiKey);
+    } else {
+      vault.setCustomApiKey(data.apiKey);
+    }
     auditLogger.log({
       category: 'security',
       action: 'api_key_updated',
       actor: 'user',
-      details: { provider: 'self_hosted' }
+      details: { provider: data.provider }
     });
     return getSettings();
   });

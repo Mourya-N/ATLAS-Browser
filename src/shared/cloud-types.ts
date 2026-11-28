@@ -1,5 +1,9 @@
 export type SearchMode =
   | 'web'
+  | 'images'
+  | 'videos'
+  | 'maps'
+  | 'shopping'
   | 'news'
   | 'docs'
   | 'research'
@@ -29,12 +33,21 @@ export interface SearchFilterOptions {
   includeOpenTabs?: boolean;
   includePersonalKnowledge?: boolean;
   includeAiAnswer?: boolean;
+  disableTypoCorrection?: boolean;
   limit?: number;
 }
 
 export interface SearchQueryUnderstanding {
   originalQuery: string;
   normalizedQuery: string;
+  correctedQuery?: string | null;
+  coreTokens?: string[];
+  exactPhrases?: string[];
+  siteFilters?: string[];
+  excludeDomains?: string[];
+  excludedTerms?: string[];
+  technicalTokens?: string[];
+  isExactMatchQuery?: boolean;
   rewrittenQueries: string[];
   expandedTerms: string[];
   intent: SearchIntent;
@@ -71,6 +84,16 @@ export interface NormalizedSearchResult {
   contentType: 'web' | 'news' | 'docs' | 'knowledge' | 'tab' | 'bookmark' | 'research';
   language: string;
   favicon?: string | null;
+  thumbnailUrl?: string | null;
+  mediaUrl?: string | null;
+  durationSeconds?: number | null;
+  priceText?: string | null;
+  coordinates?: {
+    lat: number;
+    lon: number;
+    displayName?: string;
+    category?: string;
+  } | null;
   relevanceScore: number;
   scoreBreakdown?: {
     lexical: number;
@@ -180,6 +203,16 @@ export interface SearchResponse {
   suggestions: SearchSuggestion[];
   relatedQueries: string[];
   aiAnswer: AiCitedAnswer | null;
+  instantAnswer?: {
+    kind?: 'entity' | 'calculator' | 'conversion' | 'definition' | 'color';
+    title: string;
+    subtitle?: string;
+    summary: string;
+    url: string;
+    source: string;
+    thumbnailUrl?: string;
+    facts?: Array<{ label: string; value: string }>;
+  } | null;
   providersQueried: string[];
   providerErrors: Array<{ providerId: string; error: string }>;
   indexStatus: {

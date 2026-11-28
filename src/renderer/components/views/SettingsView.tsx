@@ -51,6 +51,8 @@ export const SettingsView: React.FC = () => {
   const [section, setSection] = useState<SettingsSection>('appearance');
   const [local, setLocal] = useState<AppSettings | null>(settings);
   const [selfHostedKeyInput, setSelfHostedKeyInput] = useState('');
+  const [braveKeyInput, setBraveKeyInput] = useState('');
+  const [geminiKeyInput, setGeminiKeyInput] = useState('');
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<ProviderTestResult | null>(null);
   const [runtimeStatus, setRuntimeStatus] = useState<SelfHostedRuntimeStatus | null>(null);
@@ -250,11 +252,12 @@ export const SettingsView: React.FC = () => {
                       onChange={(e) => void update({ searchEngine: e.target.value as SearchEngineId })}
                       className="w-full rounded-lg border border-lavray-border bg-lavray-surface px-3 py-2 text-[12.5px] outline-none focus:border-lavray-accent"
                     >
-                      <option value="google">Google</option>
+                      <option value="lavray">LAVRAY Search (Built-in)</option>
                       <option value="duckduckgo">DuckDuckGo</option>
-                      <option value="bing">Bing</option>
                       <option value="brave">Brave Search</option>
                       <option value="startpage">Startpage</option>
+                      <option value="bing">Bing</option>
+                      <option value="google">Google</option>
                     </select>
                   </div>
                   <div>
@@ -591,6 +594,91 @@ export const SettingsView: React.FC = () => {
                         : 'Local Only'}
                     </span>
                   )}
+                </div>
+
+                <div className="rounded-xl border border-lavray-border bg-lavray-surface p-4 space-y-3">
+                  <div className="text-[12.5px] font-semibold text-lavray-text">
+                    LAVRAY Search Engine Settings
+                  </div>
+                  <ToggleRow
+                    label="Auto-index visited pages into local LAVRAY Search"
+                    description="Builds your private SQLite FTS5 + semantic web index as you browse (never indexes Private Windows)"
+                    checked={local.autoIndexVisitedPages ?? true}
+                    onChange={(v) => void update({ autoIndexVisitedPages: v })}
+                  />
+                  <div>
+                    <label className="block text-[12px] font-medium text-lavray-secondary mb-1.5">
+                      Optional Self-Hosted SearXNG JSON Endpoint
+                    </label>
+                    <input
+                      defaultValue={local.searxngEndpointUrl || ''}
+                      onBlur={(e) => void update({ searxngEndpointUrl: e.target.value.trim() })}
+                      placeholder="e.g. http://127.0.0.1:8080"
+                      className="w-full rounded-lg border border-lavray-border bg-lavray-bg px-3 py-2 text-[12.5px] outline-none focus:border-lavray-accent"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[12px] font-medium text-lavray-secondary mb-1.5">
+                      Optional Brave Search API Key{' '}
+                      {local.hasBraveSearchApiKey && (
+                        <span className="ml-1 text-lavray-success">(Saved in Encrypted Vault)</span>
+                      )}
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="password"
+                        value={braveKeyInput}
+                        onChange={(e) => setBraveKeyInput(e.target.value)}
+                        placeholder={local.hasBraveSearchApiKey ? '••••••••••••••••' : 'BSA...'}
+                        className="flex-1 rounded-lg border border-lavray-border bg-lavray-bg px-3 py-2 text-[12.5px] outline-none focus:border-lavray-accent"
+                      />
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (!braveKeyInput.trim()) return;
+                          const next = await window.lavray.setApiKey('brave_search', braveKeyInput.trim());
+                          setLocal(next);
+                          setSettings(next);
+                          setBraveKeyInput('');
+                          pushToast('Brave Search API key saved to encrypted vault', 'success');
+                        }}
+                        className="rounded-lg bg-lavray-accent px-3 py-2 text-[12px] font-medium text-lavray-accent-fg"
+                      >
+                        Save Key
+                      </button>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-[12px] font-medium text-lavray-secondary mb-1.5">
+                      Optional Gemini API Key (Google Search Grounded AI Overview){' '}
+                      {local.hasGeminiApiKey && (
+                        <span className="ml-1 text-lavray-success">(Saved in Encrypted Vault)</span>
+                      )}
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="password"
+                        value={geminiKeyInput}
+                        onChange={(e) => setGeminiKeyInput(e.target.value)}
+                        placeholder={local.hasGeminiApiKey ? '••••••••••••••••' : 'AIza...'}
+                        className="flex-1 rounded-lg border border-lavray-border bg-lavray-bg px-3 py-2 text-[12.5px] outline-none focus:border-lavray-accent"
+                      />
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (!geminiKeyInput.trim()) return;
+                          const next = await window.lavray.setApiKey('gemini', geminiKeyInput.trim());
+                          setLocal(next);
+                          setSettings(next);
+                          setGeminiKeyInput('');
+                          pushToast('Gemini API key saved to encrypted vault', 'success');
+                        }}
+                        className="rounded-lg bg-lavray-accent px-3 py-2 text-[12px] font-medium text-lavray-accent-fg"
+                      >
+                        Save Key
+                      </button>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end">

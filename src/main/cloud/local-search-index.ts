@@ -90,29 +90,66 @@ export class LocalSearchIndexService {
     return deleted;
   }
 
-  public searchLocalIndex(query: string, limit = 10): RawSearchCandidate[] {
-    const cleanTokens = query
-      .replace(/[^\w\s]/g, ' ')
-      .trim()
-      .split(/\s+/)
-      .filter((t) => t.length >= 2);
+  public searchLocalIndex(query: string, limit = 10, domains?: string[]): RawSearchCandidate[] {
+    const cleanTokens = Array.from(
+      new Set(
+        query
+          .replace(/[^\w\s]/g, ' ')
+          .trim()
+          .split(/\s+/)
+          .filter((t) => t.length >= 2)
+      )
+    ).slice(0, 10);
     if (cleanTokens.length === 0) return [];
 
-    const ftsQuery = cleanTokens.map((t) => `"${t}"*`).join(' OR ');
+    const quotedTokens = cleanTokens.map((t) => `"${t.replace(/"/g, '')}"*`);
+    const andFtsQuery = quotedTokens.join(' AND ');
+    const orFtsQuery = quotedTokens.join(' OR ');
     const queryVec = computeLocalEmbedding(query);
 
-    const rows = this.db
-      .prepare(
-        `SELECT d.*, bm25(lavray_index_fts) AS fts_score
-         FROM lavray_index_fts f
-         JOIN lavray_index_documents d ON d.canonical_url = f.canonical_url
-         WHERE lavray_index_fts MATCH ?
-         ORDER BY fts_score ASC
-         LIMIT ?`
-      )
-      .all(ftsQuery, Math.min(30, limit * 2)) as Array<Record<string, any>>;
+    const runFts = (ftsExpr: string, maxRows: number): Array<Record<string, any>> => {
+      try {
+        return this.db
+          .prepare(
+            `SELECT d.*, bm25(lavray_index_fts, 0.5, 6.0, 1.5, 3.0) AS fts_score
+             FROM lavray_index_fts f
+             JOIN lavray_index_documents d ON d.canonical_url = f.canonical_url
+             WHERE lavray_index_fts MATCH ?
+             ORDER BY fts_score ASC
+             LIMIT ?`
+          )
+          .all(ftsExpr, maxRows) as Array<Record<string, any>>;
+      } catch {
+        return [];
+      }
+    };
 
-    const scored = rows.map((r, idx) => {
+    const maxFetch = Math.min(40, limit * 3);
+    const andRows = cleanTokens.length > 1 ? runFts(andFtsQuery, maxFetch) : [];
+    const seenUrls = new Set(andRows.map((r) => String(r.canonical_url)));
+    const rows = [...andRows];
+
+    if (rows.length < limit) {
+      const orRows = runFts(orFtsQuery, maxFetch);
+      for (const r of orRows) {
+        const u = String(r.canonical_url);
+        if (!seenUrls.has(u)) {
+          seenUrls.add(u);
+          rows.push(r);
+        }
+      }
+    }
+
+    const domainFilterSet = domains?.map((d) => d.toLowerCase()).filter(Boolean) ?? [];
+    const filteredRows =
+      domainFilterSet.length > 0
+        ? rows.filter((r) => {
+            const dom = String(r.source_domain || '').toLowerCase();
+            return domainFilterSet.some((f) => dom === f || dom.endsWith(`.${f}`));
+          })
+        : rows;
+
+    const scored = filteredRows.map((r, idx) => {
       let embedding: number[] = [];
       try {
         embedding = JSON.parse(String(r.embedding_json || '[]')) as number[];
@@ -120,6 +157,7 @@ export class LocalSearchIndexService {
         embedding = [];
       }
       const sem = cosineSimilarity(queryVec, embedding);
+      const bm25Norm = 1 / (1 + Math.abs(Number(r.fts_score || 0)));
       return {
         candidate: {
           title: String(r.title),
@@ -131,7 +169,7 @@ export class LocalSearchIndexService {
           language: String(r.language || 'en'),
           rawRank: idx + 1
         } satisfies RawSearchCandidate,
-        score: sem + 1 / (1 + Math.abs(Number(r.fts_score || 0)))
+        score: bm25Norm * 0.72 + sem * 0.28
       };
     });
 
@@ -236,37 +274,46 @@ export class LocalSearchIndexService {
   }
 
   public indexRawPageForLocalCache(url: string, title: string, textContent: string): void {
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      return;
+    }
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return;
+    const host = parsed.hostname.toLowerCase();
+    if (host === 'localhost' || host === '127.0.0.1' || host === '::1' || host.endsWith('.local')) {
+      return;
+    }
+    const cleanText = textContent.replace(/\s+/g, ' ').trim();
+    const cleanTitle = (title || host).replace(/\s+/g, ' ').trim();
+    if (cleanText.length < 100) return;
+
     const auth = computeExplainableAuthority({
       url,
-      domain: (() => {
-        try {
-          return new URL(url).hostname;
-        } catch {
-          return 'local';
-        }
-      })(),
-      title,
+      domain: host,
+      title: cleanTitle,
       headingsCount: 1,
-      contentLength: textContent.length
+      contentLength: cleanText.length
     });
-    const hash = createHash('sha256').update(`${title}\n${textContent}`).digest('hex');
+    const hash = createHash('sha256').update(`${cleanTitle}\n${cleanText}`).digest('hex');
     this.upsertDocument({
       id: createHash('sha1').update(url).digest('hex').slice(0, 20),
       url,
       canonicalUrl: url,
-      title,
-      mainContent: textContent.slice(0, 20_000),
-      snippet: textContent.slice(0, 300),
+      title: cleanTitle.slice(0, 240),
+      mainContent: cleanText.slice(0, 20_000),
+      snippet: cleanText.slice(0, 320),
       headings: [],
       language: 'en',
-      sourceDomain: new URL(url).hostname,
+      sourceDomain: host,
       contentType: 'web',
       contentHash: hash,
       authorityScore: auth.score,
       authorityMethod: auth.method,
       crawledAt: Date.now(),
       indexVersion: 'v1',
-      embedding: computeLocalEmbedding(`${title} ${textContent.slice(0, 2000)}`)
+      embedding: computeLocalEmbedding(`${cleanTitle} ${cleanText.slice(0, 2000)}`)
     });
   }
 }

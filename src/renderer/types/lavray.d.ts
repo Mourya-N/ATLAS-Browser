@@ -206,7 +206,7 @@ export interface LavrayBridge {
 
   getSettings: () => Promise<AppSettings>;
   updateSettings: (patch: Partial<AppSettings>) => Promise<AppSettings>;
-  setApiKey: (provider: 'gemini' | 'self_hosted' | 'custom_openai_compatible', apiKey: string) => Promise<AppSettings>;
+  setApiKey: (provider: 'gemini' | 'self_hosted' | 'custom_openai_compatible' | 'brave_search', apiKey: string) => Promise<AppSettings>;
   clearApiKey: () => Promise<AppSettings>;
   getProviderStatus: () => Promise<ProviderStatusInfo>;
   testProvider: (model?: string) => Promise<ProviderTestResult>;

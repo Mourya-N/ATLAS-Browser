@@ -17,6 +17,7 @@ import { ExtractionView, MemoryView, SkillsView } from './components/views/Skill
 import { AuditAndRulesView, DashboardView, McpServerView, RunsAndReplayView, SchedulerView } from './components/views/OperationsViews';
 import { IntelligenceView } from './components/views/IntelligenceView';
 import { SearchView } from './components/views/SearchView';
+import { WebSearchView } from './components/WebSearchView';
 
 export const App: React.FC = () => {
   const {
@@ -194,6 +195,15 @@ export const App: React.FC = () => {
   const isNewTab = Boolean(
     activeTab && (activeTab.url === 'lavray://newtab' || activeTab.url === 'about:blank')
   );
+  const isSearchTab = Boolean(activeTab?.url?.startsWith('lavray://search'));
+  const tabSearchQuery = (() => {
+    if (!isSearchTab || !activeTab?.url) return '';
+    try {
+      return new URL(activeTab.url).searchParams.get('q') || '';
+    } catch {
+      return '';
+    }
+  })();
 
   // Sync Electron WebContentsView insets whenever UI panels change
   useEffect(() => {
@@ -204,9 +214,9 @@ export const App: React.FC = () => {
       topInset,
       leftInset,
       rightInset,
-      hideBrowserView: Boolean(activeOverlayView) || isNewTab
+      hideBrowserView: Boolean(activeOverlayView) || isNewTab || isSearchTab
     });
-  }, [verticalTabs, sidebarOpen, agentPanelOpen, agentPanelWidth, activeOverlayView, isNewTab, hitlPause]);
+  }, [verticalTabs, sidebarOpen, agentPanelOpen, agentPanelWidth, activeOverlayView, isNewTab, isSearchTab, hitlPause]);
 
   // Global browser keyboard shortcuts
   useEffect(() => {
@@ -301,6 +311,8 @@ export const App: React.FC = () => {
             <div className="absolute inset-0 z-20">{renderOverlay()}</div>
           ) : isNewTab ? (
             <NewTabView />
+          ) : isSearchTab ? (
+            <WebSearchView tabQuery={tabSearchQuery} />
           ) : (
             <div className="flex h-full items-center justify-center text-xs text-lavray-muted">
               Loading page...

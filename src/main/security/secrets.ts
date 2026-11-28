@@ -9,6 +9,7 @@ export { redactSecrets, redactObjectSecrets };
 export interface SecretVaultData {
   geminiApiKey?: string;
   customApiKey?: string;
+  braveSearchApiKey?: string;
   mcpAuthToken?: string;
   cloudAccessToken?: string;
   cloudRefreshToken?: string;
@@ -116,6 +117,17 @@ export class SecretVault {
     const data = this.load();
     data.customApiKey = key.trim();
     this.save(data);
+  }
+
+  public setBraveSearchApiKey(key: string): void {
+    const data = this.load();
+    data.braveSearchApiKey = key.trim();
+    this.save(data);
+  }
+
+  public getBraveSearchApiKey(): string | undefined {
+    const data = this.load();
+    return data.braveSearchApiKey || process.env.BRAVE_SEARCH_API_KEY || undefined;
   }
 
   public getCustomApiKey(): string | undefined {

@@ -205,7 +205,7 @@ const lavrayApi = {
 
   getSettings: () => invoke<AppSettings>(IPC_CHANNELS.SETTINGS_GET),
   updateSettings: (patch: Partial<AppSettings>) => invoke<AppSettings>(IPC_CHANNELS.SETTINGS_UPDATE, patch),
-  setApiKey: (provider: 'gemini' | 'self_hosted' | 'custom_openai_compatible', apiKey: string) =>
+  setApiKey: (provider: 'gemini' | 'self_hosted' | 'custom_openai_compatible' | 'brave_search', apiKey: string) =>
     invoke(IPC_CHANNELS.SETTINGS_SET_API_KEY, { provider, apiKey }),
   clearApiKey: () => invoke(IPC_CHANNELS.SETTINGS_CLEAR_API_KEY),
   getProviderStatus: () => invoke(IPC_CHANNELS.SETTINGS_PROVIDER_STATUS),

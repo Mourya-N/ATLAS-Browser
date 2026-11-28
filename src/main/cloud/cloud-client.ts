@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type {
   AiCitedAnswer,
   LavrayIndexStats,
@@ -27,8 +27,14 @@ import type { AuditLogger } from '@main/security/audit-logger';
 import type { ModelProvider } from '@main/agent/providers/model-provider';
 import type { SelfHostedOpenAiProvider } from '@main/agent/providers/self-hosted-provider';
 import type { LocalSearchIndexService } from './local-search-index';
+import { WebDiscoveryEngine, type WebDiscoveryResult } from './web-discovery';
+import { generateGeminiGroundedOverview } from './gemini-search-grounding';
 import { QueryUnderstandingEngine } from '../../backend/modules/search/query-understanding';
 import { SearchRankingPipeline } from '../../backend/modules/search/ranking';
+import { SearchCache } from '../../backend/modules/search/cache';
+import { verifyClaimAgainstPassages } from '../../backend/modules/search/citation-pipeline';
+import { ResearchExtractorService } from '../../backend/modules/research/research-extractor';
+import { SsrfGuard } from '../../backend/security/ssrf-guard';
 import type { RawSearchCandidate } from '../../backend/modules/search/provider';
 import { InjectionGuard } from '@main/security/injection-guard';
 
@@ -36,6 +42,13 @@ export class CloudClientService {
   private readonly queryUnderstanding = new QueryUnderstandingEngine();
   private readonly ranking = new SearchRankingPipeline();
   private readonly injectionGuard = new InjectionGuard();
+  private readonly ssrfGuard = new SsrfGuard();
+  private readonly liveExtractor = new ResearchExtractorService(this.ssrfGuard);
+  private readonly localCache = new SearchCache(null, 200);
+  private readonly inflightSearches = new Map<string, Promise<SearchResponse>>();
+  private activeWebSearchAbort: AbortController | null = null;
+  private readonly effectiveWebDiscovery: WebDiscoveryEngine;
+  private readonly hasInjectedWebDiscovery: boolean;
   private lastSyncedAt: number | null = null;
   private lastError: string | null = null;
   private cachedUserEmail: string | null = null;
@@ -52,8 +65,12 @@ export class CloudClientService {
     private readonly auditLogger: AuditLogger,
     private readonly getLocalModelProvider: () => ModelProvider,
     private readonly localIndex?: LocalSearchIndexService,
-    private readonly selfHostedProvider?: SelfHostedOpenAiProvider
-  ) {}
+    private readonly selfHostedProvider?: SelfHostedOpenAiProvider,
+    webDiscovery?: WebDiscoveryEngine
+  ) {
+    this.hasInjectedWebDiscovery = Boolean(webDiscovery);
+    this.effectiveWebDiscovery = webDiscovery ?? new WebDiscoveryEngine();
+  }
 
   public isCloudEnabled(): boolean {
     return this.platformRepo.getSetting<boolean>('cloud.enabled', false);
@@ -341,7 +358,10 @@ export class CloudClientService {
 
     // Collect local desktop knowledge (first-party FTS5 index, bookmarks, memory, research)
     const localCandidates: RawSearchCandidate[] = [];
-    if (this.localIndex && !['current_page', 'cross_tab'].includes(params.mode || '')) {
+    if (
+      this.localIndex &&
+      !['current_page', 'cross_tab', 'images', 'videos', 'maps', 'shopping'].includes(params.mode || '')
+    ) {
       const ftsHits = this.localIndex.searchLocalIndex(params.query, 10);
       localCandidates.push(...ftsHits);
     }
@@ -455,102 +475,259 @@ export class CloudClientService {
       }
     }
 
-    // Local-first offline/fallback execution
-    const understanding = this.queryUnderstanding.analyzeDeterministic(params.query, params.mode);
+    // Local-first + Open Web Discovery execution
+    const understanding = this.queryUnderstanding.analyzeDeterministic(params.query, params.mode, {
+      disableTypoCorrection: params.filters?.disableTypoCorrection
+    });
     const activeMode = params.mode ?? understanding.recommendedMode;
-    for (const t of authorizedTabContexts) {
-      localCandidates.push({
-        title: t.title,
-        url: t.url,
-        snippet: t.text.slice(0, 320),
-        sourceProvider: 'open_tabs',
-        contentType: 'tab',
-        rawRank: 1
-      });
-    }
+    const anyActivePrivate =
+      this.tabManager.getAllTabs().every((t) => t.isPrivate) && this.tabManager.getAllTabs().length > 0;
+    const hasPersonalScope =
+      anyActivePrivate ||
+      authorizedTabContexts.length > 0 ||
+      activeMode === 'current_page' ||
+      activeMode === 'cross_tab' ||
+      activeMode === 'personal_knowledge' ||
+      params.filters?.includeOpenTabs === true ||
+      params.filters?.includePersonalKnowledge !== false;
 
+    const wantAi = params.filters?.includeAiAnswer !== false;
     const limit = Math.min(30, Math.max(1, params.filters?.limit ?? 15));
     const page = Math.max(1, params.filters?.page ?? 1);
-    const ranked = this.ranking.normalizeAndRank({
-      candidates: localCandidates,
-      understanding,
-      filters: params.filters,
-      allowLocalTestUrls: process.env.LAVRAY_ALLOW_LOCALHOST_SEARCH_TEST === 'true'
-    });
-    const reranked = await this.ranking.rerankCandidates(understanding.originalQuery, ranked.results);
-    const totalResults = reranked.results.length;
-    const totalPages = Math.max(1, Math.ceil(totalResults / limit));
-    const safePage = Math.min(page, totalPages);
-    const results = reranked.results.slice((safePage - 1) * limit, safePage * limit);
 
-    let aiAnswer: AiCitedAnswer | null = null;
-    if (params.filters?.includeAiAnswer !== false && results.length > 0) {
-      aiAnswer = await this.buildLocalAiSummary(understanding.originalQuery, results, authorizedTabContexts);
-    }
+    const resultCacheKey = createHash('sha256')
+      .update(
+        JSON.stringify({
+          q: understanding.normalizedQuery,
+          mode: activeMode,
+          page,
+          limit,
+          filters: { ...(params.filters || {}), includeAiAnswer: undefined }
+        })
+      )
+      .digest('hex');
+    const aiCacheKey = `${resultCacheKey}:ai`;
 
-    const suggestions: SearchSuggestion[] = understanding.rewrittenQueries
-      .filter((q) => q !== params.query)
-      .map((q) => ({ text: q, kind: 'refinement' }));
-
-    const indexStats: LavrayIndexStats = this.localIndex
-      ? this.localIndex.getStats()
-      : {
-          totalDocuments: 0,
-          uniqueDomains: 0,
-          latestCrawlAt: null,
-          indexVersion: 'v1',
-          limitedCoverage: true,
-          notice: 'Local LAVRAY Index empty.'
+    if (!hasPersonalScope && !anyActivePrivate) {
+      const cached = await this.localCache.get(resultCacheKey);
+      if (cached) {
+        let aiAnswer: AiCitedAnswer | null = null;
+        if (wantAi && (cached.results.length > 0 || cached.instantAnswer)) {
+          aiAnswer = await this.localCache.getAiAnswer(aiCacheKey);
+          if (!aiAnswer) {
+            aiAnswer = await this.buildLocalAiSummary(
+              understanding.originalQuery,
+              cached.results,
+              authorizedTabContexts,
+              cached.instantAnswer,
+              understanding
+            );
+            await this.localCache.setAiAnswer(aiCacheKey, aiAnswer, 300);
+          }
+        }
+        return {
+          ...cached,
+          aiAnswer,
+          requestId: randomUUID(),
+          cacheHit: true,
+          latencyMs: Date.now() - started
         };
+      }
 
-    // Record local search history only if no active window is exclusively private
-    const anyActivePrivate = this.tabManager.getAllTabs().every((t) => t.isPrivate) && this.tabManager.getAllTabs().length > 0;
-    if (this.localIndex && !anyActivePrivate) {
-      this.localIndex.recordSearchHistory(params.query, activeMode, results.length, false);
+      const inflightKey = `${resultCacheKey}:${wantAi ? '1' : '0'}`;
+      const existingInflight = this.inflightSearches.get(inflightKey);
+      if (existingInflight) {
+        return existingInflight;
+      }
     }
 
-    const aiRuntimeStatus = await this.getLocalRuntimeStatus();
+    // Cancel any previous superseded web search controller when starting a new non-personal web search
+    if (!hasPersonalScope && this.activeWebSearchAbort) {
+      this.activeWebSearchAbort.abort();
+      this.activeWebSearchAbort = null;
+    }
 
-    return {
-      requestId: randomUUID(),
-      query: params.query,
-      mode: activeMode,
-      understanding,
-      results,
-      pagination: {
-        page: safePage,
-        limit,
-        totalResults,
-        totalPages,
-        hasMore: safePage < totalPages
-      },
-      totalBeforeDedup: ranked.totalBeforeDedup,
-      duplicatesRemoved: ranked.duplicatesRemoved,
-      suggestions,
-      relatedQueries: [
-        `${understanding.normalizedQuery} documentation`,
-        `${understanding.normalizedQuery} comparison`
-      ],
-      aiAnswer,
-      providersQueried: [
-        ...(this.localIndex ? ['lavray_first_party_index'] : []),
-        'local_bookmarks',
-        'local_memory',
-        'local_research',
-        'open_tabs'
-      ],
-      providerErrors: [],
-      indexStatus: {
-        indexedDocuments: indexStats.totalDocuments,
-        limitedCoverage: indexStats.limitedCoverage,
-        notice: indexStats.notice
-      },
-      aiRuntimeStatus,
-      cacheHit: false,
-      reranked: reranked.reranked,
-      latencyMs: Date.now() - started,
-      sourceMode: 'local_fallback'
+    const runLocalSearch = async (): Promise<SearchResponse> => {
+      for (const t of authorizedTabContexts) {
+        localCandidates.push({
+          title: t.title,
+          url: t.url,
+          snippet: t.text.slice(0, 320),
+          sourceProvider: 'open_tabs',
+          contentType: 'tab',
+          rawRank: 1
+        });
+      }
+
+      // Also re-query local FTS5 with site filters if query had site: operators (skip media/maps/shopping verticals)
+      if (
+        this.localIndex &&
+        (understanding.siteFilters?.length ?? 0) > 0 &&
+        !['current_page', 'cross_tab', 'images', 'videos', 'maps', 'shopping'].includes(activeMode)
+      ) {
+        const siteHits = this.localIndex.searchLocalIndex(
+          understanding.normalizedQuery || params.query,
+          10,
+          understanding.siteFilters
+        );
+        localCandidates.push(...siteHits);
+      }
+
+      let discoveryResult: WebDiscoveryResult = {
+        candidates: [],
+        providersQueried: [],
+        providerErrors: [],
+        instantAnswer: null
+      };
+      const shouldDiscoverWeb =
+        !['current_page', 'cross_tab', 'personal_knowledge'].includes(activeMode) &&
+        (this.hasInjectedWebDiscovery || !process.env.VITEST);
+
+      if (shouldDiscoverWeb) {
+        const abortCtrl = !hasPersonalScope ? new AbortController() : null;
+        if (abortCtrl) this.activeWebSearchAbort = abortCtrl;
+        const searxngEndpointUrl = this.platformRepo.getSetting<string>('search.searxngEndpointUrl', '');
+        const braveApiKey = this.vault.getBraveSearchApiKey();
+        discoveryResult = await this.effectiveWebDiscovery.discover({
+          query: params.query,
+          mode: activeMode,
+          filters: params.filters,
+          understanding,
+          searxngEndpointUrl,
+          braveApiKey
+        });
+        if (this.activeWebSearchAbort === abortCtrl) {
+          this.activeWebSearchAbort = null;
+        }
+        localCandidates.push(...discoveryResult.candidates);
+      }
+
+      const ranked = this.ranking.normalizeAndRank({
+        candidates: localCandidates,
+        understanding,
+        filters: params.filters,
+        allowLocalTestUrls: process.env.LAVRAY_ALLOW_LOCALHOST_SEARCH_TEST === 'true'
+      });
+      const reranked = await this.ranking.rerankCandidates(
+        understanding.originalQuery,
+        ranked.results,
+        200,
+        understanding
+      );
+      const totalResults = reranked.results.length;
+      const totalPages = Math.max(1, Math.ceil(totalResults / limit));
+      const safePage = Math.min(page, totalPages);
+      const results = reranked.results.slice((safePage - 1) * limit, safePage * limit);
+
+      let aiAnswer: AiCitedAnswer | null = null;
+      if (wantAi && (results.length > 0 || discoveryResult.instantAnswer)) {
+        aiAnswer = await this.buildLocalAiSummary(
+          understanding.originalQuery,
+          results,
+          authorizedTabContexts,
+          discoveryResult.instantAnswer,
+          understanding
+        );
+      }
+
+      const suggestions: SearchSuggestion[] = understanding.rewrittenQueries
+        .filter((q) => q !== params.query)
+        .map((q) => ({ text: q, kind: 'refinement' }));
+
+      const indexStats: LavrayIndexStats = this.localIndex
+        ? this.localIndex.getStats()
+        : {
+            totalDocuments: 0,
+            uniqueDomains: 0,
+            latestCrawlAt: null,
+            indexVersion: 'v1',
+            limitedCoverage: true,
+            notice: 'Local LAVRAY Index empty.'
+          };
+
+      if (this.localIndex && !anyActivePrivate) {
+        this.localIndex.recordSearchHistory(params.query, activeMode, results.length, false);
+      }
+
+      const aiRuntimeStatus = await this.getLocalRuntimeStatus();
+
+      const baseQ = understanding.normalizedQuery || params.query;
+      const relatedQueries =
+        understanding.intent === 'comparative'
+          ? [`${baseQ} pros and cons`, `${baseQ} benchmark`, `${baseQ} alternatives`, `${baseQ} 2026`]
+          : understanding.intent === 'technical_docs'
+          ? [`${baseQ} documentation`, `${baseQ} examples`, `${baseQ} best practices`, `${baseQ} troubleshooting`]
+          : [`${baseQ} overview`, `${baseQ} explained`, `${baseQ} vs alternatives`, `${baseQ} latest updates`];
+
+      const response: SearchResponse = {
+        requestId: randomUUID(),
+        query: params.query,
+        mode: activeMode,
+        understanding,
+        results,
+        pagination: {
+          page: safePage,
+          limit,
+          totalResults,
+          totalPages,
+          hasMore: safePage < totalPages
+        },
+        totalBeforeDedup: ranked.totalBeforeDedup,
+        duplicatesRemoved: ranked.duplicatesRemoved,
+        suggestions,
+        relatedQueries,
+        aiAnswer,
+        instantAnswer: discoveryResult.instantAnswer ?? null,
+        providersQueried: [
+          ...(this.localIndex ? ['lavray_first_party_index'] : []),
+          'local_bookmarks',
+          'local_memory',
+          'local_research',
+          'open_tabs',
+          ...discoveryResult.providersQueried
+        ],
+        providerErrors: discoveryResult.providerErrors,
+        indexStatus: {
+          indexedDocuments: indexStats.totalDocuments,
+          limitedCoverage: indexStats.limitedCoverage && discoveryResult.candidates.length === 0,
+          notice:
+            discoveryResult.candidates.length > 0
+              ? `LAVRAY Search combined ${indexStats.totalDocuments} local indexed doc(s) with ${discoveryResult.candidates.length} open-web discovery result(s).`
+              : indexStats.notice
+        },
+        aiRuntimeStatus,
+        cacheHit: false,
+        reranked: reranked.reranked,
+        latencyMs: Date.now() - started,
+        sourceMode: 'local_fallback'
+      };
+
+      if (!hasPersonalScope && !anyActivePrivate && results.length > 0) {
+        const dynamicTtl =
+          understanding.temporalIntent.hasTemporalConstraint || activeMode === 'news'
+            ? 30
+            : activeMode === 'docs'
+            ? 300
+            : 180;
+        await this.localCache.set(resultCacheKey, { ...response, aiAnswer: null }, dynamicTtl);
+        if (aiAnswer) {
+          await this.localCache.setAiAnswer(aiCacheKey, aiAnswer, 300);
+        }
+      }
+
+      return response;
     };
+
+    if (!hasPersonalScope && !anyActivePrivate) {
+      const inflightKey = `${resultCacheKey}:${wantAi ? '1' : '0'}`;
+      const promise = runLocalSearch().finally(() => {
+        this.inflightSearches.delete(inflightKey);
+      });
+      this.inflightSearches.set(inflightKey, promise);
+      return promise;
+    }
+
+    return runLocalSearch();
   }
 
   public async getLocalRuntimeStatus(): Promise<SelfHostedRuntimeStatus> {
@@ -623,22 +800,115 @@ export class CloudClientService {
   private async buildLocalAiSummary(
     query: string,
     results: SearchResponse['results'],
-    tabContexts: Array<{ url: string; title: string; text: string }>
+    tabContexts: Array<{ url: string; title: string; text: string }>,
+    instantAnswer?: WebDiscoveryResult['instantAnswer'],
+    understanding?: SearchResponse['understanding']
   ): Promise<AiCitedAnswer> {
     const started = Date.now();
     const provider = this.getLocalModelProvider();
 
+    if (understanding?.intent === 'navigational' && results.length > 0) {
+      return {
+        status: 'unavailable',
+        summary: `Official destination: ${results[0].title} (${results[0].url}).`,
+        claims: [],
+        contradictions: [],
+        passages: [],
+        citations: [
+          {
+            index: 1,
+            url: results[0].url,
+            title: results[0].title,
+            domain: results[0].domain
+          }
+        ],
+        model: 'lavray-navigational',
+        provider: 'lavray_intent_router',
+        inputTokens: 0,
+        outputTokens: 0,
+        estimatedCostUsd: 0,
+        latencyMs: Date.now() - started
+      };
+    }
+
     const ctxMap = new Map(tabContexts.map((t) => [t.url, t.text]));
-    const passages = results.slice(0, 4).map((r, idx) => ({
+
+    // 1. If Gemini API key is configured, run native Google Search Grounded AI Overview
+    const geminiKey = this.vault.getGeminiApiKey();
+    if (geminiKey && !process.env.VITEST && !instantAnswer?.kind?.match(/calculator|conversion|color/)) {
+      const geminiOverview = await generateGeminiGroundedOverview({
+        apiKey: geminiKey,
+        query,
+        timeoutMs: 6500
+      });
+      if (geminiOverview) {
+        return geminiOverview;
+      }
+    }
+
+    // 2. Fetch live top-3 web page excerpts in parallel (skipped in Vitest unless tab contexts exist)
+    const topSlice = results.slice(0, 4);
+    const liveTexts = await Promise.all(
+      topSlice.map(async (r, idx) => {
+        const fromTab = ctxMap.get(r.url);
+        if (fromTab && fromTab.trim().length > 0) return fromTab;
+        if (
+          !process.env.VITEST &&
+          idx < 3 &&
+          (r.url.startsWith('https://') || r.url.startsWith('http://'))
+        ) {
+          try {
+            const extracted = await this.liveExtractor.fetchAndExtract(r.url, {
+              timeoutMs: 2200,
+              maxBytes: 512 * 1024
+            });
+            if (extracted.textContent && extracted.textContent.length >= 120) {
+              return extracted.textContent;
+            }
+          } catch {
+            // Fall back to snippet smoothly
+          }
+        }
+        return `${r.title}. ${r.snippet}`;
+      })
+    );
+
+    const passages = topSlice.map((r, idx) => ({
+      documentId: r.id,
       sourceUrl: r.url,
       sourceTitle: r.title,
       domain: r.domain,
       passageIndex: idx,
-      excerpt: (ctxMap.get(r.url) || `${r.title}. ${r.snippet}`).slice(0, 600),
+      excerpt: this.pickBestExcerpt(query, liveTexts[idx] || `${r.title}. ${r.snippet}`, r.snippet),
       relevance: r.relevanceScore
     }));
 
-    const allowedUrls = new Set(passages.map((p) => p.sourceUrl));
+    const topRelevance = results[0]?.relevanceScore ?? 0;
+    if (!instantAnswer && (passages.length === 0 || topRelevance < 0.2)) {
+      return {
+        status: 'insufficient_evidence',
+        summary: 'Retrieved results have low confidence for this query; review the ranked links directly.',
+        claims: [],
+        unsupportedClaimsCount: 0,
+        contradictions: [],
+        passages,
+        citations: [],
+        model: 'lavray-evidence-gate',
+        provider: 'lavray_evidence_gate',
+        inputTokens: 0,
+        outputTokens: 0,
+        estimatedCostUsd: 0,
+        latencyMs: Date.now() - started
+      };
+    }
+
+    const passagesByUrl = new Map<string, typeof passages>();
+    for (const p of passages) {
+      const list = passagesByUrl.get(p.sourceUrl) ?? [];
+      list.push(p);
+      passagesByUrl.set(p.sourceUrl, list);
+    }
+
     const wrapped = passages
       .map((p, i) =>
         this.injectionGuard.wrapUntrustedContent(
@@ -653,34 +923,125 @@ export class CloudClientService {
         this.platformRepo.getSetting<string>('agent.selfHostedModel', 'qwen2.5:3b') ||
         this.platformRepo.getSetting<string>('agent.defaultModel', 'qwen2.5:3b');
       const model = /^(gemini|mock)/i.test(rawModel.trim()) ? 'qwen2.5:3b' : rawModel.trim();
+      const intentGuidance =
+        understanding?.intent === 'comparative'
+          ? 'Compare options concisely based strictly on the retrieved passages and note disagreements in contradictions[].'
+          : understanding?.intent === 'temporal_news'
+          ? 'Prioritize recent dated facts from the retrieved passages and explicitly state uncertainty if dates are missing.'
+          : 'Synthesize a concise cited summary using ONLY the retrieved passages.';
       const resp = await provider.generate({
         model,
-        systemInstruction:
-          'Synthesize a concise cited summary using ONLY the retrieved local/tab passages. Never invent URLs.',
+        systemInstruction: `${intentGuidance} Never invent URLs, numbers, or quotes. Return JSON with { sufficientEvidence, summary, claims: [{ statement, kind, sourceUrl, supportingQuote }], contradictions: [] }.`,
         messages: [{ role: 'user', parts: [{ text: `Query: ${query}\n\n${wrapped}` }] }],
+        responseSchema: {
+          type: 'object',
+          properties: {
+            sufficientEvidence: { type: 'boolean' },
+            summary: { type: 'string' },
+            claims: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  statement: { type: 'string' },
+                  kind: { type: 'string', enum: ['fact', 'interpretation'] },
+                  sourceUrl: { type: 'string' },
+                  supportingQuote: { type: 'string' }
+                },
+                required: ['statement', 'kind', 'sourceUrl', 'supportingQuote']
+              }
+            },
+            contradictions: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  topic: { type: 'string' },
+                  claimA: { type: 'string' },
+                  sourceUrlA: { type: 'string' },
+                  claimB: { type: 'string' },
+                  sourceUrlB: { type: 'string' }
+                },
+                required: ['topic', 'claimA', 'sourceUrlA', 'claimB', 'sourceUrlB']
+              }
+            }
+          },
+          required: ['sufficientEvidence', 'summary', 'claims', 'contradictions']
+        },
         temperature: 0.1,
-        maxOutputTokens: 600
+        maxOutputTokens: 700
       });
 
+      let parsed: {
+        sufficientEvidence?: boolean;
+        summary?: string;
+        claims?: Array<{ statement: string; kind: 'fact' | 'interpretation'; sourceUrl: string; supportingQuote: string }>;
+        contradictions?: AiCitedAnswer['contradictions'];
+      } | null = null;
+      try {
+        parsed = JSON.parse(resp.text);
+      } catch {
+        parsed = null;
+      }
+
+      if (parsed && typeof parsed.summary === 'string') {
+        const verifiedClaims: AiCitedAnswer['claims'] = [];
+        const citedUrls: string[] = [];
+        let unsupportedClaimsCount = 0;
+
+        for (const rawClaim of parsed.claims ?? []) {
+          const urlPassages = passagesByUrl.get(rawClaim.sourceUrl) ?? [];
+          const check = verifyClaimAgainstPassages(rawClaim, urlPassages);
+          if (!check.verified || !check.matchedPassage) {
+            unsupportedClaimsCount += 1;
+            continue;
+          }
+          if (!citedUrls.includes(rawClaim.sourceUrl)) citedUrls.push(rawClaim.sourceUrl);
+          verifiedClaims.push({
+            id: randomUUID(),
+            statement: rawClaim.statement,
+            kind: rawClaim.kind === 'fact' ? 'fact' : 'interpretation',
+            documentId: check.matchedPassage.documentId,
+            passageIndex: check.matchedPassage.passageIndex,
+            sourceUrl: rawClaim.sourceUrl,
+            sourceTitle: check.matchedPassage.sourceTitle,
+            supportingQuote: rawClaim.supportingQuote.slice(0, 260),
+            verifiedAgainstSource: true
+          });
+        }
+
+        const sufficient = parsed.sufficientEvidence !== false && verifiedClaims.length > 0;
+        return {
+          status: sufficient ? 'ok' : 'insufficient_evidence',
+          summary: sufficient ? parsed.summary : "I couldn't verify enough grounded claims from the retrieved passages.",
+          claims: sufficient ? verifiedClaims : [],
+          unsupportedClaimsCount,
+          contradictions: sufficient ? parsed.contradictions ?? [] : [],
+          passages,
+          citations: citedUrls.map((u, idx) => {
+            const p = passagesByUrl.get(u)![0];
+            return { index: idx + 1, documentId: p.documentId, url: u, title: p.sourceTitle, domain: p.domain };
+          }),
+          model,
+          provider: provider.id,
+          inputTokens: resp.usage.inputTokens,
+          outputTokens: resp.usage.outputTokens,
+          estimatedCostUsd: 0,
+          latencyMs: Date.now() - started
+        };
+      }
+
+      // Plain-text fallback when model ignores JSON schema
       return {
         status: 'ok',
         summary: resp.text,
-        claims: passages
-          .filter((p) => allowedUrls.has(p.sourceUrl))
-          .slice(0, 3)
-          .map((p) => ({
-            id: randomUUID(),
-            statement: p.excerpt.slice(0, 180),
-            kind: 'fact',
-            sourceUrl: p.sourceUrl,
-            sourceTitle: p.sourceTitle,
-            supportingQuote: p.excerpt.slice(0, 140),
-            verifiedAgainstSource: true
-          })),
+        claims: [],
+        unsupportedClaimsCount: 0,
         contradictions: [],
         passages,
         citations: passages.map((p, i) => ({
           index: i + 1,
+          documentId: p.documentId,
           url: p.sourceUrl,
           title: p.sourceTitle,
           domain: p.domain
@@ -692,23 +1053,111 @@ export class CloudClientService {
         estimatedCostUsd: 0,
         latencyMs: Date.now() - started
       };
-    } catch (err) {
+    } catch {
+      // Structured Google-style extractive AI Overview from live retrieved passages
+      const extractive = this.buildStructuredExtractiveOverview(query, results, passages, instantAnswer);
+
+      const verifiedExtractiveClaims = passages
+        .slice(0, 3)
+        .map((p, idx) => {
+          const stmt = results[idx]?.snippet || p.excerpt.slice(0, 180);
+          const quote = p.excerpt.slice(0, 140);
+          const check = verifyClaimAgainstPassages({ statement: stmt, supportingQuote: quote }, [p]);
+          return {
+            id: randomUUID(),
+            statement: stmt,
+            kind: 'fact' as const,
+            documentId: p.documentId,
+            passageIndex: idx,
+            sourceUrl: p.sourceUrl,
+            sourceTitle: p.sourceTitle,
+            supportingQuote: quote,
+            verifiedAgainstSource: check.verified
+          };
+        })
+        .filter((c) => c.verifiedAgainstSource);
+
       return {
-        status: 'failed',
-        summary: 'Local AI summary generation failed; retrieved results remain available.',
-        claims: [],
+        status: 'ok',
+        summary: extractive,
+        claims: verifiedExtractiveClaims,
         contradictions: [],
         passages,
-        citations: [],
-        model: 'error',
-        provider: provider.id,
+        citations: passages.map((p, i) => ({
+          index: i + 1,
+          documentId: p.documentId,
+          url: p.sourceUrl,
+          title: p.sourceTitle,
+          domain: p.domain
+        })),
+        model: 'lavray-extractive-v2',
+        provider: 'lavray_extractive',
         inputTokens: 0,
         outputTokens: 0,
         estimatedCostUsd: 0,
         latencyMs: Date.now() - started,
-        warning: err instanceof Error ? err.message : 'Local summary failed'
+        warning: 'Showing live extracted overview from retrieved web sources.'
       };
     }
+  }
+
+  private pickBestExcerpt(query: string, fullText: string, fallbackSnippet: string): string {
+    const clean = fullText.replace(/\s+/g, ' ').trim();
+    if (clean.length <= 600) return clean;
+
+    const queryTokens = query
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .split(/\s+/)
+      .filter((t) => t.length >= 2);
+    const sentences = clean.split(/(?<=[.!?])\s+/).filter((s) => s.length >= 25 && s.length <= 360);
+    if (sentences.length === 0) return clean.slice(0, 600);
+
+    const scored = sentences.map((s, idx) => {
+      const low = s.toLowerCase();
+      let score = 0;
+      for (const qt of queryTokens) {
+        if (low.includes(qt)) score += 2;
+      }
+      // Prefer informative sentences containing concrete figures, prices, dates, or percentages
+      if (/(?:₹|\$|€|£|\d+%|\d{4}|\d+\.\d+|\bper\s+gram\b|\b10\s*grams?\b)/i.test(s)) score += 3;
+      if (idx < 5) score += 0.5;
+      return { s, score };
+    });
+
+    const top = scored
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 3)
+      .map((x) => x.s)
+      .join(' ');
+    return (top || fallbackSnippet || clean).slice(0, 650);
+  }
+
+  private buildStructuredExtractiveOverview(
+    _query: string,
+    results: SearchResponse['results'],
+    passages: Array<{ sourceUrl: string; sourceTitle: string; domain: string; excerpt: string }>,
+    instantAnswer?: WebDiscoveryResult['instantAnswer']
+  ): string {
+    if (instantAnswer?.summary && instantAnswer.summary.length >= 60) {
+      const bullets = passages
+        .slice(0, 3)
+        .filter((p) => p.sourceUrl !== instantAnswer.url)
+        .map((p) => `- **${p.domain.replace(/^www\./, '')}:** ${p.excerpt.slice(0, 170).trim()}`)
+        .join('\n');
+      return bullets ? `${instantAnswer.summary}\n\n${bullets}` : instantAnswer.summary;
+    }
+
+    const lead = passages[0]?.excerpt.slice(0, 220).trim() || results[0]?.snippet || '';
+    const bullets = passages
+      .slice(0, 3)
+      .map((p) => {
+        const cleanSite = p.domain.replace(/^www\./, '');
+        return `- **${cleanSite}:** ${p.excerpt.slice(0, 180).trim()}`;
+      })
+      .join('\n');
+
+    return lead && bullets ? `${lead}\n\n${bullets}` : lead || bullets || 'Retrieved search results are listed below.';
   }
 
   private async authorizedFetch(pathSuffix: string, init: RequestInit): Promise<Response> {

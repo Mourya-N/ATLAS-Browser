@@ -9,7 +9,7 @@ export type PermissionTier = 'read_only' | 'interact' | 'sensitive';
 
 export type DomainPermissionMode = 'allow' | 'deny' | 'read_only' | 'interact';
 
-export type SearchEngineId = 'google' | 'duckduckgo' | 'bing' | 'brave' | 'startpage';
+export type SearchEngineId = 'lavray' | 'google' | 'duckduckgo' | 'bing' | 'brave' | 'startpage';
 
 export interface TabGroup {
   id: string;
@@ -576,6 +576,8 @@ export interface McpServerStatus {
 export interface AppSettings {
   theme: ThemeMode;
   searchEngine: SearchEngineId;
+  autoIndexVisitedPages?: boolean;
+  searxngEndpointUrl?: string;
   homeUrl: string;
   downloadDir: string;
   verticalTabs: boolean;
@@ -595,6 +597,7 @@ export interface AppSettings {
   selfHostedModel?: string;
   hasGeminiApiKey: boolean;
   hasSelfHostedApiKey?: boolean;
+  hasBraveSearchApiKey?: boolean;
   cloudModeEnabled?: boolean;
   cloudEndpointUrl?: string;
   cloudConsent?: CloudConsentSettings;

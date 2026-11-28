@@ -281,6 +281,26 @@ app.whenReady().then(async () => {
   }
 
   const localSearchIndex = new LocalSearchIndexService(db.db);
+  tabManager.onPageLoaded(({ url, title, webContents }) => {
+    if (!platformRepo.getSetting<boolean>('browser.autoIndexVisitedPages', true)) return;
+    void webContents
+      .executeJavaScript(
+        `(() => {
+          const text = (document.body?.innerText || '').slice(0, 16000);
+          return { title: document.title || '', text };
+        })()`,
+        true
+      )
+      .then((res: { title?: string; text?: string } | null) => {
+        if (res?.text && res.text.trim().length >= 100) {
+          localSearchIndex.indexRawPageForLocalCache(url, res.title || title, res.text);
+        }
+      })
+      .catch(() => {
+        // Ignore pages where script execution is restricted or tab closed mid-load
+      });
+  });
+
   const cloudClient = new CloudClientService(
     platformRepo,
     browserRepo,

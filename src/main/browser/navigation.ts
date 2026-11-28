@@ -10,6 +10,11 @@ export interface SearchEngineDefinition {
 }
 
 export const SEARCH_ENGINES: Record<SearchEngineId, SearchEngineDefinition> = {
+  lavray: {
+    id: 'lavray',
+    name: 'LAVRAY Search',
+    searchUrlTemplate: 'lavray://search?q={query}'
+  },
   google: {
     id: 'google',
     name: 'Google',
@@ -37,7 +42,7 @@ export const SEARCH_ENGINES: Record<SearchEngineId, SearchEngineDefinition> = {
   }
 };
 
-export function resolveNavigationInput(input: string, searchEngine: SearchEngineId = 'google'): string {
+export function resolveNavigationInput(input: string, searchEngine: SearchEngineId = 'lavray'): string {
   const trimmed = input.trim();
   if (!trimmed) return 'about:blank';
 
@@ -60,7 +65,7 @@ export function resolveNavigationInput(input: string, searchEngine: SearchEngine
     return `https://${trimmed}`;
   }
 
-  const engine = SEARCH_ENGINES[searchEngine] ?? SEARCH_ENGINES.google;
+  const engine = SEARCH_ENGINES[searchEngine] ?? SEARCH_ENGINES.lavray;
   return engine.searchUrlTemplate.replace('{query}', encodeURIComponent(trimmed));
 }
 
@@ -85,7 +90,7 @@ export function getSecurityState(url: string): 'secure' | 'insecure' | 'internal
 export function getOmniboxSuggestions(
   repo: BrowserRepository,
   query: string,
-  searchEngine: SearchEngineId = 'google'
+  searchEngine: SearchEngineId = 'lavray'
 ): OmniboxSuggestion[] {
   const q = query.trim();
   if (!q) return [];
@@ -109,7 +114,9 @@ export function getOmniboxSuggestions(
   }
 
   const resolved = resolveNavigationInput(q, searchEngine);
-  if (resolved.startsWith('http://') || resolved.startsWith('https://')) {
+  if (resolved.startsWith('lavray://search')) {
+    results.push({ type: 'search', title: `Search LAVRAY for "${q}"`, url: resolved, subtitle: 'LAVRAY Search' });
+  } else if (resolved.startsWith('http://') || resolved.startsWith('https://')) {
     if (!/\s/.test(q) && q.includes('.')) {
       results.unshift({ type: 'url', title: resolved, url: resolved, subtitle: 'Go to URL' });
     } else {

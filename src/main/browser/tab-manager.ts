@@ -43,6 +43,23 @@ export function isAllowedNavigationUrl(url: string): boolean {
   }
 }
 
+function isInternalLavrayUrl(url: string): boolean {
+  return url === 'lavray://newtab' || url.startsWith('lavray://search');
+}
+
+function getInternalLavrayTitle(url: string): string {
+  if (url === 'lavray://newtab') return 'New Tab';
+  if (url.startsWith('lavray://search')) {
+    try {
+      const q = new URL(url).searchParams.get('q')?.trim();
+      return q ? `${q} — LAVRAY Search` : 'LAVRAY Search';
+    } catch {
+      return 'LAVRAY Search';
+    }
+  }
+  return url;
+}
+
 export class TabManager {
   private tabs = new Map<string, ManagedTab>();
   private tabOrder: string[] = [];
@@ -54,6 +71,9 @@ export class TabManager {
   private stateListeners = new Set<(windowId: number) => void>();
   private contextActionListeners = new Set<
     (action: string, payload: { tabId: string; url: string; selectedText?: string }) => void
+  >();
+  private pageLoadedListeners = new Set<
+    (payload: { tabId: string; url: string; title: string; webContents: WebContents }) => void
   >();
 
   constructor(
@@ -110,6 +130,13 @@ export class TabManager {
   ): () => void {
     this.contextActionListeners.add(cb);
     return () => this.contextActionListeners.delete(cb);
+  }
+
+  public onPageLoaded(
+    cb: (payload: { tabId: string; url: string; title: string; webContents: WebContents }) => void
+  ): () => void {
+    this.pageLoadedListeners.add(cb);
+    return () => this.pageLoadedListeners.delete(cb);
   }
 
   private emitState(windowId: number): void {
@@ -177,9 +204,9 @@ export class TabManager {
 
     const id = options.id ?? randomUUID();
     const homeUrl = this.platformRepo.getSetting<string>('browser.homeUrl', 'lavray://newtab');
-    const searchEngine = this.platformRepo.getSetting<SearchEngineId>('browser.searchEngine', 'google');
+    const searchEngine = this.platformRepo.getSetting<SearchEngineId>('browser.searchEngine', 'lavray');
     const targetUrl = options.url ? resolveNavigationInput(options.url, searchEngine) : homeUrl;
-    const isInternalNewTab = targetUrl === 'lavray://newtab';
+    const isInternalPage = isInternalLavrayUrl(targetUrl);
 
     const tabSession = winMeta.isPrivate && winMeta.partitionId
       ? session.fromPartition(winMeta.partitionId, { cache: false })
@@ -205,10 +232,10 @@ export class TabManager {
       id,
       windowId,
       url: targetUrl,
-      title: isInternalNewTab ? 'New Tab' : targetUrl,
+      title: isInternalPage ? getInternalLavrayTitle(targetUrl) : targetUrl,
       customTitle: options.customTitle ?? null,
       favicon: null,
-      isLoading: !isInternalNewTab,
+      isLoading: !isInternalPage,
       canGoBack: false,
       canGoForward: false,
       isPinned: Boolean(options.isPinned),
@@ -241,7 +268,7 @@ export class TabManager {
       view.setVisible(false);
     }
 
-    const loadTarget = isInternalNewTab ? 'about:blank' : targetUrl;
+    const loadTarget = isInternalPage ? 'about:blank' : targetUrl;
     if (isAllowedNavigationUrl(loadTarget)) {
       void view.webContents.loadURL(loadTarget).catch((err) => {
         console.warn('[TabManager] Initial load error:', loadTarget, err?.message || err);
@@ -261,8 +288,8 @@ export class TabManager {
       info.canGoBack = wc.navigationHistory?.canGoBack() ?? wc.canGoBack();
       info.canGoForward = wc.navigationHistory?.canGoForward() ?? wc.canGoForward();
       const rawUrl = wc.getURL();
-      if (rawUrl === 'about:blank' && info.url === 'lavray://newtab') {
-        info.title = 'New Tab';
+      if (rawUrl === 'about:blank' && isInternalLavrayUrl(info.url)) {
+        info.title = getInternalLavrayTitle(info.url);
         info.securityState = 'internal';
       } else {
         info.url = rawUrl || info.url;
@@ -305,11 +332,20 @@ export class TabManager {
       if (info.zoomFactor !== 1.0 && !wc.isDestroyed()) {
         wc.setZoomFactor(info.zoomFactor);
       }
+      if (
+        !info.isPrivate &&
+        !wc.isDestroyed() &&
+        (info.url.startsWith('https://') || info.url.startsWith('http://'))
+      ) {
+        for (const cb of this.pageLoadedListeners) {
+          cb({ tabId: info.id, url: info.url, title: info.title, webContents: wc });
+        }
+      }
       this.emitState(info.windowId);
     });
 
     wc.on('did-navigate', (_ev, url) => {
-      if (!(url === 'about:blank' && info.url === 'lavray://newtab')) {
+      if (!(url === 'about:blank' && isInternalLavrayUrl(info.url))) {
         info.url = url;
       }
       syncNavFlags();
@@ -320,7 +356,7 @@ export class TabManager {
     });
 
     wc.on('did-navigate-in-page', (_ev, url) => {
-      if (!(url === 'about:blank' && info.url === 'lavray://newtab')) {
+      if (!(url === 'about:blank' && isInternalLavrayUrl(info.url))) {
         info.url = url;
       }
       syncNavFlags();
@@ -331,8 +367,8 @@ export class TabManager {
     });
 
     wc.on('page-title-updated', (_ev, title) => {
-      if (info.url === 'lavray://newtab') {
-        info.title = 'New Tab';
+      if (isInternalLavrayUrl(info.url)) {
+        info.title = getInternalLavrayTitle(info.url);
         this.emitState(info.windowId);
         return;
       }
@@ -634,7 +670,7 @@ export class TabManager {
   public async navigate(tabId: string, input: string): Promise<string> {
     const m = this.tabs.get(tabId);
     if (!m) throw new Error(`Tab not found: ${tabId}`);
-    const searchEngine = this.platformRepo.getSetting<SearchEngineId>('browser.searchEngine', 'google');
+    const searchEngine = this.platformRepo.getSetting<SearchEngineId>('browser.searchEngine', 'lavray');
     const targetUrl = resolveNavigationInput(input, searchEngine);
     if (!isAllowedNavigationUrl(targetUrl)) {
       throw new Error(`Blocked unsafe URL protocol: ${targetUrl}`);
@@ -642,17 +678,17 @@ export class TabManager {
     if (m.info.crashed) {
       m.view.webContents.reload();
     }
-    if (targetUrl === 'lavray://newtab') {
-      m.info.url = 'lavray://newtab';
-      m.info.title = 'New Tab';
+    if (isInternalLavrayUrl(targetUrl)) {
+      m.info.url = targetUrl;
+      m.info.title = getInternalLavrayTitle(targetUrl);
       m.info.favicon = null;
       m.info.securityState = 'internal';
       m.info.isLoading = false;
       await m.view.webContents.loadURL('about:blank');
       this.emitState(m.info.windowId);
-      return 'lavray://newtab';
+      return targetUrl;
     }
-    if (m.info.url === 'lavray://newtab') {
+    if (isInternalLavrayUrl(m.info.url)) {
       m.info.url = targetUrl;
     }
     await m.view.webContents.loadURL(targetUrl);

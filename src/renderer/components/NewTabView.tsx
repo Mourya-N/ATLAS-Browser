@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import type { HistoryEntry, ReadingListItem } from '@shared/types';
 import { useLavrayStore } from '../store/useLavrayStore';
-import { HayaMark, LavrayMark } from './BrandMarks';
+import { AskHayaLoopLabel, HayaMark, LavrayMark } from './BrandMarks';
 
 export const NewTabView: React.FC = () => {
   const { activeTabId, isPrivateWindow, setOverlayView, openLavraySearch, setAgentPanelOpen } = useLavrayStore();
@@ -89,7 +89,7 @@ export const NewTabView: React.FC = () => {
               title="Open HAYAGRIVA (HAYA) AI Assistant"
             >
               <HayaMark className="h-3.5 w-3.5 text-lavray-accent" />
-              <span>Ask HAYA</span>
+              <AskHayaLoopLabel />
             </button>
           )}
         </div>
@@ -102,7 +102,7 @@ export const NewTabView: React.FC = () => {
               autoFocus
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Enter URL or search the web..."
+              placeholder="Search with LAVRAY or enter URL..."
               className="flex-1 bg-transparent text-[14px] text-lavray-text placeholder:text-lavray-muted outline-none"
             />
             {query.trim() && (
@@ -110,8 +110,9 @@ export const NewTabView: React.FC = () => {
                 type="button"
                 onClick={() => openLavraySearch(query.trim())}
                 className="rounded-lg border border-lavray-border bg-lavray-shell px-2.5 py-1 text-[11.5px] font-medium text-lavray-secondary hover:text-lavray-text transition-colors"
+                title="Open in LAVRAY Intelligent Search (Advanced Research)"
               >
-                Search LAVRAY Index
+                Deep Research
               </button>
             )}
             <button
@@ -221,7 +222,7 @@ export const NewTabView: React.FC = () => {
                   <div className="space-y-1">
                     <QuickShortcut
                       icon={<Search className="h-3.5 w-3.5" />}
-                      label="LAVRAY Search"
+                      label="LAVRAY Intelligent Search"
                       onClick={() => openLavraySearch('')}
                     />
                     <QuickShortcut
