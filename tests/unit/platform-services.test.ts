@@ -193,15 +193,53 @@ describe('Platform & Browser Services', () => {
     expect(executed.paused).toBe(true);
   });
 
-  it('blocks trackers while protecting mainFrame navigations and allowlisted sites', () => {
+  it('blocks trackers while protecting mainFrame navigations and allowlisted sites', async () => {
     const adBlock = new AdBlocker(platformRepo);
     expect(adBlock.classifyRequest('https://doubleclick.net/ads.js', 'https://news.com', 'script').block).toBe(true);
     expect(adBlock.classifyRequest('https://news.com/article', 'https://news.com', 'mainFrame').block).toBe(false);
+
+    // Blocks YouTube first-party ad endpoints without breaking normal YouTube pages
+    expect(
+      adBlock.classifyRequest('https://www.youtube.com/youtubei/v1/player/ad_break?key=1', 'https://www.youtube.com/watch?v=abc', 'xhr').block
+    ).toBe(true);
+    expect(
+      adBlock.classifyRequest('https://www.youtube.com/api/stats/ads?ns=yt', 'https://www.youtube.com/watch?v=abc', 'ping').block
+    ).toBe(true);
+    expect(adBlock.shouldRunYouTubeAdHelper('https://www.youtube.com/watch?v=abc')).toBe(true);
+
+    // Blocks popunder / ad popup windows via shouldBlockPopup & $popup rules
+    adBlock.addUserFilterRule('||evil-popunder.test^$popup');
+    expect(adBlock.shouldBlockPopup('https://evil-popunder.test/offer', 'https://news.com').block).toBe(true);
+    expect(adBlock.shouldBlockPopup('https://doubleclick.net/click', 'https://news.com').block).toBe(true);
+    expect(adBlock.shouldBlockPopup('https://docs.python.org/3/', 'https://news.com').block).toBe(false);
+
+    // Multi-part ccTLD third-party detection (news.co.uk vs ads-cdn.co.uk)
+    adBlock.addUserFilterRule('||ads-cdn.co.uk^$third-party');
+    expect(adBlock.classifyRequest('https://ads-cdn.co.uk/banner.js', 'https://news.co.uk/story', 'script').block).toBe(
+      true
+    );
 
     adBlock.toggleDomainAllowlist('news.com', true);
     expect(adBlock.classifyRequest('https://doubleclick.net/ads.js', 'https://news.com/page', 'script').block).toBe(
       false
     );
+
+    // Unsupported uBlock modifiers (redirect-rule=, removeparam=, from=wildcard) must never degrade into global script blocks
+    const { parseNetworkRuleLine } = await import('@main/browser/filter-parser');
+    expect(parseNetworkRuleLine('*$script,redirect-rule=noopjs,from=dutchycorp.*,to=~sentry-cdn.com')).toBeNull();
+    expect(parseNetworkRuleLine('||youtube.com^$removeparam=si')).toBeNull();
+    expect(parseNetworkRuleLine('*$script')).toBeNull();
+    expect(
+      adBlock.classifyRequest('https://github.githubassets.com/assets/wp-runtime-1234.js', 'https://github.com/', 'script')
+        .block
+    ).toBe(false);
+    expect(
+      adBlock.classifyRequest(
+        'https://rr1---sn-4g5e6ns7.googlevideo.com/videoplayback?expire=179&source=youtube&oad=1',
+        'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+        'media'
+      ).block
+    ).toBe(false);
   });
 
   it('extracts readable articles and resolves navigation/omnibox queries', () => {

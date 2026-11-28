@@ -49,7 +49,17 @@ const TYPO_VOCABULARY = [
   'authorization', 'documentation', 'architecture', 'performance', 'comparison', 'retrieval',
   'embedding', 'encryption', 'benchmark', 'programming', 'framework', 'containers',
   'deployment', 'database', 'algorithm', 'security', 'wikipedia', 'middleware', 'observability',
-  'synchronization', 'configuration', 'react', 'python', 'sqlite', 'docker', 'github'
+  'synchronization', 'configuration', 'react', 'python', 'sqlite', 'docker', 'github',
+  'weather', 'temperature', 'forecast', 'currency', 'exchange', 'calculator', 'converter',
+  'translate', 'dictionary', 'definition', 'youtube', 'instagram', 'facebook', 'whatsapp',
+  'bengaluru', 'bangalore', 'hyderabad', 'mumbai', 'chennai', 'delhi', 'kolkata', 'london',
+  'newyork', 'tokyo', 'singapore', 'sanfrancisco', 'restaurant', 'restaurants', 'hospital',
+  'pharmacy', 'airport', 'shopping', 'headphones', 'smartphone', 'laptop', 'monitor',
+  'keyboard', 'mechanical', 'wireless', 'bluetooth', 'battery', 'charger', 'samsung',
+  'iphone', 'android', 'windows', 'macos', 'ubuntu', 'linux', 'browser', 'adblocker',
+  'privacy', 'search', 'engine', 'streaming', 'download', 'downloads', 'schedule', 'calendar',
+  'football', 'cricket', 'highlights', 'movies', 'music', 'recipes', 'fitness', 'workout',
+  'medicine', 'symptoms', 'tutorial', 'examples', 'interview', 'questions', 'mistakes'
 ];
 
 function maybeCorrectTypo(token: string): string | null {

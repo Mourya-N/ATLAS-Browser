@@ -654,10 +654,14 @@ export class CloudClientService {
       const baseQ = understanding.normalizedQuery || params.query;
       const relatedQueries =
         understanding.intent === 'comparative'
-          ? [`${baseQ} pros and cons`, `${baseQ} benchmark`, `${baseQ} alternatives`, `${baseQ} 2026`]
+          ? [`${baseQ} pros and cons`, `${baseQ} comparison`, `${baseQ} key differences`, `${baseQ} 2026`]
           : understanding.intent === 'technical_docs'
           ? [`${baseQ} documentation`, `${baseQ} examples`, `${baseQ} best practices`, `${baseQ} troubleshooting`]
-          : [`${baseQ} overview`, `${baseQ} explained`, `${baseQ} vs alternatives`, `${baseQ} latest updates`];
+          : activeMode === 'videos' || activeMode === 'images' || activeMode === 'shopping' || activeMode === 'maps'
+          ? [`${baseQ} latest`, `${baseQ} top rated`, `${baseQ} guide`, `${baseQ} near me`]
+          : /\b(price|rate|cost|today|news|weather|score|stock)\b/i.test(baseQ)
+          ? [`${baseQ} live update`, `${baseQ} 2026 trend`, `${baseQ} official source`, `${baseQ} forecast`]
+          : [`${baseQ} overview`, `${baseQ} explained`, `${baseQ} official guide`, `${baseQ} latest updates`];
 
       const response: SearchResponse = {
         requestId: randomUUID(),
@@ -884,10 +888,11 @@ export class CloudClientService {
     }));
 
     const topRelevance = results[0]?.relevanceScore ?? 0;
-    if (!instantAnswer && (passages.length === 0 || topRelevance < 0.2)) {
+    const topLexical = results[0]?.scoreBreakdown?.lexical ?? 0;
+    if (!instantAnswer && (passages.length === 0 || (topRelevance < 0.25 && topLexical < 0.15))) {
       return {
         status: 'insufficient_evidence',
-        summary: 'Retrieved results have low confidence for this query; review the ranked links directly.',
+        summary: 'Retrieved results have low relevance confidence for this query; review the ranked sources directly.',
         claims: [],
         unsupportedClaimsCount: 0,
         contradictions: [],
@@ -923,15 +928,16 @@ export class CloudClientService {
         this.platformRepo.getSetting<string>('agent.selfHostedModel', 'qwen2.5:3b') ||
         this.platformRepo.getSetting<string>('agent.defaultModel', 'qwen2.5:3b');
       const model = /^(gemini|mock)/i.test(rawModel.trim()) ? 'qwen2.5:3b' : rawModel.trim();
+      const todayIso = new Date().toISOString().slice(0, 10);
       const intentGuidance =
         understanding?.intent === 'comparative'
-          ? 'Compare options concisely based strictly on the retrieved passages and note disagreements in contradictions[].'
+          ? 'Compare options neutrally based strictly on the retrieved passages and note disagreements in contradictions[].'
           : understanding?.intent === 'temporal_news'
-          ? 'Prioritize recent dated facts from the retrieved passages and explicitly state uncertainty if dates are missing.'
-          : 'Synthesize a concise cited summary using ONLY the retrieved passages.';
+          ? 'Prioritize verified dated facts matching current dates from the retrieved passages and set sufficientEvidence=false if recent data is missing.'
+          : 'Synthesize a concise, 100% factual cited summary using ONLY the retrieved passages.';
       const resp = await provider.generate({
         model,
-        systemInstruction: `${intentGuidance} Never invent URLs, numbers, or quotes. Return JSON with { sufficientEvidence, summary, claims: [{ statement, kind, sourceUrl, supportingQuote }], contradictions: [] }.`,
+        systemInstruction: `Today's date is ${todayIso}. ${intentGuidance} Do NOT extrapolate or guess from memory. If passages do not directly verify a fact, set sufficientEvidence=false. Never invent URLs, dates, numbers, or quotes. Return strict JSON: { sufficientEvidence, summary, claims: [{ statement, kind, sourceUrl, supportingQuote }], contradictions: [] }.`,
         messages: [{ role: 'user', parts: [{ text: `Query: ${query}\n\n${wrapped}` }] }],
         responseSchema: {
           type: 'object',
@@ -1031,27 +1037,22 @@ export class CloudClientService {
         };
       }
 
-      // Plain-text fallback when model ignores JSON schema
+      // Never return unverified plain-text LLM output as factual search results
       return {
-        status: 'ok',
-        summary: resp.text,
+        status: 'insufficient_evidence',
+        summary: "AI response could not be verified against the retrieved sources. Please review the verified source snippets below.",
         claims: [],
-        unsupportedClaimsCount: 0,
+        unsupportedClaimsCount: 1,
         contradictions: [],
         passages,
-        citations: passages.map((p, i) => ({
-          index: i + 1,
-          documentId: p.documentId,
-          url: p.sourceUrl,
-          title: p.sourceTitle,
-          domain: p.domain
-        })),
+        citations: [],
         model,
         provider: provider.id,
         inputTokens: resp.usage.inputTokens,
         outputTokens: resp.usage.outputTokens,
         estimatedCostUsd: 0,
-        latencyMs: Date.now() - started
+        latencyMs: Date.now() - started,
+        warning: 'Unverified plain-text model response withheld for accuracy.'
       };
     } catch {
       // Structured Google-style extractive AI Overview from live retrieved passages
@@ -1125,21 +1126,25 @@ export class CloudClientService {
       return { s, score };
     });
 
-    const top = scored
+    const relevant = scored
+      .filter((x) => x.score >= 2)
       .sort((a, b) => b.score - a.score)
       .slice(0, 3)
-      .map((x) => x.s)
-      .join(' ');
-    return (top || fallbackSnippet || clean).slice(0, 650);
+      .map((x) => x.s);
+    const joined = relevant.length > 0 ? relevant.join(' ... ') : fallbackSnippet || clean;
+    return joined.slice(0, 650);
   }
 
   private buildStructuredExtractiveOverview(
-    _query: string,
+    query: string,
     results: SearchResponse['results'],
     passages: Array<{ sourceUrl: string; sourceTitle: string; domain: string; excerpt: string }>,
     instantAnswer?: WebDiscoveryResult['instantAnswer']
   ): string {
-    if (instantAnswer?.summary && instantAnswer.summary.length >= 60) {
+    const isLiveOrRateQuery = /\b(price|rate|cost|today|latest|news|live|weather|score|stock|buy|vs|versus|error)\b/i.test(
+      query
+    );
+    if (instantAnswer?.summary && instantAnswer.summary.length >= 60 && !isLiveOrRateQuery) {
       const bullets = passages
         .slice(0, 3)
         .filter((p) => p.sourceUrl !== instantAnswer.url)
@@ -1148,16 +1153,18 @@ export class CloudClientService {
       return bullets ? `${instantAnswer.summary}\n\n${bullets}` : instantAnswer.summary;
     }
 
-    const lead = passages[0]?.excerpt.slice(0, 220).trim() || results[0]?.snippet || '';
     const bullets = passages
       .slice(0, 3)
-      .map((p) => {
+      .map((p, i) => {
         const cleanSite = p.domain.replace(/^www\./, '');
-        return `- **${cleanSite}:** ${p.excerpt.slice(0, 180).trim()}`;
+        const datePrefix = results[i]?.publishedAt
+          ? `(${new Date(results[i]!.publishedAt!).toLocaleDateString()}) `
+          : '';
+        return `- **${cleanSite}:** ${datePrefix}${p.excerpt.slice(0, 190).trim()}`;
       })
       .join('\n');
 
-    return lead && bullets ? `${lead}\n\n${bullets}` : lead || bullets || 'Retrieved search results are listed below.';
+    return bullets || 'Review the retrieved web sources below for verified details.';
   }
 
   private async authorizedFetch(pathSuffix: string, init: RequestInit): Promise<Response> {

@@ -31,6 +31,7 @@ export interface ParsedNetworkRule {
   includeDomains: string[] | null;
   excludeDomains: string[] | null;
   important: boolean;
+  isPopup?: boolean;
 }
 
 export interface ParsedCosmeticRule {
@@ -121,18 +122,23 @@ export function isSafeCssSelector(selector: string): boolean {
   return true;
 }
 
+const IGNORED_INDEX_TOKENS = new Set([
+  'http', 'https', 'www', 'com', 'net', 'org', 'php', 'asp', 'htm', 'html', 'gif', 'png', 'jpg', 'css', 'json'
+]);
+
 function extractIndexToken(patternBody: string): string | null {
-  // Any literal [a-z0-9]{4,} run in the pattern (outside wildcard `*`) must appear in a matching URL
+  // Any literal static alphanumeric run in the pattern (outside wildcard `*`) must appear in a matching URL
   const cleaned = patternBody.replace(/^\|\|?/, '').replace(/\|$/, '');
-  const parts = cleaned.toLowerCase().match(/[a-z0-9]{4,}/g);
-  if (!parts || parts.length === 0) return null;
-  let best = parts[0];
-  for (let i = 1; i < parts.length; i++) {
-    if (parts[i].length > best.length) best = parts[i];
+  const parts4 = (cleaned.toLowerCase().match(/[a-z0-9]{4,}/g) ?? []).filter((t) => !IGNORED_INDEX_TOKENS.has(t));
+  if (parts4.length > 0) {
+    let best = parts4[0];
+    for (let i = 1; i < parts4.length; i++) {
+      if (parts4[i].length > best.length) best = parts4[i];
+    }
+    return best;
   }
-  // Avoid ultra-common protocol tokens
-  if (best === 'http' || best === 'https' || best === 'www') return null;
-  return best;
+  const parts3 = (cleaned.toLowerCase().match(/[a-z0-9]{3,}/g) ?? []).filter((t) => !IGNORED_INDEX_TOKENS.has(t));
+  return parts3.length > 0 ? parts3[0] : null;
 }
 
 function escapeRegexLiteral(str: string): string {
@@ -280,6 +286,7 @@ export function parseNetworkRuleLine(rawLine: string): ParsedNetworkRule | null 
   let includeDomains: string[] | null = null;
   let excludeDomains: string[] | null = null;
   let important = false;
+  let isPopup = false;
 
   if (optionsPart) {
     for (const rawOpt of optionsPart.split(',')) {
@@ -291,8 +298,15 @@ export function parseNetworkRuleLine(rawLine: string): ParsedNetworkRule | null 
         thirdParty = false;
       } else if (opt === 'important') {
         important = true;
-      } else if (opt.startsWith('domain=')) {
-        const domList = opt.slice(7).split('|').map((d) => d.trim()).filter(Boolean);
+      } else if (opt === 'popup') {
+        isPopup = true;
+      } else if (opt === 'match-case') {
+        // Safe no-op option
+      } else if (opt.startsWith('domain=') || opt.startsWith('from=')) {
+        const rawList = opt.startsWith('domain=') ? opt.slice(7) : opt.slice(5);
+        // Skip wildcard TLD domain lists like `from=dutchycorp.*` that we do not pattern-match
+        if (rawList.includes('*')) return null;
+        const domList = rawList.split('|').map((d) => d.trim()).filter(Boolean);
         for (const d of domList) {
           if (d.startsWith('~')) {
             excludeDomains ??= [];
@@ -307,15 +321,16 @@ export function parseNetworkRuleLine(rawLine: string): ParsedNetworkRule | null 
         if (mapped) {
           excludeTypes ??= new Set();
           excludeTypes.add(mapped);
+        } else {
+          return null;
         }
       } else {
         const mapped = normalizeResourceType(opt);
         if (mapped) {
           includeTypes ??= new Set();
           includeTypes.add(mapped);
-        }
-        // Unknown/unsupported modifiers (e.g. popup, csp=) -> skip rule if it's purely a modifier we can't enforce safely
-        else if (opt === 'popup' || opt.startsWith('csp=') || opt.startsWith('redirect=')) {
+        } else {
+          // Strict allowlist: skip rules with unsupported modifiers (redirect-rule=, removeparam=, to=, badfilter, csp=, header=, etc.)
           return null;
         }
       }
@@ -336,13 +351,21 @@ export function parseNetworkRuleLine(rawLine: string): ParsedNetworkRule | null 
       excludeTypes,
       includeDomains,
       excludeDomains,
-      important
+      important,
+      isPopup
     };
   }
 
   // Also extract domainAnchor for `||domain.com/path...` rules so they use O(1) domain hash lookup!
   const prefixedDomainMatch = body.match(/^\|\|([a-z0-9.-]+\.[a-z]{2,})(?:[/?^|]|$)/i);
   const domainAnchor = prefixedDomainMatch ? prefixedDomainMatch[1].toLowerCase() : null;
+  const indexToken = domainAnchor ? null : extractIndexToken(body);
+
+  // Never allow unanchored bare wildcard rules (`*`, `/*`) without domain anchor, token, or site scope
+  if (!domainAnchor && !indexToken && (!includeDomains || includeDomains.length === 0)) {
+    return null;
+  }
+
   const urlRegex = compilePatternToRegex(body);
   if (!urlRegex) return null;
 
@@ -350,14 +373,15 @@ export function parseNetworkRuleLine(rawLine: string): ParsedNetworkRule | null 
     raw: line,
     isException,
     domainAnchor,
-    indexToken: domainAnchor ? null : extractIndexToken(body),
+    indexToken,
     urlRegex,
     thirdParty,
     includeTypes,
     excludeTypes,
     includeDomains,
     excludeDomains,
-    important
+    important,
+    isPopup
   };
 }
 
@@ -446,8 +470,12 @@ export function matchesNetworkRule(
     firstHost: string;
     isThirdParty: boolean;
     resourceType: FilterResourceType;
+    isPopupRequest?: boolean;
   }
 ): boolean {
+  if (rule.isPopup && !ctx.isPopupRequest) {
+    return false;
+  }
   if (rule.thirdParty !== null && rule.thirdParty !== ctx.isThirdParty) {
     return false;
   }

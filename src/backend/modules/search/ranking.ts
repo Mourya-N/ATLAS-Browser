@@ -36,6 +36,60 @@ const TIME_RANGE_MAX_AGE_MS: Record<string, number> = {
   year: 366 * 86_400_000
 };
 
+function inferVideoPlatform(
+  domain: string,
+  explicit?: RawSearchCandidate['videoPlatform']
+): RawSearchCandidate['videoPlatform'] {
+  if (explicit) return explicit;
+  const d = domain.toLowerCase();
+  if (d === 'youtube.com' || d.endsWith('.youtube.com') || d === 'youtu.be') return 'youtube';
+  if (d === 'instagram.com' || d.endsWith('.instagram.com')) return 'instagram';
+  if (d === 'facebook.com' || d.endsWith('.facebook.com') || d === 'fb.watch' || d === 'fb.com') return 'facebook';
+  if (d === 'dailymotion.com' || d.endsWith('.dailymotion.com')) return 'dailymotion';
+  if (d === 'archive.org' || d.endsWith('.archive.org')) return 'archive';
+  return null;
+}
+
+const MONTH_NAMES: Record<string, number> = {
+  jan: 0, january: 0,
+  feb: 1, february: 1,
+  mar: 2, march: 2,
+  apr: 3, april: 3,
+  may: 4,
+  jun: 5, june: 5,
+  jul: 6, july: 6,
+  aug: 7, august: 7,
+  sep: 8, sept: 8, september: 8,
+  oct: 9, october: 9,
+  nov: 10, november: 10,
+  dec: 11, december: 11
+};
+
+function extractEmbeddedDateIso(text: string): string | null {
+  const iso = /\b(202[0-9]-\d{2}-\d{2})\b/.exec(text);
+  if (iso) {
+    const t = Date.parse(iso[1]);
+    if (!Number.isNaN(t)) return new Date(t).toISOString();
+  }
+  const dmy = /\b(\d{1,2})\s+(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t|tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+(202[0-9])\b/i.exec(text);
+  if (dmy) {
+    const m = MONTH_NAMES[dmy[2].toLowerCase()];
+    if (m !== undefined) {
+      const ts = Date.UTC(Number(dmy[3]), m, Number(dmy[1]));
+      return new Date(ts).toISOString();
+    }
+  }
+  const mdy = /\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t|tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+(\d{1,2}),?\s+(202[0-9])\b/i.exec(text);
+  if (mdy) {
+    const m = MONTH_NAMES[mdy[1].toLowerCase()];
+    if (m !== undefined) {
+      const ts = Date.UTC(Number(mdy[3]), m, Number(mdy[2]));
+      return new Date(ts).toISOString();
+    }
+  }
+  return null;
+}
+
 function getRootDomain(host: string): string {
   const clean = host.toLowerCase().replace(/^www\./, '');
   const parts = clean.split('.');
@@ -225,6 +279,10 @@ const PROVIDER_RRF_WEIGHTS: Record<string, number> = {
   brave_web_api: 1.25,
   brave_images_api: 1.25,
   brave_videos_api: 1.25,
+  youtube_videos: 1.28,
+  instagram_videos: 1.24,
+  facebook_videos: 1.24,
+  yahoo_videos: 1.12,
   searxng_custom: 1.2,
   lavray_first_party_index: 1.2,
   bing_web_rss: 1.2,
@@ -233,8 +291,8 @@ const PROVIDER_RRF_WEIGHTS: Record<string, number> = {
   osm_nominatim: 1.2,
   wikimedia_images: 1.15,
   wikipedia_images: 1.1,
-  dailymotion_api: 1.15,
-  archive_videos_api: 1.0,
+  dailymotion_api: 1.12,
+  archive_videos_api: 0.98,
   mdn_docs_api: 1.15,
   wikipedia_api: 1.15,
   marginalia_api: 1.05,
@@ -400,6 +458,20 @@ export class SearchRankingPipeline {
       const lexical = Math.min(1, bm25.score + expandedBonus + exactPhraseScore * 0.15);
       const semantic = cosineSimilarity(queryEmbedding, computeLocalEmbedding(`${title} ${snippet}`));
 
+      // Strict topical relevance guard: eliminate completely off-topic external hits (prevents upstream noise/drift)
+      const origin = classifyResultOrigin(raw.sourceProvider);
+      if (
+        origin === 'external_provider' &&
+        !raw.coordinates &&
+        coreTokens.length >= 2 &&
+        bm25.matchedRatio === 0 &&
+        expandedBonus === 0 &&
+        exactPhraseScore === 0 &&
+        semantic < 0.4
+      ) {
+        continue;
+      }
+
       // Intent & mode alignment
       let intentScore = 0.4;
       const ct = raw.contentType || 'web';
@@ -435,10 +507,12 @@ export class SearchRankingPipeline {
       const relevanceGate = Math.min(1, (lexical + semantic * 0.6) * 1.45);
       const authority = rawAuthority * relevanceGate;
 
-      // Freshness decay (sharper for temporal/news queries)
+      // Freshness decay & embedded date extraction (prevents stale pages from posing as today's/current answers)
+      const effectivePublishedAt = raw.publishedAt || extractEmbeddedDateIso(`${title} ${snippet}`);
       let freshness = params.understanding.temporalIntent.hasTemporalConstraint ? 0.3 : 0.55;
-      if (raw.publishedAt) {
-        const ts = Date.parse(raw.publishedAt);
+      let temporalStalenessMultiplier = 1.0;
+      if (effectivePublishedAt) {
+        const ts = Date.parse(effectivePublishedAt);
         if (!Number.isNaN(ts)) {
           const ageDays = Math.max(0, (now - ts) / 86_400_000);
           const halfLifeDays =
@@ -446,6 +520,20 @@ export class SearchRankingPipeline {
               ? 10
               : 120;
           freshness = Number((1 / (1 + ageDays / halfLifeDays)).toFixed(4));
+
+          const pubYear = new Date(ts).getUTCFullYear();
+          const mentionedYears = params.understanding.temporalIntent.yearMentions
+            .map((y) => Number(y))
+            .filter((y) => Number.isFinite(y));
+          const maxYear = mentionedYears.length > 0 ? Math.max(...mentionedYears) : 0;
+          if (
+            (maxYear > 0 && pubYear < maxYear) ||
+            ((params.understanding.temporalIntent.timeHint === 'today' ||
+              params.understanding.temporalIntent.timeHint === 'recent') &&
+              ageDays > 180)
+          ) {
+            temporalStalenessMultiplier = 0.52;
+          }
         }
       }
 
@@ -467,6 +555,14 @@ export class SearchRankingPipeline {
         navBoost -
         spamPenalty;
 
+      // Penalize multi-term queries where candidate covers <35% of core terms and weak semantic match
+      if (coreTokens.length >= 3 && bm25.matchedRatio < 0.35 && expandedBonus === 0 && semantic < 0.35) {
+        baseScore *= 0.6;
+      }
+
+      // Penalize stale documents on explicit temporal / today / year queries
+      baseScore *= temporalStalenessMultiplier;
+
       // Penalize candidates missing explicit quoted phrases
       if (exactPhrases.length > 0 && exactPhraseScore === 0) {
         baseScore *= 0.45;
@@ -481,8 +577,8 @@ export class SearchRankingPipeline {
         domain: check.domain,
         snippet,
         sourceProvider: raw.sourceProvider,
-        sourceOrigin: classifyResultOrigin(raw.sourceProvider),
-        publishedAt: raw.publishedAt ?? null,
+        sourceOrigin: origin,
+        publishedAt: effectivePublishedAt ?? null,
         retrievedAt: now,
         contentType: ct,
         language: raw.language || params.understanding.language,
@@ -490,6 +586,7 @@ export class SearchRankingPipeline {
         thumbnailUrl: raw.thumbnailUrl ?? null,
         mediaUrl: raw.mediaUrl ?? null,
         durationSeconds: raw.durationSeconds ?? null,
+        videoPlatform: inferVideoPlatform(check.domain, raw.videoPlatform),
         priceText: raw.priceText ?? null,
         coordinates: raw.coordinates ?? null,
         relevanceScore: Number(Math.max(0, Math.min(1.5, baseScore)).toFixed(4)),
@@ -540,6 +637,7 @@ export class SearchRankingPipeline {
         if (!parent.thumbnailUrl && item.thumbnailUrl) parent.thumbnailUrl = item.thumbnailUrl;
         if (!parent.mediaUrl && item.mediaUrl) parent.mediaUrl = item.mediaUrl;
         if (parent.durationSeconds == null && item.durationSeconds != null) parent.durationSeconds = item.durationSeconds;
+        if (!parent.videoPlatform && item.videoPlatform) parent.videoPlatform = item.videoPlatform;
         if (!parent.priceText && item.priceText) parent.priceText = item.priceText;
         if (!parent.coordinates && item.coordinates) parent.coordinates = item.coordinates;
         continue;
@@ -563,6 +661,7 @@ export class SearchRankingPipeline {
         if (!parent.thumbnailUrl && item.thumbnailUrl) parent.thumbnailUrl = item.thumbnailUrl;
         if (!parent.mediaUrl && item.mediaUrl) parent.mediaUrl = item.mediaUrl;
         if (parent.durationSeconds == null && item.durationSeconds != null) parent.durationSeconds = item.durationSeconds;
+        if (!parent.videoPlatform && item.videoPlatform) parent.videoPlatform = item.videoPlatform;
         if (!parent.priceText && item.priceText) parent.priceText = item.priceText;
         if (!parent.coordinates && item.coordinates) parent.coordinates = item.coordinates;
         continue;
@@ -685,8 +784,39 @@ export class SearchRankingPipeline {
     });
 
     rescored.sort((a, b) => b.relevanceScore - a.relevanceScore);
+    const merged = [...rescored, ...tail];
+
+    // In video search mode, ensure top results interleave YouTube, Instagram, and Facebook representation cleanly
+    if (understanding?.recommendedMode === 'videos' && merged.length > 3) {
+      const priorityPlatforms: Array<NonNullable<NormalizedSearchResult['videoPlatform']>> = [
+        'youtube',
+        'instagram',
+        'facebook'
+      ];
+      const guaranteedTop: NormalizedSearchResult[] = [];
+      const seenIds = new Set<string>();
+      if (merged[0]) {
+        guaranteedTop.push(merged[0]);
+        seenIds.add(merged[0].id);
+      }
+      for (const plat of priorityPlatforms) {
+        const hit = merged.find(
+          (r) => r.videoPlatform === plat && !seenIds.has(r.id) && r.relevanceScore >= 0.22
+        );
+        if (hit) {
+          guaranteedTop.push(hit);
+          seenIds.add(hit.id);
+        }
+      }
+      const rest = merged.filter((r) => !seenIds.has(r.id));
+      return {
+        results: [...guaranteedTop, ...rest],
+        reranked: true
+      };
+    }
+
     return {
-      results: [...rescored, ...tail],
+      results: merged,
       reranked: true
     };
   }

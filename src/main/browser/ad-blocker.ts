@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import type { Session } from 'electron';
 import type { AdBlockStats, FilterListStatus } from '@shared/types';
 import type { PlatformRepository } from '@main/db/repositories/platform-repo';
@@ -59,6 +61,48 @@ const DEFAULT_BLOCK_RULES: BlockRule[] = [
   { domain: 'mgid.com', category: 'advertising' },
   { domain: 'propellerads.com', category: 'advertising' },
   { domain: 'popads.net', category: 'advertising' },
+  { domain: 'popcash.net', category: 'advertising' },
+  { domain: 'adsterra.com', category: 'advertising' },
+  { domain: 'exoclick.com', category: 'advertising' },
+  { domain: 'juicyads.com', category: 'advertising' },
+  { domain: 'clickadu.com', category: 'advertising' },
+  { domain: 'hilltopads.net', category: 'advertising' },
+  { domain: 'monetag.com', category: 'advertising' },
+  { domain: 'trafficjunky.net', category: 'advertising' },
+  { domain: 'raptive.com', category: 'advertising' },
+  { domain: 'connatix.com', category: 'advertising' },
+  { domain: 'nativo.com', category: 'advertising' },
+  { domain: 'lijit.com', category: 'advertising' },
+  { domain: 'sovrn.com', category: 'advertising' },
+  { domain: 'contextweb.com', category: 'advertising' },
+  { domain: 'mathtag.com', category: 'advertising' },
+  { domain: 'mediaplex.com', category: 'advertising' },
+  { domain: 'skimresources.com', category: 'advertising' },
+  { domain: 'viglink.com', category: 'advertising' },
+  { domain: 'buysellads.com', category: 'advertising' },
+  { domain: 'carbonads.com', category: 'advertising' },
+  { domain: 'adroll.com', category: 'advertising' },
+  { domain: 'turn.com', category: 'advertising' },
+  { domain: 'agkn.com', category: 'advertising' },
+  { domain: 'everesttech.net', category: 'advertising' },
+  { domain: 'fwmrm.net', category: 'advertising' },
+  { domain: 'innovid.com', category: 'advertising' },
+  { domain: 'springserve.com', category: 'advertising' },
+  { domain: 'taboolasyndication.com', category: 'advertising' },
+  { domain: 'outbrainimg.com', category: 'advertising' },
+  { domain: '3lift.com', category: 'advertising' },
+  { domain: 'static.doubleclick.net', category: 'advertising' },
+  { domain: 's0.2mdn.net', category: 'advertising' },
+  { domain: 'tpc.googlesyndication.com', category: 'advertising' },
+  { domain: 'fundingchoicesmessages.google.com', category: 'advertising' },
+  { domain: 'gemini.yahoo.com', category: 'advertising' },
+  { domain: 'doubleverify.com', category: 'analytics' },
+  { domain: 'adsafeprotected.com', category: 'analytics' },
+  { domain: 'imrworldwide.com', category: 'analytics' },
+  { domain: 'adobedtm.com', category: 'analytics' },
+  { domain: 'bat.bing.com', category: 'analytics' },
+  { domain: 'tr.snapchat.com', category: 'social' },
+  { domain: 'analytics.google.com', category: 'analytics' },
 
   // Analytics & Telemetry
   { domain: 'google-analytics.com', category: 'analytics' },
@@ -110,11 +154,22 @@ const DEFAULT_BLOCK_RULES: BlockRule[] = [
 ];
 
 const TRACKER_PATH_PATTERNS: RegExp[] = [
-  /\/pagead\/(js|lvz|conversion)/i,
+  /\/pagead\/(?:js|lvz|conversion|interaction|adview)/i,
   /\/gampad\/ads/i,
   /\/adsense\/domains/i,
-  /\/pixel\.(gif|png|js)(\?|$)/i,
-  /\/tr\/\?id=\d+&ev=/i
+  /\/pixel\.(?:gif|png|js)(\?|$)/i,
+  /\/tr\/\?id=\d+&ev=/i,
+  /\/fbevents\.js(?:\?|$)/i,
+  /\/gtag\/js\?id=AW-/i,
+  /\/g\/collect\?v=2/i
+];
+
+const FIRST_PARTY_AD_PATTERNS: RegExp[] = [
+  /youtube\.com\/youtubei\/v1\/player\/ad_break/i,
+  /youtube\.com\/api\/stats\/ads/i,
+  /youtube\.com\/get_midroll_info/i,
+  /youtube\.com\/pagead\//i,
+  /youtube\.com\/ptracking/i
 ];
 
 const DEFAULT_FILTER_LISTS: FilterListStatus[] = [
@@ -149,7 +204,19 @@ const DEFAULT_FILTER_LISTS: FilterListStatus[] = [
     url: 'https://pgl.yoyo.org/adservers/serverlist.php?hostformat=adblockplus&showintro=0&mimetype=plaintext',
     license: 'Free for use with attribution',
     attribution: 'Peter Lowe (pgl.yoyo.org)',
-    enabled: false,
+    enabled: true,
+    ruleCount: 0,
+    lastUpdatedAt: null,
+    lastError: null
+  },
+  {
+    id: 'ublock-filters',
+    name: 'uBlock Origin Filters (Ads & Anti-Adblock)',
+    category: 'advertising',
+    url: 'https://ublockorigin.pages.dev/filters/filters.txt',
+    license: 'GPLv3',
+    attribution: 'uBlock Origin / uAssets Authors',
+    enabled: true,
     ruleCount: 0,
     lastUpdatedAt: null,
     lastError: null
@@ -242,12 +309,17 @@ export class AdBlocker {
   private adsBlocked = 0;
   private trackersBlocked = 0;
   private attachedSessions = new WeakSet<Session>();
+  private wcUrlMap = new Map<number, string>();
+  private autoUpdatePromise: Promise<FilterListStatus[]> | null = null;
   private onBlockedCallbacks = new Set<
     (webContentsId: number, domain: string, category: TrackerCategory, requestUrl: string) => void
   >();
   public readonly cosmetic: CosmeticFilterEngine;
 
-  constructor(private readonly repo: PlatformRepository) {
+  constructor(
+    private readonly repo: PlatformRepository,
+    private readonly cacheDir?: string
+  ) {
     this.cosmetic = new CosmeticFilterEngine(repo);
     this.globalEnabled = repo.getSetting<boolean>('adblock.enabled', true);
     const savedAllowlist = repo.getSetting<string[]>('adblock.allowlist', []);
@@ -271,10 +343,10 @@ export class AdBlocker {
       return existing ? { ...def, ...existing } : { ...def };
     });
 
-    // Restore cached filter list texts safely if previously downloaded
+    // Restore cached filter list texts safely from disk cache (or SQLite fallback)
     for (const list of this.filterLists) {
       if (!list.enabled) continue;
-      const cachedText = repo.getSetting<string | null>(`adblock.listText.${list.id}`, null);
+      const cachedText = this.readCachedListText(list.id);
       if (cachedText) {
         const parsed = parseFilterListText(cachedText);
         const cat: TrackerCategory = list.category === 'advertising' ? 'advertising' : 'analytics';
@@ -285,6 +357,35 @@ export class AdBlocker {
       }
     }
     this.syncCosmeticFilterListRules();
+  }
+
+  private readCachedListText(listId: string): string | null {
+    if (this.cacheDir) {
+      try {
+        const filePath = path.join(this.cacheDir, `${listId}.txt`);
+        if (fs.existsSync(filePath)) {
+          return fs.readFileSync(filePath, 'utf8');
+        }
+      } catch {
+        // Ignore disk cache read errors
+      }
+    }
+    return this.repo.getSetting<string | null>(`adblock.listText.${listId}`, null);
+  }
+
+  private writeCachedListText(listId: string, text: string): void {
+    if (this.cacheDir) {
+      try {
+        fs.mkdirSync(this.cacheDir, { recursive: true });
+        fs.writeFileSync(path.join(this.cacheDir, `${listId}.txt`), text, 'utf8');
+        return;
+      } catch {
+        // Fall through to SQLite setting fallback
+      }
+    }
+    if (text.length < 4 * 1024 * 1024) {
+      this.repo.setSetting(`adblock.listText.${listId}`, text);
+    }
   }
 
   private recompileUserRules(): void {
@@ -520,10 +621,7 @@ export class AdBlocker {
         // Atomic swap: only overwrite cache and metadata after successful parse
         const cat: TrackerCategory = list.category === 'advertising' ? 'advertising' : 'analytics';
         this.listCaches.set(list.id, buildCompiledListCache(parsed.networkRules, parsed.cosmeticRules, cat));
-        // Persist bounded text if small enough for settings JSON (< 4 MB)
-        if (res.text.length < 4 * 1024 * 1024) {
-          this.repo.setSetting(`adblock.listText.${list.id}`, res.text);
-        }
+        this.writeCachedListText(list.id, res.text);
         list.ruleCount = parsed.networkRules.length + parsed.cosmeticRules.length;
         list.skippedCount = parsed.skippedCount;
         list.skippedByReason = parsed.skippedByReason;
@@ -538,6 +636,54 @@ export class AdBlocker {
     this.repo.setSetting('adblock.filterLists', this.filterLists);
     this.syncCosmeticFilterListRules();
     return this.filterLists.map((l) => ({ ...l }));
+  }
+
+  public async autoUpdateIfNeeded(): Promise<FilterListStatus[]> {
+    if (!this.globalEnabled) return this.filterLists.map((l) => ({ ...l }));
+    const staleThresholdMs = 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    const needsUpdate = this.filterLists.some(
+      (l) => l.enabled && (l.ruleCount === 0 || !l.lastUpdatedAt || now - l.lastUpdatedAt > staleThresholdMs)
+    );
+    if (!needsUpdate) return this.filterLists.map((l) => ({ ...l }));
+    if (this.autoUpdatePromise) return this.autoUpdatePromise;
+    this.autoUpdatePromise = this.updateFilterLists().finally(() => {
+      this.autoUpdatePromise = null;
+    });
+    return this.autoUpdatePromise;
+  }
+
+  public trackNavigation(webContentsId: number, url: string): void {
+    if (webContentsId > 0 && /^https?:\/\//i.test(url)) {
+      this.wcUrlMap.set(webContentsId, url);
+    }
+  }
+
+  public shouldRunYouTubeAdHelper(pageUrl: string): boolean {
+    if (!this.globalEnabled) return false;
+    try {
+      const parsed = new URL(pageUrl);
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+      const host = parsed.hostname.toLowerCase();
+      if (this.isDomainAllowlisted(host) || this.isDomainTempDisabled(host)) return false;
+      return this.cosmetic.shouldRunYouTubeAdHelper(host);
+    } catch {
+      return false;
+    }
+  }
+
+  public shouldBlockPopup(
+    targetUrl: string,
+    sourceUrl: string
+  ): { block: boolean; matchedDomain?: string } {
+    if (!this.globalEnabled) return { block: false };
+    const check = this.classifyRequest(targetUrl, sourceUrl, 'subFrame', { isPopupRequest: true });
+    if (check.block) {
+      this.totalBlocked += 1;
+      this.adsBlocked += 1;
+      return { block: true, matchedDomain: check.matchedDomain };
+    }
+    return { block: false };
   }
 
   public getCosmeticCssForUrl(pageUrl: string): string | null {
@@ -562,7 +708,8 @@ export class AdBlocker {
   public classifyRequest(
     requestUrl: string,
     firstPartyUrl: string,
-    resourceType: string
+    resourceType: string,
+    options?: { isPopupRequest?: boolean }
   ): { block: boolean; category?: TrackerCategory; matchedDomain?: string; matchedRule?: string } {
     if (!this.globalEnabled) return { block: false };
     // Never block top-level document navigations so false positives don't break user-clicked links
@@ -594,7 +741,8 @@ export class AdBlocker {
       reqHost,
       firstHost,
       isThirdParty,
-      resourceType: mappedType
+      resourceType: mappedType,
+      isPopupRequest: Boolean(options?.isPopupRequest)
     };
 
     const parts = reqHost.split('.');
@@ -604,14 +752,21 @@ export class AdBlocker {
     }
     if (hostCandidates.length === 0 && reqHost) hostCandidates.push(reqHost);
 
-    // 1. Check user & filter-list exception (`@@`) rules first (allowlist precedence)
+    // 1. Check user exception (`@@`) rules first (explicit user override)
     for (const exRule of this.userExceptionRules) {
       if (matchesNetworkRule(exRule, matchCtx)) {
         return { block: false };
       }
     }
 
-    const urlTokens = requestUrl.toLowerCase().match(/[a-z0-9]{4,}/g) ?? [];
+    // 1b. High-confidence first-party player ad endpoints ($important priority over upstream @@ lists)
+    for (const regex of FIRST_PARTY_AD_PATTERNS) {
+      if (regex.test(requestUrl)) {
+        return { block: true, category: 'advertising', matchedDomain: reqHost };
+      }
+    }
+
+    const urlTokens = requestUrl.toLowerCase().match(/[a-z0-9]{3,}/g) ?? [];
 
     for (const list of this.filterLists) {
       if (!list.enabled) continue;
@@ -661,7 +816,7 @@ export class AdBlocker {
     }
 
     // 4. Third-party tracking pixel / ad script URL pattern check
-    if (firstHost && reqHost !== firstHost) {
+    if (!firstHost || isThirdParty) {
       for (const regex of TRACKER_PATH_PATTERNS) {
         if (regex.test(requestUrl)) {
           return { block: true, category: 'advertising', matchedDomain: reqHost };
@@ -721,12 +876,16 @@ export class AdBlocker {
 
   private isSameSite(hostA: string, hostB: string): boolean {
     if (hostA === hostB) return true;
-    const partsA = hostA.split('.');
-    const partsB = hostB.split('.');
-    if (partsA.length >= 2 && partsB.length >= 2) {
-      return partsA.slice(-2).join('.') === partsB.slice(-2).join('.');
-    }
-    return false;
+    const extractSiteBase = (host: string): string => {
+      const parts = host.split('.');
+      if (parts.length <= 2) return host;
+      const lastTwo = parts.slice(-2).join('.');
+      if (/^(co|com|org|net|gov|edu|ac)\.[a-z]{2}$/.test(lastTwo) && parts.length >= 3) {
+        return parts.slice(-3).join('.');
+      }
+      return lastTwo;
+    };
+    return extractSiteBase(hostA) === extractSiteBase(hostB);
   }
 
   private isDomainAllowlisted(host: string): boolean {
@@ -750,7 +909,21 @@ export class AdBlocker {
     this.attachedSessions.add(sess);
 
     sess.webRequest.onBeforeRequest((details, callback) => {
-      const firstPartyUrl = details.referrer || details.webContents?.getURL() || '';
+      const wcId = details.webContentsId ?? -1;
+      if (details.resourceType === 'mainFrame' && wcId > 0) {
+        this.trackNavigation(wcId, details.url);
+      }
+      let wcUrl = '';
+      try {
+        if (details.webContents && !details.webContents.isDestroyed()) {
+          wcUrl = details.webContents.getURL();
+        }
+      } catch {
+        // webContents unavailable during teardown
+      }
+      const initiator = (details as { initiator?: string }).initiator || '';
+      const firstPartyUrl =
+        wcUrl || (wcId > 0 ? this.wcUrlMap.get(wcId) || '' : '') || details.referrer || initiator || '';
       const result = this.classifyRequest(details.url, firstPartyUrl, details.resourceType);
       if (result.block) {
         this.totalBlocked += 1;
@@ -760,7 +933,6 @@ export class AdBlocker {
         } else {
           this.trackersBlocked += 1;
         }
-        const wcId = details.webContentsId ?? -1;
         for (const cb of this.onBlockedCallbacks) {
           cb(wcId, result.matchedDomain || '', cat, details.url);
         }

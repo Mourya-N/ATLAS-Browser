@@ -183,11 +183,14 @@ describe('LAVRAY Built-in Search Engine (WebDiscovery + Local FTS5 Index + Extra
     expect(result.candidates[0].snippet).not.toContain('<span');
   });
 
-  it('evaluates zero-latency calculator, unit conversions, and color inspector safely', () => {
+  it('evaluates zero-latency calculator, unit conversions, timestamps, base conversions, and color inspector safely', () => {
     expect(evaluateInstantTool('(125 + 75) * 3')?.title).toBe('600');
     expect(evaluateInstantTool('15% of 240')?.title).toBe('36');
+    expect(evaluateInstantTool('20% off 1500')?.title).toBe('1200');
     expect(evaluateInstantTool('100 c to f')?.title).toContain('212');
     expect(evaluateInstantTool('10 km to m')?.title).toContain('10000');
+    expect(evaluateInstantTool('255 to hex')?.title).toBe('0xFF');
+    expect(evaluateInstantTool('1764330000 to date')?.subtitle).toContain('Timestamp');
     expect(evaluateInstantTool('#2563eb')?.summary).toBe('RGB(37, 99, 235)');
     expect(evaluateInstantTool('1 / 0')).toBeNull();
     expect(evaluateInstantTool('process.exit(1)')).toBeNull();
@@ -474,5 +477,166 @@ describe('LAVRAY Built-in Search Engine (WebDiscovery + Local FTS5 Index + Extra
     const shopRes = await discovery.discover({ query: 'wireless headphones', mode: 'shopping' });
     const shopHit = shopRes.candidates.find((c) => c.sourceProvider === 'bing_shopping_rss');
     expect(shopHit?.priceText).toBe('₹14,999');
+  });
+
+  it('retrieves YouTube, Instagram, and Facebook videos and blocks misleading/off-topic/ungrounded responses', async () => {
+    const ytPayload = {
+      contents: {
+        twoColumnSearchResultsRenderer: {
+          primaryContents: {
+            sectionListRenderer: {
+              contents: [
+                {
+                  itemSectionRenderer: {
+                    contents: [
+                      {
+                        videoRenderer: {
+                          videoId: 'ytVid123',
+                          title: { runs: [{ text: 'Virat Kohli Century Highlights' }] },
+                          lengthText: { simpleText: '12:34' },
+                          ownerText: { runs: [{ text: 'Cricket Official' }] },
+                          shortViewCountText: { simpleText: '2.1M views' },
+                          publishedTimeText: { simpleText: '2 days ago' },
+                          thumbnail: { thumbnails: [{ url: 'https://i.ytimg.com/vi/ytVid123/hq720.jpg' }] }
+                        }
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    };
+    const yahooIgTile = `<a class="media-tile video-tile" data-referenceurl="https://www.instagram.com/reel/IGReEl99/" href="https://video.search.yahoo.com"><img src="https://up.yimg.com/ib/th/ig.jpg?a=1&amp;b=2"/><p class="time">00:29</p><p class="tile-description">Virat Kohli training reel on Instagram</p><p class="tile-title">Virat Kohli Workout Reel</p></a><a class="media-tile video-tile" data-referenceurl="https:// unrelated-spam.example.com/nope" href="https://spam"><p class="tile-title">Virat Kohli</p></a>`;
+    const yahooFbTile = `<a class="media-tile video-tile" data-referenceurl="https://www.facebook.com/virat.kohli/videos/80702914/" href="https://video.search.yahoo.com"><img src="https://up.yimg.com/ib/th/fb.jpg?a=1&amp;b=2"/><p class="time">01:15</p><p class="tile-description">Watch Virat Kohli live message on Facebook</p><p class="tile-title">Virat Kohli Facebook Watch</p></a>`;
+
+    const mockSocialFetch: FetchLike = async (url) => {
+      if (url.includes('youtube.com/results')) {
+        return new Response(`<html><script>var ytInitialData = ${JSON.stringify(ytPayload)};</script></html>`, {
+          status: 200,
+          headers: { 'Content-Type': 'text/html' }
+        });
+      }
+      if (url.includes('video.search.yahoo.com') && url.includes('instagram')) {
+        return new Response(`<html><body>${yahooIgTile}</body></html>`, { status: 200 });
+      }
+      if (url.includes('video.search.yahoo.com') && url.includes('facebook')) {
+        return new Response(`<html><body>${yahooFbTile}</body></html>`, { status: 200 });
+      }
+      if (url.includes('bing.com/search')) {
+        return new Response(
+          `<?xml version="1.0"?><rss version="2.0"><channel><item><title>99.9&amp;percnt; Gold Rate Today &#8377;12,786</title><link>https://www.goodreturns.in/gold-rates/</link><description>Gold price today &amp;percnt; verified update.</description></item></channel></rss>`,
+          { status: 200, headers: { 'Content-Type': 'application/rss+xml' } }
+        );
+      }
+      return jsonResponse({});
+    };
+
+    const discovery = new WebDiscoveryEngine(mockSocialFetch);
+    const vidRes = await discovery.discover({ query: 'virat kohli', mode: 'videos' });
+    const yt = vidRes.candidates.find((c) => c.videoPlatform === 'youtube');
+    const ig = vidRes.candidates.find((c) => c.videoPlatform === 'instagram');
+    const fb = vidRes.candidates.find((c) => c.videoPlatform === 'facebook');
+
+    expect(yt?.url).toBe('https://www.youtube.com/watch?v=ytVid123');
+    expect(yt?.durationSeconds).toBe(754);
+    expect(ig?.url).toBe('https://www.instagram.com/reel/IGReEl99/');
+    expect(ig?.thumbnailUrl).toBe('https://up.yimg.com/ib/th/ig.jpg?a=1&b=2');
+    expect(ig?.durationSeconds).toBe(29);
+    expect(fb?.url).toBe('https://www.facebook.com/virat.kohli/videos/80702914/');
+    expect(fb?.durationSeconds).toBe(75);
+
+    // Ensure HTML entities decode cleanly (never leaving "&percnt;" or "&#8377;")
+    const goldRes = await discovery.discover({ query: 'gold rate today', mode: 'web' });
+    const bingHit = goldRes.candidates.find((c) => c.sourceProvider === 'bing_web_rss');
+    expect(bingHit?.title).toContain('99.9%');
+    expect(bingHit?.title).toContain('₹12,786');
+
+    // Off-topic external candidates & stale 2022 articles must be dropped or heavily demoted
+    const { QueryUnderstandingEngine } = await import('../../src/backend/modules/search/query-understanding');
+    const { SearchRankingPipeline } = await import('../../src/backend/modules/search/ranking');
+    const qu = new QueryUnderstandingEngine();
+    const ranking = new SearchRankingPipeline();
+    const u = qu.analyzeDeterministic('gold rate today 2026', 'web');
+    const ranked = ranking.normalizeAndRank({
+      understanding: u,
+      candidates: [
+        {
+          title: 'Bing Homepage Quiz Daily Trivia',
+          url: 'https://bingquizzes.com/trivia',
+          snippet: 'Unrelated daily quiz trivia questions.',
+          sourceProvider: 'bing_web_rss',
+          rawRank: 1
+        },
+        {
+          title: 'Gold Rate 2022 Archive',
+          url: 'https://oldsite.example.com/gold-2022',
+          snippet: 'Gold rate in November 2022 was much lower.',
+          sourceProvider: 'bing_web_rss',
+          publishedAt: '2022-11-28T00:00:00Z',
+          rawRank: 2
+        },
+        {
+          title: 'Gold Rate Today 28 Nov 2026',
+          url: 'https://current.example.com/gold-2026',
+          snippet: 'Today 28 Nov 2026 24K gold rate stands at ₹12,786 per gram.',
+          sourceProvider: 'bing_web_rss',
+          rawRank: 3
+        }
+      ]
+    });
+    expect(ranked.results.some((r) => r.url.includes('bingquizzes.com'))).toBe(false);
+    expect(ranked.results[0].url).toBe('https://current.example.com/gold-2026');
+
+    // Gemini Overview returns null when zero web groundingChunks are present (refuses ungrounded guesses)
+    const ungroundedGemini = await generateGeminiGroundedOverview({
+      apiKey: 'AIzaTestKey12345',
+      query: 'gold rate today',
+      fetchFn: async () =>
+        jsonResponse({
+          candidates: [
+            {
+              content: { parts: [{ text: 'Guessed figure without web search sources.' }] },
+              groundingMetadata: { groundingChunks: [] }
+            }
+          ]
+        })
+    });
+    expect(ungroundedGemini).toBeNull();
+
+    // Live Weather (population disambiguation) & Live Currency Converter Instant Answers
+    const mockToolsFetch: FetchLike = async (url) => {
+      if (url.includes('geocoding-api.open-meteo.com')) {
+        return jsonResponse({
+          results: [
+            { name: 'Bangalore Town', country: 'Pakistan', latitude: 24.8, longitude: 67.0, population: 1200 },
+            { name: 'Bengaluru', country: 'India', admin1: 'Karnataka', latitude: 12.9716, longitude: 77.5946, population: 8443675 }
+          ]
+        });
+      }
+      if (url.includes('api.open-meteo.com/v1/forecast')) {
+        return jsonResponse({
+          current: { temperature_2m: 26.4, relative_humidity_2m: 48, apparent_temperature: 26.0, weather_code: 1, wind_speed_10m: 9.2 },
+          daily: { temperature_2m_max: [29.1], temperature_2m_min: [18.4] }
+        });
+      }
+      if (url.includes('open.er-api.com/v6/latest/USD')) {
+        return jsonResponse({
+          result: 'success',
+          time_last_update_utc: 'Sat, 28 Nov 2026 00:00:00 +0000',
+          rates: { INR: 84.5 }
+        });
+      }
+      return jsonResponse({});
+    };
+    const toolsEngine = new WebDiscoveryEngine(mockToolsFetch);
+    const wxRes = await toolsEngine.discover({ query: 'weather in Bangalore', mode: 'web' });
+    expect(wxRes.instantAnswer?.title).toBe('26°C • Partly cloudy');
+    expect(wxRes.instantAnswer?.subtitle).toContain('Bengaluru');
+
+    const fxRes = await toolsEngine.discover({ query: '100 usd to inr', mode: 'web' });
+    expect(fxRes.instantAnswer?.title).toContain('8,450 INR');
   });
 });

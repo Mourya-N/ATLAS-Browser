@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 import type { NormalizedSearchResult, OmniboxSuggestion, SearchResponse } from '@shared/types';
 import { useLavrayStore } from '../store/useLavrayStore';
-import { LavrayMark } from './BrandMarks';
+import { HayaMark, LavrayMark } from './BrandMarks';
 
 export interface WebSearchViewProps {
   tabQuery: string;
@@ -75,6 +75,34 @@ function getOsmSlippyTiles(lat: number, lon: number, zoom: number) {
   }
   return { tiles, pinLeftPct, pinTopPct };
 }
+
+type VideoPlatformFilter = 'all' | 'youtube' | 'instagram' | 'facebook' | 'other';
+
+function resolveVideoPlatform(
+  r: NormalizedSearchResult
+): 'youtube' | 'instagram' | 'facebook' | 'dailymotion' | 'archive' | 'other' {
+  if (r.videoPlatform === 'youtube') return 'youtube';
+  if (r.videoPlatform === 'instagram') return 'instagram';
+  if (r.videoPlatform === 'facebook') return 'facebook';
+  if (r.videoPlatform === 'dailymotion') return 'dailymotion';
+  if (r.videoPlatform === 'archive') return 'archive';
+  const d = r.domain.toLowerCase();
+  if (d.includes('youtube.com') || d === 'youtu.be') return 'youtube';
+  if (d.includes('instagram.com')) return 'instagram';
+  if (d.includes('facebook.com') || d === 'fb.watch' || d === 'fb.com') return 'facebook';
+  if (d.includes('dailymotion.com')) return 'dailymotion';
+  if (d.includes('archive.org')) return 'archive';
+  return 'other';
+}
+
+const VIDEO_PLATFORM_BADGE: Record<string, { label: string; cls: string }> = {
+  youtube: { label: 'YouTube', cls: 'bg-red-600/95 text-white' },
+  instagram: { label: 'Instagram', cls: 'bg-pink-600/95 text-white' },
+  facebook: { label: 'Facebook', cls: 'bg-blue-600/95 text-white' },
+  dailymotion: { label: 'Dailymotion', cls: 'bg-zinc-900/90 text-white' },
+  archive: { label: 'Archive', cls: 'bg-emerald-700/90 text-white' },
+  other: { label: 'Video', cls: 'bg-black/80 text-white' }
+};
 
 function formatBreadcrumb(url: string, domain: string): string {
   try {
@@ -194,6 +222,7 @@ export const WebSearchView: React.FC<WebSearchViewProps> = ({ tabQuery }) => {
   const [selectedImage, setSelectedImage] = useState<NormalizedSearchResult | null>(null);
   const [selectedMapPlace, setSelectedMapPlace] = useState<NormalizedSearchResult | null>(null);
   const [mapZoom, setMapZoom] = useState(13);
+  const [videoPlatformFilter, setVideoPlatformFilter] = useState<VideoPlatformFilter>('all');
   const searchSeqRef = useRef(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -240,12 +269,13 @@ export const WebSearchView: React.FC<WebSearchViewProps> = ({ tabQuery }) => {
       return;
     }
     const seq = ++searchSeqRef.current;
-    const pageLimit = targetMode === 'images' || targetMode === 'videos' ? 18 : 10;
+    const pageLimit = targetMode === 'videos' ? 36 : targetMode === 'images' ? 18 : 10;
     setLoading(true);
     setOverviewLoading(false);
     setOverviewExpanded(false);
     setSelectedImage(null);
     setSelectedMapPlace(null);
+    setVideoPlatformFilter('all');
     setErrorMsg(null);
     setPage(targetPage);
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
@@ -521,9 +551,10 @@ export const WebSearchView: React.FC<WebSearchViewProps> = ({ tabQuery }) => {
             <button
               type="button"
               onClick={() => openLavraySearch(input.trim())}
-              className="font-medium text-lavray-accent hover:underline"
+              className="inline-flex items-center gap-1 rounded-full border border-lavray-accent/45 bg-lavray-accent/12 px-2.5 py-0.5 font-semibold text-lavray-accent hover:bg-lavray-accent/20 transition-colors"
             >
-              Switch to AI Mode (LAVRAY Intelligent Search)
+              <HayaMark className="h-3 w-3 text-lavray-accent" />
+              <span>ASK HAYA AI</span>
             </button>
           </p>
         </div>
@@ -534,7 +565,11 @@ export const WebSearchView: React.FC<WebSearchViewProps> = ({ tabQuery }) => {
   const instant = response?.instantAnswer ?? null;
   const isPositionZeroTool = instant && instant.kind && instant.kind !== 'entity';
   const isKnowledgePanel = instant && (!instant.kind || instant.kind === 'entity');
-  const aiOverview = response?.aiAnswer && response.aiAnswer.status === 'ok' ? response.aiAnswer : null;
+  const aiAnswerRaw = response?.aiAnswer ?? null;
+  const aiOverview =
+    aiAnswerRaw && (aiAnswerRaw.status === 'ok' || aiAnswerRaw.status === 'insufficient_evidence')
+      ? aiAnswerRaw
+      : null;
   const showAiOverviewSection =
     mode === 'web' &&
     page === 1 &&
@@ -547,27 +582,19 @@ export const WebSearchView: React.FC<WebSearchViewProps> = ({ tabQuery }) => {
     .filter(Boolean);
   const overviewBullets = overviewLines.filter((l) => /^[-•*]\s+/.test(l));
   const overviewParagraphs = overviewLines.filter((l) => !/^[-•*]\s+/.test(l));
-  const overviewSourceCards = (aiOverview?.citations?.length
-    ? aiOverview.citations.map((c) => {
-        const matched = response?.results.find((r) => r.url === c.url);
-        return {
-          url: c.url,
-          title: c.title,
-          domain: c.domain,
-          favicon: matched?.favicon,
-          snippet: matched?.snippet || '',
-          publishedAt: matched?.publishedAt
-        };
-      })
-    : (response?.results ?? []).slice(0, 3).map((r) => ({
-        url: r.url,
-        title: r.title,
-        domain: r.domain,
-        favicon: r.favicon,
-        snippet: r.snippet,
-        publishedAt: r.publishedAt
-      }))
-  ).slice(0, 3);
+  const overviewSourceCards = (aiOverview?.citations ?? [])
+    .map((c) => {
+      const matched = response?.results.find((r) => r.url === c.url);
+      return {
+        url: c.url,
+        title: c.title,
+        domain: c.domain,
+        favicon: matched?.favicon,
+        snippet: matched?.snippet || '',
+        publishedAt: matched?.publishedAt
+      };
+    })
+    .slice(0, 3);
 
   const isMediaVertical = ['images', 'videos', 'maps', 'shopping'].includes(mode);
   const showKnowledgePanel = Boolean(isKnowledgePanel && !isMediaVertical);
@@ -673,17 +700,17 @@ export const WebSearchView: React.FC<WebSearchViewProps> = ({ tabQuery }) => {
           </form>
         </div>
 
-        {/* Google-Style Category Strip: AI Mode | All | News | Docs & Code | Tools */}
-        <div className="mt-2.5 flex items-center justify-between gap-4 md:pl-[104px] max-w-4xl">
-          <div className="flex items-center gap-5">
+        {/* Google-Style Category Strip: ASK HAYA AI | All | Images | Videos | Maps | Shopping | News | Docs & Code | Tools */}
+        <div className="mt-2.5 flex items-center justify-between gap-4 md:pl-[104px] max-w-5xl">
+          <div className="flex items-center gap-4 overflow-x-auto no-scrollbar">
             <button
               type="button"
               onClick={() => openLavraySearch(input.trim() || tabQuery)}
-              className="inline-flex items-center gap-1.5 border-b-2 border-transparent pb-2 text-[12.5px] font-medium text-lavray-muted hover:text-lavray-accent transition-colors"
-              title="Open LAVRAY Intelligent Search (Advanced Research)"
+              className="mb-1.5 inline-flex shrink-0 items-center gap-1.5 rounded-full border border-lavray-accent/55 bg-lavray-accent/14 px-3 py-1 text-[12px] font-semibold tracking-wide text-lavray-accent shadow-lavray-sm ring-1 ring-lavray-accent/20 hover:bg-lavray-accent/22 hover:border-lavray-accent transition-all"
+              title="Open ASK HAYA AI (LAVRAY Intelligent Search)"
             >
-              <Sparkles className="h-3.5 w-3.5 text-lavray-accent" />
-              <span>AI Mode</span>
+              <HayaMark className="h-3.5 w-3.5 text-lavray-accent" />
+              <span>ASK HAYA AI</span>
             </button>
 
             {WEB_TABS.map((t) => {
@@ -697,7 +724,7 @@ export const WebSearchView: React.FC<WebSearchViewProps> = ({ tabQuery }) => {
                     const q = (input || tabQuery).trim();
                     if (q) void runWebSearch(q, t.id, 1, timeRange, false);
                   }}
-                  className={`border-b-2 pb-2 text-[12.5px] font-medium transition-colors ${
+                  className={`whitespace-nowrap shrink-0 border-b-2 pb-2 text-[12.5px] font-medium transition-colors ${
                     active
                       ? 'border-lavray-accent text-lavray-accent'
                       : 'border-transparent text-lavray-muted hover:text-lavray-text'
@@ -751,8 +778,10 @@ export const WebSearchView: React.FC<WebSearchViewProps> = ({ tabQuery }) => {
           <section className="border-b border-lavray-border pb-5">
             <div className="mb-3 flex items-center gap-2.5">
               <Sparkles className="h-4 w-4 text-lavray-accent" />
-              <h2 className="text-[15px] font-semibold tracking-tight text-lavray-text">AI Overview</h2>
-              {aiOverview && (
+              <h2 className="text-[15px] font-semibold tracking-tight text-lavray-text">
+                {aiOverview?.provider === 'lavray_extractive' ? 'Live Source Excerpts' : 'AI Overview'}
+              </h2>
+              {aiOverview && aiOverview.status === 'ok' && (
                 <button
                   type="button"
                   onClick={() => toggleSpeakOverview(aiOverview.summary)}
@@ -768,8 +797,10 @@ export const WebSearchView: React.FC<WebSearchViewProps> = ({ tabQuery }) => {
                   {aiOverview.provider === 'gemini_google_search'
                     ? 'Gemini • Google Search Grounded'
                     : aiOverview.provider === 'lavray_extractive'
-                    ? 'LAVRAY Live Web Synthesis'
-                    : `HAYA (${aiOverview.model})`}
+                    ? 'Grounded in retrieved sources'
+                    : aiOverview.status === 'insufficient_evidence'
+                    ? 'Evidence Check'
+                    : `HAYA Verified (${aiOverview.model})`}
                 </span>
               )}
             </div>
@@ -818,6 +849,17 @@ export const WebSearchView: React.FC<WebSearchViewProps> = ({ tabQuery }) => {
                           </li>
                         ))}
                       </ul>
+                    )}
+
+                    {aiOverview.contradictions && aiOverview.contradictions.length > 0 && (
+                      <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-[12.5px] space-y-1">
+                        <div className="font-semibold text-lavray-text">Sources report differing details:</div>
+                        {aiOverview.contradictions.slice(0, 2).map((c, idx) => (
+                          <p key={idx} className="text-lavray-secondary">
+                            <strong className="text-lavray-text">{c.topic}:</strong> {c.claimA} vs. {c.claimB}
+                          </p>
+                        ))}
+                      </div>
                     )}
 
                     {!overviewExpanded && isLongOverview && (
@@ -956,9 +998,11 @@ export const WebSearchView: React.FC<WebSearchViewProps> = ({ tabQuery }) => {
                       </div>
                     </div>
 
-                    {instant.kind === 'definition' && (
-                      <p className="text-[13.5px] leading-relaxed text-lavray-secondary">{instant.summary}</p>
-                    )}
+                    {(instant.kind === 'definition' || instant.kind === 'conversion') &&
+                      instant.summary &&
+                      instant.summary !== instant.title && (
+                        <p className="text-[13.5px] leading-relaxed text-lavray-secondary">{instant.summary}</p>
+                      )}
 
                     {instant.facts && instant.facts.length > 0 && (
                       <div className="flex flex-wrap gap-3 pt-1 text-[12px] text-lavray-muted">
@@ -1038,72 +1082,146 @@ export const WebSearchView: React.FC<WebSearchViewProps> = ({ tabQuery }) => {
                     })}
                   </div>
                 ) : mode === 'videos' ? (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-                    {response.results.map((r) => {
-                      const dur = formatDuration(r.durationSeconds);
-                      const thumb = r.thumbnailUrl || '';
-                      return (
-                        <article
-                          key={r.id}
-                          className="group flex flex-col overflow-hidden rounded-2xl border border-lavray-border bg-lavray-surface hover:border-lavray-accent/60 hover:shadow-lavray-sm transition-all"
-                        >
-                          <button
-                            type="button"
-                            onClick={() => void openUrl(r.mediaUrl || r.url)}
-                            className="relative aspect-video w-full overflow-hidden bg-lavray-elevated flex items-center justify-center"
-                          >
-                            {thumb ? (
-                              <img
-                                src={thumb}
-                                alt={r.title}
-                                loading="lazy"
-                                className="h-full w-full object-cover group-hover:scale-[1.02] transition-transform duration-200"
-                              />
-                            ) : (
-                              <Play className="h-8 w-8 text-lavray-muted" />
-                            )}
-                            <span className="absolute inset-0 flex items-center justify-center bg-black/15 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-black/75 text-white shadow">
-                                <Play className="h-4 w-4 ml-0.5 fill-current" />
-                              </span>
-                            </span>
-                            {dur && (
-                              <span className="absolute bottom-2 right-2 rounded-md bg-black/80 px-1.5 py-0.5 text-[11px] font-medium text-white">
-                                {dur}
-                              </span>
-                            )}
-                          </button>
-                          <div className="p-3.5 space-y-1.5 flex-1 flex flex-col justify-between">
-                            <div className="space-y-1">
+                  (() => {
+                    const platformCounts = {
+                      all: response.results.length,
+                      youtube: 0,
+                      instagram: 0,
+                      facebook: 0,
+                      other: 0
+                    };
+                    for (const item of response.results) {
+                      const plat = resolveVideoPlatform(item);
+                      if (plat === 'youtube' || plat === 'instagram' || plat === 'facebook') {
+                        platformCounts[plat] += 1;
+                      } else {
+                        platformCounts.other += 1;
+                      }
+                    }
+                    const filteredVideos = response.results.filter((r) => {
+                      if (videoPlatformFilter === 'all') return true;
+                      const plat = resolveVideoPlatform(r);
+                      if (videoPlatformFilter === 'other') {
+                        return plat !== 'youtube' && plat !== 'instagram' && plat !== 'facebook';
+                      }
+                      return plat === videoPlatformFilter;
+                    });
+                    const filterChips: Array<{ id: VideoPlatformFilter; label: string; count: number }> = [
+                      { id: 'all', label: 'All Videos', count: platformCounts.all },
+                      { id: 'youtube', label: 'YouTube', count: platformCounts.youtube },
+                      { id: 'instagram', label: 'Instagram', count: platformCounts.instagram },
+                      { id: 'facebook', label: 'Facebook', count: platformCounts.facebook },
+                      ...(platformCounts.other > 0
+                        ? [{ id: 'other' as const, label: 'Other', count: platformCounts.other }]
+                        : [])
+                    ];
+
+                    return (
+                      <div className="space-y-4">
+                        <div className="flex flex-wrap items-center gap-2">
+                          {filterChips.map((chip) => {
+                            const active = videoPlatformFilter === chip.id;
+                            return (
                               <button
+                                key={chip.id}
                                 type="button"
-                                onClick={() => void openUrl(r.mediaUrl || r.url)}
-                                className="line-clamp-2 text-left text-[14px] font-medium leading-snug text-lavray-text hover:text-lavray-accent"
+                                onClick={() => setVideoPlatformFilter(chip.id)}
+                                className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[12px] font-medium transition-colors ${
+                                  active
+                                    ? 'border-lavray-accent bg-lavray-accent/12 text-lavray-accent'
+                                    : 'border-lavray-border bg-lavray-surface text-lavray-secondary hover:border-lavray-accent/50 hover:text-lavray-text'
+                                }`}
                               >
-                                {r.title}
+                                <span>{chip.label}</span>
+                                <span className="text-[10.5px] opacity-75">{chip.count}</span>
                               </button>
-                              {r.snippet && (
-                                <p className="line-clamp-2 text-[12px] leading-relaxed text-lavray-secondary">
-                                  {r.snippet}
-                                </p>
-                              )}
-                            </div>
-                            <div className="flex items-center justify-between gap-2 pt-1 text-[11.5px] text-lavray-muted">
-                              <span className="flex items-center gap-1.5 truncate">
-                                <SiteFavicon favicon={r.favicon} domain={r.domain} size="sm" />
-                                <span className="truncate font-medium text-lavray-secondary">
-                                  {getSiteDisplayName(r.domain)}
-                                </span>
-                              </span>
-                              {r.publishedAt && (
-                                <span className="shrink-0">{new Date(r.publishedAt).toLocaleDateString()}</span>
-                              )}
-                            </div>
+                            );
+                          })}
+                        </div>
+
+                        {filteredVideos.length === 0 ? (
+                          <div className="rounded-2xl border border-lavray-border bg-lavray-surface p-6 text-[13px] text-lavray-muted">
+                            No {videoPlatformFilter === 'all' ? '' : `${videoPlatformFilter} `}videos found for{' '}
+                            <strong className="text-lavray-text">{response.query}</strong>. Try switching back to All Videos or refining your search keywords.
                           </div>
-                        </article>
-                      );
-                    })}
-                  </div>
+                        ) : (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                            {filteredVideos.map((r) => {
+                              const dur = formatDuration(r.durationSeconds);
+                              const thumb = r.thumbnailUrl || '';
+                              const platKey = resolveVideoPlatform(r);
+                              const badge = VIDEO_PLATFORM_BADGE[platKey] ?? VIDEO_PLATFORM_BADGE.other;
+                              return (
+                                <article
+                                  key={r.id}
+                                  className="group flex flex-col overflow-hidden rounded-2xl border border-lavray-border bg-lavray-surface hover:border-lavray-accent/60 hover:shadow-lavray-sm transition-all"
+                                >
+                                  <button
+                                    type="button"
+                                    onClick={() => void openUrl(r.mediaUrl || r.url)}
+                                    className="relative aspect-video w-full overflow-hidden bg-lavray-elevated flex items-center justify-center"
+                                  >
+                                    {thumb ? (
+                                      <img
+                                        src={thumb}
+                                        alt={r.title}
+                                        loading="lazy"
+                                        className="h-full w-full object-cover group-hover:scale-[1.02] transition-transform duration-200"
+                                      />
+                                    ) : (
+                                      <Play className="h-8 w-8 text-lavray-muted" />
+                                    )}
+                                    <span
+                                      className={`absolute top-2 left-2 rounded-md px-2 py-0.5 text-[10.5px] font-semibold shadow-sm ${badge.cls}`}
+                                    >
+                                      {badge.label}
+                                    </span>
+                                    <span className="absolute inset-0 flex items-center justify-center bg-black/15 opacity-0 group-hover:opacity-100 transition-opacity">
+                                      <span className="flex h-10 w-10 items-center justify-center rounded-full bg-black/75 text-white shadow">
+                                        <Play className="h-4 w-4 ml-0.5 fill-current" />
+                                      </span>
+                                    </span>
+                                    {dur && (
+                                      <span className="absolute bottom-2 right-2 rounded-md bg-black/80 px-1.5 py-0.5 text-[11px] font-medium text-white">
+                                        {dur}
+                                      </span>
+                                    )}
+                                  </button>
+                                  <div className="p-3.5 space-y-1.5 flex-1 flex flex-col justify-between">
+                                    <div className="space-y-1">
+                                      <button
+                                        type="button"
+                                        onClick={() => void openUrl(r.mediaUrl || r.url)}
+                                        className="line-clamp-2 text-left text-[14px] font-medium leading-snug text-lavray-text hover:text-lavray-accent"
+                                      >
+                                        {r.title}
+                                      </button>
+                                      {r.snippet && (
+                                        <p className="line-clamp-2 text-[12px] leading-relaxed text-lavray-secondary">
+                                          {r.snippet}
+                                        </p>
+                                      )}
+                                    </div>
+                                    <div className="flex items-center justify-between gap-2 pt-1 text-[11.5px] text-lavray-muted">
+                                      <span className="flex items-center gap-1.5 truncate">
+                                        <SiteFavicon favicon={r.favicon} domain={r.domain} size="sm" />
+                                        <span className="truncate font-medium text-lavray-secondary">
+                                          {badge.label} • {getSiteDisplayName(r.domain)}
+                                        </span>
+                                      </span>
+                                      {r.publishedAt && (
+                                        <span className="shrink-0">{new Date(r.publishedAt).toLocaleDateString()}</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </article>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()
                 ) : mode === 'maps' ? (
                   <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
                     <div className="lg:col-span-5 space-y-2.5">

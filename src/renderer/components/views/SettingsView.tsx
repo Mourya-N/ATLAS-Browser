@@ -524,6 +524,48 @@ export const SettingsView: React.FC = () => {
                   )}
                 </div>
 
+                {/* Gemini API Key Fallback */}
+                <div className="rounded-xl border border-lavray-border bg-lavray-surface p-4 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-[12.5px] font-semibold text-lavray-text">
+                        Gemini API Key (Cloud &amp; AI Fallback)
+                      </div>
+                      <p className="text-[11.5px] text-lavray-muted">
+                        Used automatically for HAYA AI when local Ollama is offline and for Google Search Grounded AI Overviews.
+                      </p>
+                    </div>
+                    {local.hasGeminiApiKey && (
+                      <span className="shrink-0 rounded-md bg-lavray-success/12 px-2 py-0.5 text-[11px] font-medium text-lavray-success">
+                        Configured
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      type="password"
+                      value={geminiKeyInput}
+                      onChange={(e) => setGeminiKeyInput(e.target.value)}
+                      placeholder={local.hasGeminiApiKey ? '••••••••••••••••' : 'AIza...'}
+                      className="flex-1 rounded-lg border border-lavray-border bg-lavray-bg px-3 py-1.5 text-[12px] outline-none focus:border-lavray-accent"
+                    />
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (!geminiKeyInput.trim()) return;
+                        const next = await window.lavray.setApiKey('gemini', geminiKeyInput.trim());
+                        setLocal(next);
+                        setSettings(next);
+                        setGeminiKeyInput('');
+                        pushToast('Gemini API key saved to encrypted vault', 'success');
+                      }}
+                      className="rounded-lg bg-lavray-accent px-3 py-1.5 text-[12px] font-medium text-lavray-accent-fg"
+                    >
+                      Save Key
+                    </button>
+                  </div>
+                </div>
+
                 {/* Budgets & Behavior */}
                 <div className="border-t border-lavray-border pt-4 space-y-3">
                   <div className="text-[12px] font-medium text-lavray-secondary">Execution Budgets</div>

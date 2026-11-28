@@ -15,7 +15,10 @@ import { ActionVerifier } from '@main/agent/verifier';
 import { RecoveryMonitor } from '@main/agent/recovery';
 import { ContextManager } from '@main/agent/context-manager';
 import { StructuredExtractionEngine } from '@main/agent/extraction-engine';
-import { DEFAULT_BUDGETS } from '@main/agent/orchestrator';
+import { DEFAULT_BUDGETS, AgentOrchestrator } from '@main/agent/orchestrator';
+import { BrowserRepository } from '@main/db/repositories/browser-repo';
+import { MemoryService } from '@main/memory/memory-service';
+import type { ModelProvider } from '@main/agent/providers/model-provider';
 
 describe('Agent Core Components', () => {
   let db: LavrayDatabase;
@@ -224,5 +227,119 @@ describe('Agent Core Components', () => {
 
     const csv = engine.toCsv([{ name: 'Widget, Pro', price: 19.99 }]);
     expect(csv).toBe('name,price\n"Widget, Pro",19.99');
+  });
+
+  it('executes direct HAYA browser commands ("open github", "search ...") cleanly even when local LLM runtime is offline', async () => {
+    const browserRepo = new BrowserRepository(db.db);
+    const offlineProvider: ModelProvider = {
+      id: 'offline_test',
+      async generate() {
+        throw new Error('Network/timeout error reaching self-hosted model runtime: fetch failed');
+      }
+    };
+    const navigated: Array<{ tabId: string; url: string }> = [];
+    const fakeTabManager = {
+      getTab: (id: string) => ({ info: { id, windowId: 1, url: 'about:blank', title: 'New Tab', isPrivate: false } }),
+      getDefaultWindowId: () => 1,
+      navigate: async (tabId: string, url: string) => {
+        navigated.push({ tabId, url });
+        return url;
+      },
+      createTab: (_winId: number, opts: { url?: string }) => ({ id: 'new-tab', url: opts.url || 'lavray://newtab' }),
+      setAgentActive: () => {},
+      goBack: () => true,
+      goForward: () => true,
+      reload: () => {},
+      closeTab: () => true,
+      getAllTabs: () => []
+    } as never;
+
+    const orch = new AgentOrchestrator(
+      () => offlineProvider,
+      browserRepo,
+      agentRepo,
+      platformRepo,
+      fakeTabManager,
+      { detachAll: () => {} } as never,
+      {} as never,
+      {} as never,
+      registry,
+      gate,
+      new InjectionGuard(),
+      killSwitch,
+      audit,
+      new CostTracker(agentRepo),
+      new MemoryService(platformRepo),
+      '/tmp/lavray-test-shots'
+    );
+
+    const conv = agentRepo.createConversation('HAYA Instant Nav');
+    const openRun = await orch.startRun({
+      conversationId: conv.id,
+      tabId: 'tab-1',
+      goal: 'open github',
+      mode: 'agent'
+    });
+    expect(openRun.status).toBe('completed');
+    expect(navigated[0]).toEqual({ tabId: 'tab-1', url: 'https://github.com' });
+    expect(openRun.finalAnswer).toContain('https://github.com');
+
+    const searchRun = await orch.startRun({
+      conversationId: conv.id,
+      tabId: 'tab-1',
+      goal: 'search typescript generic constraints',
+      mode: 'ask'
+    });
+    expect(searchRun.status).toBe('completed');
+    expect(navigated[1].url).toBe('lavray://search?q=typescript%20generic%20constraints');
+
+    // Offline DOM summary fallback works on "summarize this page" even when LLM runtime is offline
+    const fakePerception = {
+      capture: async () => ({
+        tabId: 'tab-1',
+        url: 'https://github.com',
+        title: 'GitHub',
+        capturedAt: Date.now(),
+        viewport: { width: 1200, height: 800, scrollX: 0, scrollY: 0, scrollHeight: 2000 },
+        axSummary: '',
+        interactiveElements: [],
+        mainText: 'GitHub is the developer platform to build, scale, and deliver secure software. Millions of developers collaborate on repositories worldwide.',
+        selectedText: '',
+        headings: ['Build software together', 'Trusted by developers'],
+        tablesSummary: [],
+        injectionWarnings: [],
+        hitlSignals: []
+      })
+    } as never;
+    const fakeWc = { isDestroyed: () => false, getURL: () => 'https://github.com' } as never;
+    const sumOrch = new AgentOrchestrator(
+      () => offlineProvider,
+      browserRepo,
+      agentRepo,
+      platformRepo,
+      { ...(fakeTabManager as object), getWebContents: () => fakeWc } as never,
+      { detachAll: () => {} } as never,
+      {} as never,
+      fakePerception,
+      registry,
+      gate,
+      new InjectionGuard(),
+      killSwitch,
+      audit,
+      new CostTracker(agentRepo),
+      new MemoryService(platformRepo),
+      '/tmp/lavray-test-shots'
+    );
+    const sumRun = await sumOrch.startRun({
+      conversationId: conv.id,
+      tabId: 'tab-1',
+      goal: 'summarize this page',
+      mode: 'ask'
+    });
+    await new Promise((r) => setTimeout(r, 40));
+    const finishedSum = agentRepo.getRun(sumRun.id);
+    expect(finishedSum?.status).toBe('completed');
+    expect(finishedSum?.finalAnswer).toContain('Build software together');
+    expect(finishedSum?.finalAnswer).toContain('GitHub is the developer platform');
   });
 });

@@ -116,6 +116,39 @@ export function parseSlashCommand(rawGoal: string): ParsedSlashCommand {
   }
 }
 
+const KNOWN_SITE_SHORTCUTS: Record<string, string> = {
+  github: 'https://github.com',
+  youtube: 'https://www.youtube.com',
+  yt: 'https://www.youtube.com',
+  google: 'https://www.google.com',
+  gmail: 'https://mail.google.com',
+  reddit: 'https://www.reddit.com',
+  x: 'https://x.com',
+  twitter: 'https://x.com',
+  instagram: 'https://www.instagram.com',
+  insta: 'https://www.instagram.com',
+  facebook: 'https://www.facebook.com',
+  fb: 'https://www.facebook.com',
+  linkedin: 'https://www.linkedin.com',
+  wikipedia: 'https://en.wikipedia.org',
+  wiki: 'https://en.wikipedia.org',
+  stackoverflow: 'https://stackoverflow.com',
+  amazon: 'https://www.amazon.com',
+  netflix: 'https://www.netflix.com',
+  spotify: 'https://open.spotify.com',
+  chatgpt: 'https://chatgpt.com',
+  claude: 'https://claude.ai',
+  gemini: 'https://gemini.google.com',
+  notion: 'https://www.notion.so',
+  figma: 'https://www.figma.com',
+  vercel: 'https://vercel.com',
+  npm: 'https://www.npmjs.com',
+  mdn: 'https://developer.mozilla.org',
+  arxiv: 'https://arxiv.org',
+  maps: 'https://www.openstreetmap.org',
+  whatsapp: 'https://web.whatsapp.com'
+};
+
 interface ActiveRunControl {
   run: AgentRun;
   abortController: AbortController;
@@ -131,6 +164,17 @@ export class AgentOrchestrator {
   private contextManager: ContextManager;
   private planner: AgentPlanner;
   private verifier = new ActionVerifier();
+  private offlineFallbackHandler?: (
+    goal: string,
+    mode: AgentMode,
+    perception: PagePerception | null
+  ) => Promise<string | null>;
+
+  public setOfflineFallbackHandler(
+    handler: (goal: string, mode: AgentMode, perception: PagePerception | null) => Promise<string | null>
+  ): void {
+    this.offlineFallbackHandler = handler;
+  }
 
   constructor(
     private readonly getProvider: () => ModelProvider,
@@ -360,6 +404,18 @@ export class AgentOrchestrator {
       );
     }
 
+    if (!params.parentRunId) {
+      const instantBrowserRun = await this.tryExecuteInstantBrowserCommand(
+        params.conversationId,
+        params.tabId ?? null,
+        params.goal,
+        params.mode
+      );
+      if (instantBrowserRun) {
+        return instantBrowserRun;
+      }
+    }
+
     const activeTab = params.tabId ? this.tabManager.getTab(params.tabId) : undefined;
     const isPrivate = Boolean(activeTab?.info.isPrivate);
     const provider = this.getProvider();
@@ -494,6 +550,195 @@ export class AgentOrchestrator {
     this.agentRepo.saveRun(run);
     this.emit({ type: 'run_updated', run });
     return run;
+  }
+
+  private resolveInstantUrlTarget(rawTarget: string): string {
+    const clean = rawTarget.trim().replace(/^['"`]|['"`]$/g, '');
+    if (/^(https?:\/\/|lavray:\/\/)/i.test(clean)) return clean;
+    const shortcut = KNOWN_SITE_SHORTCUTS[clean.toLowerCase()];
+    if (shortcut) return shortcut;
+    if (/^([a-z0-9-]+\.)+[a-z]{2,}(\/\S*)?$/i.test(clean) || /^localhost(:\d+)?(\/\S*)?$/i.test(clean)) {
+      return /^localhost/i.test(clean) ? `http://${clean}` : `https://${clean}`;
+    }
+    return `lavray://search?q=${encodeURIComponent(clean)}`;
+  }
+
+  private async tryExecuteInstantBrowserCommand(
+    conversationId: string,
+    tabId: string | null,
+    goal: string,
+    mode: AgentMode
+  ): Promise<AgentRun | null> {
+    const trimmed = goal.trim();
+    if (!trimmed || trimmed.length > 180) return null;
+    // Defer compound / multi-step agent goals (e.g., "open github and extract trending repos") to full planner
+    if (/\b(and\s+then|and\s+(?:find|extract|summarize|click|fill|login|sign|scroll|search|read)|,|->)\b/i.test(trimmed)) {
+      return null;
+    }
+
+    const low = trimmed.toLowerCase();
+    const activeTab = tabId ? this.tabManager.getTab(tabId) : undefined;
+    const isPrivate = Boolean(activeTab?.info.isPrivate);
+    const windowId = activeTab?.info.windowId ?? this.tabManager.getDefaultWindowId();
+
+    const finishInstantAction = (
+      toolName: string,
+      args: Record<string, unknown>,
+      summary: string,
+      answer: string,
+      resultingUrl?: string
+    ): AgentRun => {
+      const runId = randomUUID();
+      const now = Date.now();
+      const step: AgentStep = {
+        id: randomUUID(),
+        runId,
+        stepIndex: 1,
+        phase: 'execute',
+        summary,
+        decisionExplanation: 'Executed direct browser command without requiring an external LLM round-trip.',
+        evidence: answer,
+        verificationOutcome: 'passed',
+        injectionWarnings: [],
+        toolExecution: {
+          id: randomUUID(),
+          runId,
+          stepId: '',
+          toolName,
+          permissionTier: 'interact',
+          args,
+          validated: true,
+          permissionDecision: 'allowed',
+          success: true,
+          result: resultingUrl ? { url: resultingUrl } : { ok: true },
+          durationMs: Math.max(1, Date.now() - now),
+          pageDiff: resultingUrl
+            ? {
+                urlChanged: true,
+                previousUrl: activeTab?.info.url || '',
+                currentUrl: resultingUrl,
+                titleChanged: false,
+                previousTitle: activeTab?.info.title || '',
+                currentTitle: '',
+                addedElementsCount: 0,
+                removedElementsCount: 0,
+                textDeltaSummary: summary,
+                scrollChanged: false
+              }
+            : null,
+          createdAt: now
+        },
+        createdAt: now
+      };
+      step.toolExecution!.stepId = step.id;
+
+      const run: AgentRun = {
+        id: runId,
+        conversationId,
+        tabId,
+        goal: trimmed,
+        mode,
+        status: 'completed',
+        planSummary: summary,
+        subgoals: [
+          {
+            id: randomUUID(),
+            index: 0,
+            description: summary,
+            expectedEvidence: answer,
+            status: 'completed',
+            attempts: 1
+          }
+        ],
+        steps: [step],
+        finalAnswer: answer,
+        totalInputTokens: 0,
+        totalOutputTokens: 0,
+        estimatedCostUsd: 0,
+        isCostEstimated: false,
+        model: 'lavray-instant-router',
+        provider: 'lavray',
+        isPrivate,
+        startedAt: now,
+        endedAt: Date.now()
+      };
+      if (!isPrivate) {
+        this.agentRepo.addMessage({ conversationId, role: 'user', content: goal, runId });
+        this.agentRepo.addMessage({ conversationId, role: 'assistant', content: answer, runId });
+        this.agentRepo.saveRun(run);
+        this.agentRepo.saveStep(step);
+      }
+      this.emit({ type: 'run_updated', run });
+      this.emit({ type: 'step_added', runId, step });
+      return run;
+    };
+
+    if (/^(?:go\s+)?back$/i.test(low) && tabId) {
+      const ok = this.tabManager.goBack(tabId);
+      return finishInstantAction('go_back', { tabId }, 'Navigate back', ok ? 'Went back to the previous page.' : 'No previous page in tab history.');
+    }
+    if (/^(?:go\s+)?forward$/i.test(low) && tabId) {
+      const ok = this.tabManager.goForward(tabId);
+      return finishInstantAction('go_forward', { tabId }, 'Navigate forward', ok ? 'Went forward in tab history.' : 'No forward page in tab history.');
+    }
+    if (/^(?:reload|refresh)(?:\s+(?:this\s+)?page|\s+tab)?$/i.test(low) && tabId) {
+      this.tabManager.reload(tabId);
+      return finishInstantAction('reload', { tabId }, 'Reload current tab', 'Reloaded the current page.');
+    }
+    if (/^(?:open\s+(?:a\s+)?)?new\s+tab$/i.test(low) && windowId !== null) {
+      const created = this.tabManager.createTab(windowId, { url: 'lavray://newtab', activate: true });
+      return finishInstantAction('open_tab', { url: created.url }, 'Open new tab', 'Opened a new tab.', created.url);
+    }
+    if (/^close\s+(?:this\s+|current\s+)?tab$/i.test(low) && tabId) {
+      this.tabManager.closeTab(tabId);
+      return finishInstantAction('close_tab', { tabId }, 'Close current tab', 'Closed the active tab.');
+    }
+    const scrollMatch = /^scroll\s+(up|down|to\s+top|to\s+bottom|top|bottom)$/i.exec(low);
+    if (scrollMatch && tabId) {
+      const wc = this.tabManager.getWebContents(tabId);
+      if (wc && !wc.isDestroyed()) {
+        const dir = scrollMatch[1];
+        const script = dir.includes('top')
+          ? 'window.scrollTo({ top: 0, behavior: "smooth" })'
+          : dir.includes('bottom')
+          ? 'window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "smooth" })'
+          : dir === 'up'
+          ? 'window.scrollBy({ top: -600, behavior: "smooth" })'
+          : 'window.scrollBy({ top: 600, behavior: "smooth" })';
+        await wc.executeJavaScript(script, true).catch(() => {});
+        return finishInstantAction('scroll', { direction: dir }, `Scroll ${dir}`, `Scrolled ${dir} on the current page.`);
+      }
+    }
+
+    const searchMatch = /^(?:search(?:\s+for)?|google)\s+(.+)$/i.exec(trimmed);
+    if (searchMatch) {
+      const q = searchMatch[1].trim();
+      const searchUrl = `lavray://search?q=${encodeURIComponent(q)}`;
+      if (tabId) {
+        await this.tabManager.navigate(tabId, searchUrl);
+      } else if (windowId !== null) {
+        this.tabManager.createTab(windowId, { url: searchUrl, activate: true });
+      }
+      return finishInstantAction('navigate', { url: searchUrl }, `Search for "${q}"`, `Searching LAVRAY for "${q}".`, searchUrl);
+    }
+
+    const openMatch =
+      /^(?:open|go\s+to|visit|navigate\s+to|launch|load)\s+(.+?)(?:\s+in\s+(?:a\s+)?new\s+tab)?$/i.exec(trimmed);
+    if (openMatch) {
+      const targetRaw = openMatch[1].trim();
+      const inNewTab = /\bin\s+(?:a\s+)?new\s+tab$/i.test(trimmed);
+      const targetUrl = this.resolveInstantUrlTarget(targetRaw);
+      if (inNewTab || !tabId) {
+        if (windowId !== null) {
+          this.tabManager.createTab(windowId, { url: targetUrl, activate: true });
+        }
+      } else {
+        await this.tabManager.navigate(tabId, targetUrl);
+      }
+      return finishInstantAction('navigate', { url: targetUrl }, `Navigate to ${targetUrl}`, `Opened ${targetUrl}.`, targetUrl);
+    }
+
+    return null;
   }
 
   private async executeRunLoop(
@@ -978,7 +1223,35 @@ export class AgentOrchestrator {
         this.emit({ type: 'run_updated', run: { ...run } });
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const rawMsg = err instanceof Error ? err.message : String(err);
+      const isModelOffline = /network\/timeout error reaching self-hosted model runtime|fetch failed|ECONNREFUSED/i.test(rawMsg);
+
+      // Graceful offline fallback: answer on-page summarize/extract requests from captured DOM, or Ask queries from LAVRAY Search
+      if (isModelOffline && !abortController.signal.aborted) {
+        const offlineAnswer = await this.buildOfflineGroundedFallback(run.goal, run.mode, lastPerception);
+        if (offlineAnswer) {
+          run.finalAnswer = offlineAnswer;
+          run.status = 'completed';
+          run.endedAt = Date.now();
+          for (const sg of run.subgoals) sg.status = 'completed';
+          this.syncCostIntoRun(run);
+          this.persistRun(run);
+          if (!run.isPrivate) {
+            this.agentRepo.addMessage({
+              conversationId: run.conversationId,
+              role: 'assistant',
+              content: offlineAnswer,
+              runId: run.id
+            });
+          }
+          this.emit({ type: 'run_updated', run: { ...run } });
+          return;
+        }
+      }
+
+      const msg = isModelOffline
+        ? 'Cannot reach local AI runtime (Ollama) and no Gemini API key fallback is configured. Start Ollama (`ollama serve`) or add a Gemini API key in Settings → HAYA AI. Commands like "open github", "search <query>", "summarize this page", and "scroll down" work without a model.'
+        : rawMsg;
       if (run.status !== 'cancelled' && run.status !== 'budget_exceeded') {
         run.status = abortController.signal.aborted ? 'cancelled' : 'failed';
         run.failureReason = msg;
@@ -1000,6 +1273,57 @@ export class AgentOrchestrator {
       this.activeRuns.delete(run.id);
       this.costTracker.clearRun(run.id);
     }
+  }
+
+  private async buildOfflineGroundedFallback(
+    goal: string,
+    mode: AgentMode,
+    perception: PagePerception | null
+  ): Promise<string | null> {
+    const isPageTask =
+      Boolean(perception?.selectedText?.trim()) ||
+      /\b(summarize|summary|read\s+this|explain|extract|headings|what\s+is\s+this\s+page|about\s+this\s+page|key\s+insights)\b/i.test(
+        goal
+      );
+
+    if (
+      isPageTask &&
+      perception &&
+      perception.url &&
+      perception.url !== 'about:blank' &&
+      !perception.url.startsWith('lavray://')
+    ) {
+      const headings = perception.headings.slice(0, 6);
+      const sourceText = (perception.selectedText || perception.mainText || '').replace(/\s+/g, ' ').trim();
+      const sentences = sourceText
+        .split(/(?<=[.!?])\s+/)
+        .map((s) => s.trim())
+        .filter((s) => s.length >= 25 && s.length <= 280)
+        .slice(0, 4);
+
+      if (sentences.length > 0 || headings.length > 0) {
+        const lines: string[] = [
+          `**${perception.title || perception.url}** ([source](${perception.url}))`
+        ];
+        if (headings.length > 0) {
+          lines.push('', '**Key Sections:**', ...headings.map((h) => `- ${h}`));
+        }
+        if (sentences.length > 0) {
+          lines.push('', '**Extracted Page Highlights:**', ...sentences.map((s) => `- ${s}`));
+        }
+        lines.push(
+          '',
+          '_Generated directly from the live page DOM while no local/cloud LLM is active._'
+        );
+        return lines.join('\n');
+      }
+    }
+
+    if (mode === 'ask' && this.offlineFallbackHandler) {
+      return this.offlineFallbackHandler(goal, mode, perception).catch(() => null);
+    }
+
+    return null;
   }
 
   private async runParallelSubAgents(

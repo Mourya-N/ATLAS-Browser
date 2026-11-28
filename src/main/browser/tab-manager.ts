@@ -297,7 +297,60 @@ export class TabManager {
       }
     };
 
+    const applyAdBlockPageProtections = () => {
+      if (wc.isDestroyed()) return;
+      const pageUrl = wc.getURL();
+      const css = this.adBlocker.getCosmeticCssForUrl(pageUrl);
+      if (css) {
+        void wc.insertCSS(css, { cssOrigin: 'user' }).catch(() => {
+          // ignore stylesheet injection failures on restricted pages
+        });
+      }
+      if (this.adBlocker.shouldRunYouTubeAdHelper(pageUrl)) {
+        void wc
+          .executeJavaScript(
+            `(() => {
+              if (window.__lavrayYtAdGuardInstalled) return;
+              window.__lavrayYtAdGuardInstalled = true;
+              const tick = () => {
+                const player = document.querySelector('#movie_player');
+                if (!player) return;
+                const skipBtn = document.querySelector('.ytp-skip-ad-button, .ytp-ad-skip-button, .ytp-ad-skip-button-modern, .ytp-skip-ad-button-slot button');
+                if (skipBtn && skipBtn.offsetParent !== null) {
+                  skipBtn.click();
+                }
+                if (player.classList.contains('ad-showing') || player.classList.contains('ad-interrupting')) {
+                  const vid = player.querySelector('video');
+                  if (
+                    vid &&
+                    vid.readyState >= 2 &&
+                    Number.isFinite(vid.duration) &&
+                    vid.duration > 1 &&
+                    vid.duration < 600 &&
+                    vid.currentTime < vid.duration - 0.3
+                  ) {
+                    vid.muted = true;
+                    vid.currentTime = vid.duration - 0.1;
+                  }
+                }
+              };
+              const mo = new MutationObserver(tick);
+              if (document.body) mo.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+              window.setInterval(tick, 450);
+              tick();
+            })()`,
+            true
+          )
+          .catch(() => {});
+      }
+    };
+
     wc.setWindowOpenHandler(({ url }) => {
+      if (this.adBlocker.shouldBlockPopup(url, info.url).block) {
+        info.blockedCount += 1;
+        this.emitState(info.windowId);
+        return { action: 'deny' };
+      }
       if (isAllowedNavigationUrl(url)) {
         this.createTab(info.windowId, { url, activate: true, groupId: info.groupId });
       }
@@ -307,6 +360,8 @@ export class TabManager {
     wc.on('will-navigate', (event, url) => {
       if (!isAllowedNavigationUrl(url)) {
         event.preventDefault();
+      } else {
+        this.adBlocker.trackNavigation(wc.id, url);
       }
     });
 
@@ -317,13 +372,7 @@ export class TabManager {
     });
 
     wc.on('dom-ready', () => {
-      if (wc.isDestroyed()) return;
-      const css = this.adBlocker.getCosmeticCssForUrl(wc.getURL());
-      if (css) {
-        void wc.insertCSS(css, { cssOrigin: 'user' }).catch(() => {
-          // ignore stylesheet injection failures on restricted pages
-        });
-      }
+      applyAdBlockPageProtections();
     });
 
     wc.on('did-stop-loading', () => {
@@ -347,6 +396,7 @@ export class TabManager {
     wc.on('did-navigate', (_ev, url) => {
       if (!(url === 'about:blank' && isInternalLavrayUrl(info.url))) {
         info.url = url;
+        this.adBlocker.trackNavigation(wc.id, url);
       }
       syncNavFlags();
       if (!info.isPrivate && !url.startsWith('data:') && url !== 'about:blank' && !url.startsWith('lavray://')) {
@@ -358,7 +408,9 @@ export class TabManager {
     wc.on('did-navigate-in-page', (_ev, url) => {
       if (!(url === 'about:blank' && isInternalLavrayUrl(info.url))) {
         info.url = url;
+        this.adBlocker.trackNavigation(wc.id, url);
       }
+      applyAdBlockPageProtections();
       syncNavFlags();
       if (!info.isPrivate && !url.startsWith('data:') && url !== 'about:blank' && !url.startsWith('lavray://')) {
         this.browserRepo.recordVisit(url, info.title, info.favicon);

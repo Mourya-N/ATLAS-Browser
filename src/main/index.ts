@@ -25,7 +25,8 @@ import { CDPManager } from './cdp/cdp-manager';
 import { ElementResolver } from './cdp/element-resolver';
 import { PerceptionEngine } from './cdp/perception';
 import { SelfHostedOpenAiProvider } from './agent/providers/self-hosted-provider';
-import type { ModelProvider } from './agent/providers/model-provider';
+import { GeminiProvider } from './agent/providers/gemini-provider';
+import type { ModelGenerateRequest, ModelGenerateResponse, ModelProvider } from './agent/providers/model-provider';
 import { LocalSearchIndexService } from './cloud/local-search-index';
 import { ToolRegistry } from './agent/tool-registry';
 import { registerAllBrowserTools } from './agent/tools/browser-tools';
@@ -170,7 +171,10 @@ app.whenReady().then(async () => {
   const injectionGuard = new InjectionGuard();
   const permissionGate = new PermissionGate(platformRepo, auditLogger, killSwitch);
 
-  const adBlocker = new AdBlocker(platformRepo);
+  const adBlocker = new AdBlocker(platformRepo, path.join(userDataDir, 'adblock-lists'));
+  void adBlocker.autoUpdateIfNeeded().catch((err) => {
+    console.warn('[AdBlocker] Background filter list hydration failed:', err instanceof Error ? err.message : err);
+  });
   const privateSessionManager = new PrivateSessionManager();
   const sessionRestore = new SessionRestoreService(browserRepo);
   sessionRestoreRef = sessionRestore;
@@ -209,8 +213,32 @@ app.whenReady().then(async () => {
     getEndpointUrl: () => platformRepo.getSetting<string>('agent.selfHostedEndpointUrl', 'http://127.0.0.1:11434/v1'),
     getApiKey: () => vault.getCustomApiKey()
   });
-  // Route all AI inference strictly to the user's configured self-hosted model
-  const getProvider = (): ModelProvider => selfHostedProvider;
+  const geminiProvider = new GeminiProvider(() => vault.getGeminiApiKey());
+
+  // Route to user-selected self-hosted runtime or Gemini, falling back automatically to Gemini if Ollama is offline and key is configured
+  const getProvider = (): ModelProvider => ({
+    id: 'haya_router',
+    async generate(request: ModelGenerateRequest): Promise<ModelGenerateResponse> {
+      const configuredDefault = platformRepo.getSetting<string>('agent.defaultModel', 'qwen2.5:3b');
+      const hasGeminiKey = Boolean(vault.getGeminiApiKey()?.trim());
+      if (/^gemini/i.test(configuredDefault) && hasGeminiKey) {
+        return geminiProvider.generate({ ...request, model: configuredDefault });
+      }
+      try {
+        return await selfHostedProvider.generate(request);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        const isOfflineError = /network\/timeout|fetch failed|ECONNREFUSED|not configured|404/i.test(msg);
+        if (isOfflineError && hasGeminiKey) {
+          return geminiProvider.generate({
+            ...request,
+            model: /^gemini/i.test(configuredDefault) ? configuredDefault : 'gemini-2.5-flash'
+          });
+        }
+        throw err;
+      }
+    }
+  });
 
   const costTracker = new CostTracker(agentRepo);
   const memoryService = new MemoryService(platformRepo);
@@ -314,6 +342,29 @@ app.whenReady().then(async () => {
     localSearchIndex,
     selfHostedProvider
   );
+
+  orchestrator.setOfflineFallbackHandler(async (goal) => {
+    const res = await cloudClient.executeSearch({
+      query: goal,
+      mode: 'web',
+      filters: { limit: 5, includeAiAnswer: true, includeOpenTabs: false, includePersonalKnowledge: false }
+    });
+    if (res.results.length === 0 && !res.instantAnswer) return null;
+    const lines: string[] = [];
+    if (res.instantAnswer?.summary) {
+      lines.push(`**${res.instantAnswer.title}**`, res.instantAnswer.summary, '');
+    } else if (res.aiAnswer?.status === 'ok' && res.aiAnswer.summary) {
+      lines.push(res.aiAnswer.summary, '');
+    }
+    if (res.results.length > 0) {
+      lines.push(
+        '**Live Web Sources:**',
+        ...res.results.slice(0, 4).map((r) => `- [${r.title}](${r.url}) — ${r.snippet.slice(0, 140)}`)
+      );
+    }
+    lines.push('', '_Retrieved from live web search while the local Ollama runtime is offline._');
+    return lines.join('\n');
+  });
 
   registerAllIpcHandlers({
     windowManager,

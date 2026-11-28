@@ -12,6 +12,7 @@ export interface RawSearchCandidate {
   thumbnailUrl?: string | null;
   mediaUrl?: string | null;
   durationSeconds?: number | null;
+  videoPlatform?: 'youtube' | 'instagram' | 'facebook' | 'dailymotion' | 'archive' | 'web' | null;
   priceText?: string | null;
   coordinates?: {
     lat: number;

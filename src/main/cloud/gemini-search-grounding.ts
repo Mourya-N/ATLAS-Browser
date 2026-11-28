@@ -54,6 +54,7 @@ export async function generateGeminiGroundedOverview(params: {
   const timer = setTimeout(() => controller.abort(), params.timeoutMs ?? 6500);
 
   try {
+    const todayIso = new Date().toISOString().slice(0, 10);
     const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
     const res = await fetchImpl(endpoint, {
       method: 'POST',
@@ -67,14 +68,14 @@ export async function generateGeminiGroundedOverview(params: {
           parts: [
             {
               text:
-                'You are LAVRAY AI Overview. Give a crisp, factual, Google-style overview using Google Search grounding. Start with a 1-2 sentence direct answer with key figures in **bold**, followed by concise bullet points (`- **Label:** value`). Never invent numbers or URLs.'
+                `You are LAVRAY AI Overview. Today's date is ${todayIso}. Give an accurate, neutral, Google-style overview grounded strictly in the Google Search results you retrieve. Start with a 1-2 sentence direct answer with key verified figures in **bold**, followed by concise bullet points (\`- **Label:** value\`). If retrieved sources give differing values (e.g. across regions or jewellers), state the exact range and note the difference. If current verified data is unavailable in retrieved results, state that clearly. Never guess or fabricate numbers, dates, or URLs.`
             }
           ]
         },
         contents: [{ role: 'user', parts: [{ text: params.query }] }],
         tools: [{ googleSearch: {} }],
         generationConfig: {
-          temperature: 0.2,
+          temperature: 0.1,
           maxOutputTokens: 700
         }
       })
@@ -88,7 +89,10 @@ export async function generateGeminiGroundedOverview(params: {
 
     const chunks = (cand?.groundingMetadata?.groundingChunks ?? [])
       .map((c) => c.web)
-      .filter((w): w is { uri: string; title?: string } => Boolean(w?.uri));
+      .filter((w): w is { uri: string; title?: string } => Boolean(w?.uri && /^https?:\/\//i.test(w.uri)));
+
+    // Require genuine retrieved web grounding chunks so ungrounded parametric guesses are never surfaced
+    if (chunks.length === 0) return null;
 
     const citations = chunks.slice(0, 6).map((c, idx) => ({
       index: idx + 1,

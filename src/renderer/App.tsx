@@ -30,6 +30,9 @@ export const App: React.FC = () => {
     agentPanelWidth,
     activeOverlayView,
     setOverlayView,
+    tabSearchOpen,
+    adBlockPopoverOpen,
+    setAdBlockPopoverOpen,
     hitlPause,
     settings,
     toasts,
@@ -214,9 +217,9 @@ export const App: React.FC = () => {
       topInset,
       leftInset,
       rightInset,
-      hideBrowserView: Boolean(activeOverlayView) || isNewTab || isSearchTab
+      hideBrowserView: Boolean(activeOverlayView) || isNewTab || isSearchTab || adBlockPopoverOpen || tabSearchOpen
     });
-  }, [verticalTabs, sidebarOpen, agentPanelOpen, agentPanelWidth, activeOverlayView, isNewTab, isSearchTab, hitlPause]);
+  }, [verticalTabs, sidebarOpen, agentPanelOpen, agentPanelWidth, activeOverlayView, isNewTab, isSearchTab, hitlPause, adBlockPopoverOpen, tabSearchOpen]);
 
   // Global browser keyboard shortcuts
   useEffect(() => {
@@ -252,6 +255,7 @@ export const App: React.FC = () => {
       } else if (e.key === 'Escape') {
         setFindBarOpen(false);
         setTabSearchOpen(false);
+        setAdBlockPopoverOpen(false);
         setOverlayView(null);
       }
     };

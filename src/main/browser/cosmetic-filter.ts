@@ -16,9 +16,34 @@ const DEFAULT_COSMETIC_RULES = [
   '##.ad-banner',
   '##.ad-container',
   '##.ad-slot',
+  '##.ad-wrapper',
+  '##.ad-unit',
   '##.advertisement',
   '##[data-ad-slot]',
-  '##ins.adsbygoogle'
+  '##[data-ad-unit]',
+  '##[data-google-query-id]',
+  '##ins.adsbygoogle',
+  '##div[id^="div-gpt-ad"]',
+  '##iframe[id^="google_ads_iframe"]',
+  '##iframe[src*="doubleclick.net"]',
+  '##iframe[src*="googlesyndication.com"]',
+  '##.OUTBRAIN',
+  '##[id^="taboola-"]',
+  '##.trc_rbox_container',
+  '##[aria-label="Advertisement"]',
+  '##[aria-label="Sponsored Content"]',
+  // YouTube ad slots & banners (preserves actual player video element)
+  'youtube.com###player-ads',
+  'youtube.com###masthead-ad',
+  'youtube.com##ytd-ad-slot-renderer',
+  'youtube.com##ytd-promoted-sparkles-web-renderer',
+  'youtube.com##ytd-display-ad-renderer',
+  'youtube.com##ytd-in-feed-ad-layout-renderer',
+  'youtube.com##ytd-banner-promo-renderer',
+  'youtube.com##ytd-action-companion-ad-renderer',
+  'youtube.com##ytd-statement-banner-renderer',
+  'youtube.com##.ytp-ad-overlay-container',
+  'youtube.com##.ytp-ad-text-overlay'
 ];
 
 /**
@@ -125,8 +150,15 @@ export class CosmeticFilterEngine {
 
     if (hiddenSelectors.size === 0) return null;
     // Cap injected selectors to avoid layout/style thrash
-    const bounded = Array.from(hiddenSelectors).slice(0, 500);
+    const bounded = Array.from(hiddenSelectors).slice(0, 1200);
     return `${bounded.join(',\n')} {\n  display: none !important;\n}`;
+  }
+
+  public shouldRunYouTubeAdHelper(hostname: string): boolean {
+    if (!this.enabled) return false;
+    const host = hostname.toLowerCase().trim();
+    if (!host || this.isDomainDisabled(host)) return false;
+    return host === 'youtube.com' || host.endsWith('.youtube.com');
   }
 
   public reportBrokenSite(url: string, reason = 'Layout or functionality broken with ad blocker'): BrokenSiteReport {

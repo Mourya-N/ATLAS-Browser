@@ -55,6 +55,7 @@ interface LavrayState {
   searchInitialQuery: string;
   findBarOpen: boolean;
   tabSearchOpen: boolean;
+  adBlockPopoverOpen: boolean;
 
   conversations: AgentConversation[];
   activeConversationId: string | null;
@@ -84,6 +85,7 @@ interface LavrayState {
   openLavraySearch: (initialQuery?: string) => void;
   setFindBarOpen: (open: boolean) => void;
   setTabSearchOpen: (open: boolean) => void;
+  setAdBlockPopoverOpen: (open: boolean) => void;
   setConversations: (c: AgentConversation[]) => void;
   setActiveConversationId: (id: string | null) => void;
   setMessages: (m: AgentMessage[]) => void;
@@ -122,6 +124,7 @@ export const useLavrayStore = create<LavrayState>((set) => ({
   searchInitialQuery: '',
   findBarOpen: false,
   tabSearchOpen: false,
+  adBlockPopoverOpen: false,
 
   conversations: [],
   activeConversationId: null,
@@ -159,6 +162,7 @@ export const useLavrayStore = create<LavrayState>((set) => ({
     set({ activeOverlayView: 'search', searchInitialQuery: initialQuery }),
   setFindBarOpen: (findBarOpen) => set({ findBarOpen }),
   setTabSearchOpen: (tabSearchOpen) => set({ tabSearchOpen }),
+  setAdBlockPopoverOpen: (adBlockPopoverOpen) => set({ adBlockPopoverOpen }),
   setConversations: (conversations) => set({ conversations }),
   setActiveConversationId: (activeConversationId) => set({ activeConversationId }),
   setMessages: (messages) => set({ messages }),

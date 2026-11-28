@@ -9,6 +9,17 @@ const ACADEMIC_QUERY_RE =
   /\b(paper|study|research|arxiv|theorem|algorithm|neural|transformer|quantum|benchmark|survey|citation|clinical|genome|physics)\b/i;
 
 const DEFINE_QUERY_RE = /^(?:define|definition\s+of|meaning\s+of)\s+([a-z][a-z-]{1,30})$/i;
+const WEATHER_QUERY_RE =
+  /^(?:what\s+is\s+the\s+|current\s+)?(?:weather|temperature|forecast)\s+(?:in|at|for)\s+([a-z][a-z\s.,-]{1,50})$|^([a-z][a-z\s.,-]{1,40})\s+(?:weather|temperature|forecast)$/i;
+const CURRENCY_QUERY_RE =
+  /^(?:convert\s+)?(?:(\d+(?:\.\d+)?)\s+)?([a-z]{3})\s+(?:to|in|into)\s+([a-z]{3})$/i;
+const LIVE_CURRENCY_CODES = new Set([
+  'USD', 'INR', 'EUR', 'GBP', 'JPY', 'AUD', 'CAD', 'CHF', 'CNY', 'SGD', 'AED', 'SAR',
+  'HKD', 'NZD', 'KRW', 'BRL', 'MXN', 'ZAR', 'SEK', 'NOK', 'DKK', 'PLN', 'TRY', 'THB',
+  'IDR', 'MYR', 'PHP', 'VND', 'PKR', 'BDT', 'LKR', 'NPR'
+]);
+const LIVE_OR_COMMERCIAL_RE =
+  /\b(price|rate|cost|today|latest|news|live|weather|score|stock|near\s+me|buy|shop|order|review|vs\.?|versus|error|fix|how\s+to)\b/i;
 
 export interface WebDiscoveryResult {
   candidates: RawSearchCandidate[];
@@ -68,17 +79,49 @@ export const STARTER_INDEX_PACKS: StarterIndexPack[] = [
   }
 ];
 
+function decodeHtmlEntities(input: string): string {
+  let out = input;
+  for (let pass = 0; pass < 2; pass++) {
+    out = out
+      .replace(/&amp;/gi, '&')
+      .replace(/&quot;/gi, '"')
+      .replace(/&#39;|&apos;|&rsquo;|&lsquo;/gi, "'")
+      .replace(/&ldquo;|&rdquo;/gi, '"')
+      .replace(/&lt;/gi, '<')
+      .replace(/&gt;/gi, '>')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/&percnt;/gi, '%')
+      .replace(/&mdash;/gi, '—')
+      .replace(/&ndash;/gi, '–')
+      .replace(/&hellip;/gi, '...')
+      .replace(/&#(\d+);/g, (_m, dec: string) => {
+        const code = Number(dec);
+        return code >= 32 && code <= 0x10ffff ? String.fromCodePoint(code) : ' ';
+      })
+      .replace(/&#x([0-9a-f]+);/gi, (_m, hex: string) => {
+        const code = parseInt(hex, 16);
+        return code >= 32 && code <= 0x10ffff ? String.fromCodePoint(code) : ' ';
+      });
+  }
+  return out;
+}
+
 function stripHtmlAndEntities(input: string): string {
-  return input
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;|&apos;/g, "'")
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&nbsp;/g, ' ')
+  return decodeHtmlEntities(input.replace(/<[^>]+>/g, ' '))
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function parseDurationToSeconds(label?: string | null): number | null {
+  if (!label) return null;
+  const parts = label
+    .trim()
+    .split(':')
+    .map((p) => Number(p));
+  if (parts.some((n) => !Number.isFinite(n) || n < 0)) return null;
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  return null;
 }
 
 function unwrapCdata(input: string): string {
@@ -135,7 +178,10 @@ export class WebDiscoveryEngine {
       return { candidates: [], providersQueried: [], providerErrors: [], instantAnswer: null };
     }
 
-    const timeoutMs = Math.max(1000, Math.min(8000, params.timeoutMs ?? 3800));
+    const timeoutMs = Math.max(
+      params.mode === 'videos' ? 4800 : 1000,
+      Math.min(8000, params.timeoutMs ?? (params.mode === 'videos' ? 5200 : 3800))
+    );
     const providersQueried: string[] = [];
     const providerErrors: Array<{ providerId: string; error: string }> = [];
     const candidates: RawSearchCandidate[] = [];
@@ -187,9 +233,7 @@ export class WebDiscoveryEngine {
       ...(params.understanding?.siteFilters ?? [])
     ];
     const queryWithSites =
-      effectiveDomains.length > 0
-        ? `${query} ${effectiveDomains.map((d) => `site:${d}`).join(' OR ')}`
-        : query;
+      effectiveDomains.length === 1 ? `${query} site:${effectiveDomains[0]}` : query;
 
     const braveKey = params.braveApiKey?.trim();
     const searxUrl = params.searxngEndpointUrl?.trim();
@@ -205,6 +249,13 @@ export class WebDiscoveryEngine {
 
     if (params.mode === 'videos') {
       if (braveKey) runSource('brave_videos_api', (s) => this.queryBraveVideos(braveKey, queryWithSites, s));
+      if (searxUrl && /^https?:\/\//i.test(searxUrl)) {
+        runSource('searxng_custom', (s) => this.querySearxng(searxUrl, queryWithSites, 'videos', params.filters, s));
+      }
+      runSource('youtube_videos', (s) => this.queryYouTubeVideos(query, s));
+      runSource('instagram_videos', (s) => this.queryYahooPlatformVideos(query, 'instagram', s));
+      runSource('facebook_videos', (s) => this.queryYahooPlatformVideos(query, 'facebook', s));
+      runSource('yahoo_videos', (s) => this.queryYahooPlatformVideos(query, 'all', s));
       runSource('dailymotion_api', (s) => this.queryDailymotionVideos(query, s));
       runSource('archive_videos_api', (s) => this.queryArchiveVideos(query, s));
       await Promise.allSettled(tasks);
@@ -281,6 +332,39 @@ export class WebDiscoveryEngine {
       });
     }
 
+    // 3d. Live Weather card via Open-Meteo
+    const weatherMatch = WEATHER_QUERY_RE.exec(params.query.trim());
+    if (weatherMatch && !instantAnswer && params.mode !== 'news') {
+      const city = (weatherMatch[1] || weatherMatch[2] || '').trim();
+      if (city.length >= 2) {
+        runSource('open_meteo_weather', async (signal) => {
+          const w = await this.queryWeatherInstant(city, signal);
+          if (w && !instantAnswer) instantAnswer = w;
+          return [];
+        });
+      }
+    }
+
+    // 3e. Live Currency Converter card via open.er-api.com
+    const fxMatch = CURRENCY_QUERY_RE.exec(params.query.trim());
+    if (fxMatch && !instantAnswer && params.mode !== 'news') {
+      const amount = fxMatch[1] ? Number(fxMatch[1]) : 1;
+      const fromCode = fxMatch[2].toUpperCase();
+      const toCode = fxMatch[3].toUpperCase();
+      if (
+        Number.isFinite(amount) &&
+        LIVE_CURRENCY_CODES.has(fromCode) &&
+        LIVE_CURRENCY_CODES.has(toCode) &&
+        fromCode !== toCode
+      ) {
+        runSource('live_currency_fx', async (signal) => {
+          const fx = await this.queryCurrencyInstant(amount, fromCode, toCode, signal);
+          if (fx && !instantAnswer) instantAnswer = fx;
+          return [];
+        });
+      }
+    }
+
     // 4. DuckDuckGo Instant Answer JSON API (abstracts + entity links; skip for news)
     if (params.mode !== 'news') {
       runSource('duckduckgo_instant', async (signal) => {
@@ -312,10 +396,12 @@ export class WebDiscoveryEngine {
 
     await Promise.allSettled(tasks);
 
-    // Enrich Knowledge Panel with Wikipedia REST Summary (thumbnail + concise description) if no higher-priority instant card exists or if DDG lacked thumbnail
+    // Enrich Knowledge Panel with Wikipedia REST Summary ONLY when query is an informational entity query
+    // (prevents generic encyclopedia cards like "Gold (element)" from misleading users asking for "gold rate today")
     if (
       topWikiTitle &&
       params.mode !== 'news' &&
+      !LIVE_OR_COMMERCIAL_RE.test(params.query) &&
       (!instantAnswer || (instantAnswer.kind === 'entity' && !instantAnswer.thumbnailUrl))
     ) {
       try {
@@ -1176,5 +1262,401 @@ export class WebDiscoveryEngine {
         rawRank: idx + 1
       };
     });
+  }
+
+  private async queryYouTubeVideos(query: string, signal: AbortSignal): Promise<RawSearchCandidate[]> {
+    const url = new URL('https://www.youtube.com/results');
+    url.searchParams.set('search_query', query);
+
+    const res = await this.fetchFn(url.toString(), {
+      signal,
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+        'Accept-Language': 'en-US,en;q=0.9'
+      }
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const html = await res.text();
+
+    const marker = 'var ytInitialData = ';
+    const startIdx = html.indexOf(marker);
+    if (startIdx < 0) return [];
+    const jsonStart = startIdx + marker.length;
+    const jsonEnd = html.indexOf(';</script>', jsonStart);
+    if (jsonEnd < 0) return [];
+
+    let parsed: {
+      contents?: {
+        twoColumnSearchResultsRenderer?: {
+          primaryContents?: {
+            sectionListRenderer?: {
+              contents?: Array<{
+                itemSectionRenderer?: {
+                  contents?: Array<{
+                    videoRenderer?: {
+                      videoId?: string;
+                      title?: { runs?: Array<{ text?: string }>; simpleText?: string };
+                      lengthText?: { simpleText?: string };
+                      ownerText?: { runs?: Array<{ text?: string }> };
+                      publishedTimeText?: { simpleText?: string };
+                      shortViewCountText?: { simpleText?: string };
+                      thumbnail?: { thumbnails?: Array<{ url?: string }> };
+                    };
+                    reelItemRenderer?: {
+                      videoId?: string;
+                      headline?: { simpleText?: string };
+                      viewCountText?: { simpleText?: string };
+                      thumbnail?: { thumbnails?: Array<{ url?: string }> };
+                    };
+                  }>;
+                };
+              }>;
+            };
+          };
+        };
+      };
+    };
+    try {
+      parsed = JSON.parse(html.slice(jsonStart, jsonEnd));
+    } catch {
+      return [];
+    }
+
+    const sections =
+      parsed.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents ?? [];
+    const out: RawSearchCandidate[] = [];
+    const seenVideoIds = new Set<string>();
+
+    for (const sec of sections) {
+      for (const item of sec.itemSectionRenderer?.contents ?? []) {
+        const vr = item.videoRenderer;
+        if (vr?.videoId && !seenVideoIds.has(vr.videoId)) {
+          const title = stripHtmlAndEntities(
+            vr.title?.runs?.map((r) => r.text || '').join('') || vr.title?.simpleText || ''
+          );
+          if (!title) continue;
+          seenVideoIds.add(vr.videoId);
+          const channel = stripHtmlAndEntities(vr.ownerText?.runs?.[0]?.text || 'YouTube');
+          const views = stripHtmlAndEntities(vr.shortViewCountText?.simpleText || '');
+          const ageText = stripHtmlAndEntities(vr.publishedTimeText?.simpleText || '');
+          const thumb =
+            vr.thumbnail?.thumbnails?.slice(-1)[0]?.url ||
+            `https://i.ytimg.com/vi/${encodeURIComponent(vr.videoId)}/hqdefault.jpg`;
+          const watchUrl = `https://www.youtube.com/watch?v=${encodeURIComponent(vr.videoId)}`;
+          out.push({
+            title,
+            url: watchUrl,
+            snippet: [channel, views, ageText].filter(Boolean).join(' • ') || 'YouTube video',
+            sourceProvider: 'youtube_videos',
+            videoPlatform: 'youtube',
+            thumbnailUrl: thumb.startsWith('//') ? `https:${thumb}` : thumb,
+            mediaUrl: watchUrl,
+            durationSeconds: parseDurationToSeconds(vr.lengthText?.simpleText),
+            contentType: 'web',
+            rawRank: out.length + 1
+          });
+          if (out.length >= 16) return out;
+          continue;
+        }
+
+        const reel = item.reelItemRenderer;
+        if (reel?.videoId && !seenVideoIds.has(reel.videoId)) {
+          const title = stripHtmlAndEntities(reel.headline?.simpleText || '');
+          if (!title) continue;
+          seenVideoIds.add(reel.videoId);
+          const thumb =
+            reel.thumbnail?.thumbnails?.slice(-1)[0]?.url ||
+            `https://i.ytimg.com/vi/${encodeURIComponent(reel.videoId)}/hqdefault.jpg`;
+          const shortUrl = `https://www.youtube.com/shorts/${encodeURIComponent(reel.videoId)}`;
+          out.push({
+            title,
+            url: shortUrl,
+            snippet: [stripHtmlAndEntities(reel.viewCountText?.simpleText || ''), 'YouTube Shorts']
+              .filter(Boolean)
+              .join(' • '),
+            sourceProvider: 'youtube_videos',
+            videoPlatform: 'youtube',
+            thumbnailUrl: thumb.startsWith('//') ? `https:${thumb}` : thumb,
+            mediaUrl: shortUrl,
+            durationSeconds: 59,
+            contentType: 'web',
+            rawRank: out.length + 1
+          });
+          if (out.length >= 16) return out;
+        }
+      }
+    }
+    return out;
+  }
+
+  private async queryYahooPlatformVideos(
+    query: string,
+    platform: 'instagram' | 'facebook' | 'all',
+    signal: AbortSignal
+  ): Promise<RawSearchCandidate[]> {
+    const searchPhrase =
+      platform === 'instagram'
+        ? `${query} instagram reel`
+        : platform === 'facebook'
+        ? `${query} facebook video`
+        : query;
+
+    const url = new URL('https://video.search.yahoo.com/search/video');
+    url.searchParams.set('p', searchPhrase);
+
+    const res = await this.fetchFn(url.toString(), {
+      signal,
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+        'Accept-Language': 'en-US,en;q=0.9'
+      }
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const html = await res.text();
+    if (/captcha|verify you are human|unusual traffic/i.test(html.slice(0, 4000))) {
+      return [];
+    }
+
+    const queryTokens = query
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .split(/\s+/)
+      .filter((t) => t.length >= 3);
+
+    const tileRx = /<a[^>]+media-tile\s+video-tile[^>]*>[\s\S]*?<\/a>/gi;
+    const out: RawSearchCandidate[] = [];
+    const seenUrls = new Set<string>();
+    let m: RegExpExecArray | null;
+
+    while ((m = tileRx.exec(html)) !== null) {
+      const card = m[0];
+      const refMatch = /data-referenceurl="([^"]+)"/i.exec(card);
+      const ruMatch = /RU=([^/&"]+)/i.exec(card);
+      let videoUrl = refMatch?.[1] || '';
+      if (!videoUrl && ruMatch?.[1]) {
+        try {
+          videoUrl = decodeURIComponent(ruMatch[1]);
+        } catch {
+          videoUrl = ruMatch[1];
+        }
+      }
+      videoUrl = decodeHtmlEntities(videoUrl).trim();
+      if (!/^https?:\/\//i.test(videoUrl)) continue;
+
+      let host = '';
+      try {
+        host = new URL(videoUrl).hostname.toLowerCase().replace(/^www\./, '');
+      } catch {
+        continue;
+      }
+
+      const isInstagram = host === 'instagram.com' || host.endsWith('.instagram.com');
+      const isFacebook =
+        host === 'facebook.com' ||
+        host.endsWith('.facebook.com') ||
+        host === 'fb.watch' ||
+        host === 'fb.com';
+      const isYouTube = host === 'youtube.com' || host.endsWith('.youtube.com') || host === 'youtu.be';
+
+      if (platform === 'instagram') {
+        if (!isInstagram || /\/accounts\/login/i.test(videoUrl)) continue;
+      } else if (platform === 'facebook') {
+        if (!isFacebook || /\/login\.php/i.test(videoUrl)) continue;
+      }
+
+      if (seenUrls.has(videoUrl)) continue;
+      seenUrls.add(videoUrl);
+
+      const titleMatch = /class="[^"]*tile-title[^"]*"[^>]*>([\s\S]*?)<\/p>/i.exec(card);
+      const descMatch = /class="[^"]*tile-description[^"]*"[^>]*>([\s\S]*?)<\/p>/i.exec(card);
+      const durMatch = /class="[^"]*\btime\b[^"]*"[^>]*>\s*(\d{1,2}:\d{2}(?::\d{2})?)\s*<\/p>/i.exec(card);
+      const imgMatch = /<img[^>]+src="(https?:\/\/[^"]+)"/i.exec(card);
+
+      const title = stripHtmlAndEntities(titleMatch?.[1] || '') || `${query} video`;
+      const desc = stripHtmlAndEntities(descMatch?.[1] || '');
+      const thumb = imgMatch?.[1] ? decodeHtmlEntities(imgMatch[1]) : null;
+      const durSeconds = parseDurationToSeconds(durMatch?.[1]);
+
+      if (queryTokens.length > 0) {
+        const hay = `${title} ${desc} ${videoUrl}`.toLowerCase();
+        if (!queryTokens.some((qt) => hay.includes(qt))) continue;
+      }
+
+      const detectedPlatform: RawSearchCandidate['videoPlatform'] = isInstagram
+        ? 'instagram'
+        : isFacebook
+        ? 'facebook'
+        : isYouTube
+        ? 'youtube'
+        : 'web';
+
+      const sourceProvider =
+        platform === 'instagram' || detectedPlatform === 'instagram'
+          ? 'instagram_videos'
+          : platform === 'facebook' || detectedPlatform === 'facebook'
+          ? 'facebook_videos'
+          : detectedPlatform === 'youtube'
+          ? 'youtube_videos'
+          : 'yahoo_videos';
+
+      out.push({
+        title: title.slice(0, 180),
+        url: videoUrl,
+        snippet: desc.slice(0, 260) || `${detectedPlatform === 'instagram' ? 'Instagram Reel/Video' : detectedPlatform === 'facebook' ? 'Facebook Video' : 'Video'} for ${query}`,
+        sourceProvider,
+        videoPlatform: detectedPlatform,
+        thumbnailUrl: thumb,
+        mediaUrl: videoUrl,
+        durationSeconds: durSeconds,
+        contentType: 'web',
+        rawRank: out.length + 1
+      });
+
+      if (out.length >= 12) break;
+    }
+
+    return out;
+  }
+
+  private describeWmoWeatherCode(code?: number): string {
+    if (code === 0) return 'Clear sky';
+    if (code === 1 || code === 2 || code === 3) return 'Partly cloudy';
+    if (code === 45 || code === 48) return 'Foggy';
+    if (code !== undefined && code >= 51 && code <= 67) return 'Rain / Drizzle';
+    if (code !== undefined && code >= 71 && code <= 77) return 'Snow';
+    if (code !== undefined && code >= 80 && code <= 82) return 'Rain showers';
+    if (code !== undefined && code >= 95) return 'Thunderstorm';
+    return 'Current conditions';
+  }
+
+  private async queryWeatherInstant(city: string, signal: AbortSignal): Promise<InstantAnswerPayload | null> {
+    let lat: number | null = null;
+    let lon: number | null = null;
+    let locationLabel = city;
+
+    // 1. Try Open-Meteo Geocoding first if a populated city match exists
+    try {
+      const geoUrl = new URL('https://geocoding-api.open-meteo.com/v1/search');
+      geoUrl.searchParams.set('name', city);
+      geoUrl.searchParams.set('count', '5');
+      geoUrl.searchParams.set('format', 'json');
+      const geo = await this.fetchJson<{
+        results?: Array<{
+          name?: string;
+          country?: string;
+          admin1?: string;
+          latitude?: number;
+          longitude?: number;
+          population?: number;
+        }>;
+      }>(geoUrl.toString(), signal);
+
+      const populated = (geo.results ?? [])
+        .filter((r) => typeof r.latitude === 'number' && typeof r.longitude === 'number')
+        .sort((a, b) => (b.population ?? 0) - (a.population ?? 0))[0];
+      if (populated && populated.latitude != null && populated.longitude != null && (populated.population ?? 0) >= 10_000) {
+        lat = populated.latitude;
+        lon = populated.longitude;
+        locationLabel = [populated.name, populated.admin1, populated.country].filter(Boolean).join(', ');
+      }
+    } catch {
+      // Fallback to OSM Nominatim
+    }
+
+    // 2. Fallback/alias resolution via OSM Nominatim (handles exonyms like "Bangalore" -> "Bengaluru")
+    if (lat == null || lon == null) {
+      const osmHits = await this.queryOsmNominatim(city, signal).catch(() => []);
+      const firstGeo = osmHits.find((h) => Boolean(h.coordinates));
+      if (firstGeo?.coordinates) {
+        lat = firstGeo.coordinates.lat;
+        lon = firstGeo.coordinates.lon;
+        locationLabel = firstGeo.coordinates.displayName || firstGeo.title || city;
+      }
+    }
+
+    if (lat == null || lon == null) return null;
+
+    const wxUrl = new URL('https://api.open-meteo.com/v1/forecast');
+    wxUrl.searchParams.set('latitude', String(lat));
+    wxUrl.searchParams.set('longitude', String(lon));
+    wxUrl.searchParams.set(
+      'current',
+      'temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m'
+    );
+    wxUrl.searchParams.set('daily', 'temperature_2m_max,temperature_2m_min');
+    wxUrl.searchParams.set('timezone', 'auto');
+
+    const wx = await this.fetchJson<{
+      current?: {
+        temperature_2m?: number;
+        relative_humidity_2m?: number;
+        apparent_temperature?: number;
+        weather_code?: number;
+        wind_speed_10m?: number;
+      };
+      daily?: {
+        temperature_2m_max?: number[];
+        temperature_2m_min?: number[];
+      };
+    }>(wxUrl.toString(), signal);
+
+    const temp = wx.current?.temperature_2m;
+    if (typeof temp !== 'number') return null;
+    const cond = this.describeWmoWeatherCode(wx.current?.weather_code);
+    const high = wx.daily?.temperature_2m_max?.[0];
+    const low = wx.daily?.temperature_2m_min?.[0];
+
+    return {
+      kind: 'conversion',
+      title: `${Math.round(temp)}°C • ${cond}`,
+      subtitle: `Weather • ${locationLabel}`,
+      summary: `${cond} in ${locationLabel}. Feels like ${Math.round(wx.current?.apparent_temperature ?? temp)}°C.`,
+      url: `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lon}#map=11/${lat}/${lon}`,
+      source: 'Open-Meteo Live Weather',
+      facts: [
+        ...(typeof wx.current?.relative_humidity_2m === 'number'
+          ? [{ label: 'Humidity', value: `${wx.current.relative_humidity_2m}%` }]
+          : []),
+        ...(typeof wx.current?.wind_speed_10m === 'number'
+          ? [{ label: 'Wind', value: `${wx.current.wind_speed_10m} km/h` }]
+          : []),
+        ...(typeof high === 'number' && typeof low === 'number'
+          ? [{ label: 'High / Low', value: `${Math.round(high)}° / ${Math.round(low)}°C` }]
+          : [])
+      ]
+    };
+  }
+
+  private async queryCurrencyInstant(
+    amount: number,
+    fromCode: string,
+    toCode: string,
+    signal: AbortSignal
+  ): Promise<InstantAnswerPayload | null> {
+    const data = await this.fetchJson<{
+      result?: string;
+      time_last_update_utc?: string;
+      rates?: Record<string, number>;
+    }>(`https://open.er-api.com/v6/latest/${encodeURIComponent(fromCode)}`, signal);
+
+    const rate = data.rates?.[toCode];
+    if (typeof rate !== 'number' || !Number.isFinite(rate)) return null;
+    const converted = Number((amount * rate).toFixed(2));
+    return {
+      kind: 'conversion',
+      title: `${amount} ${fromCode} = ${converted.toLocaleString()} ${toCode}`,
+      subtitle: `Currency Converter • 1 ${fromCode} = ${rate.toFixed(4)} ${toCode}`,
+      summary: `Live rate: ${amount} ${fromCode} equals ${converted} ${toCode}.`,
+      url: `lavray://search?q=${encodeURIComponent(`${amount} ${fromCode} to ${toCode}`)}`,
+      source: 'Live Exchange Rate API',
+      facts: [
+        { label: 'Unit Rate', value: `1 ${fromCode} = ${rate.toFixed(4)} ${toCode}` },
+        ...(data.time_last_update_utc
+          ? [{ label: 'Updated', value: data.time_last_update_utc.replace(' +0000', ' UTC') }]
+          : [])
+      ]
+    };
   }
 }

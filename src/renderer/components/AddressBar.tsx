@@ -43,6 +43,8 @@ export const AddressBar: React.FC = () => {
     setOverlayView,
     openLavraySearch,
     adBlockStats,
+    adBlockPopoverOpen,
+    setAdBlockPopoverOpen,
     pushToast
   } = useLavrayStore();
 
@@ -52,7 +54,6 @@ export const AddressBar: React.FC = () => {
   const [focused, setFocused] = useState(false);
   const [suggestions, setSuggestions] = useState<OmniboxSuggestion[]>([]);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [shieldOpen, setShieldOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const agentBusy = Boolean(
@@ -246,37 +247,41 @@ export const AddressBar: React.FC = () => {
 
           {/* Compact Inline Page Controls */}
           <div className="flex items-center gap-0.5 shrink-0">
-            {activeTab && (
-              <div className="relative">
-                <button
-                  type="button"
-                  data-testid="adblock-shield-btn"
-                  onClick={() => setShieldOpen((o) => !o)}
-                  title={`LAVRAY Shield: ${activeTab.blockedCount} blocked on this tab`}
-                  className={`flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium transition-colors ${
-                    isAllowlisted || !adBlockStats?.globalEnabled
-                      ? 'text-lavray-warning hover:bg-lavray-elevated'
-                      : activeTab.blockedCount > 0
-                      ? 'text-lavray-accent hover:bg-lavray-elevated'
-                      : 'text-lavray-muted hover:text-lavray-text hover:bg-lavray-elevated'
-                  }`}
-                >
-                  {isAllowlisted ? (
-                    <ShieldAlert className="h-3.5 w-3.5" strokeWidth={1.75} />
-                  ) : (
-                    <Shield className="h-3.5 w-3.5" strokeWidth={1.75} />
-                  )}
-                  {activeTab.blockedCount > 0 && <span>{activeTab.blockedCount}</span>}
-                </button>
-                {shieldOpen && (
+            <div className="relative">
+              <button
+                type="button"
+                data-testid="adblock-shield-btn"
+                onClick={() => setAdBlockPopoverOpen(!adBlockPopoverOpen)}
+                title={`LAVRAY Shield: ${activeTab?.blockedCount ?? 0} blocked on this tab`}
+                className={`flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium transition-colors ${
+                  isAllowlisted || !adBlockStats?.globalEnabled
+                    ? 'text-lavray-warning hover:bg-lavray-elevated'
+                    : (activeTab?.blockedCount ?? 0) > 0
+                    ? 'text-lavray-accent hover:bg-lavray-elevated'
+                    : 'text-lavray-muted hover:text-lavray-text hover:bg-lavray-elevated'
+                }`}
+              >
+                {isAllowlisted ? (
+                  <ShieldAlert className="h-3.5 w-3.5" strokeWidth={1.75} />
+                ) : (
+                  <Shield className="h-3.5 w-3.5" strokeWidth={1.75} />
+                )}
+                {(activeTab?.blockedCount ?? 0) > 0 && <span>{activeTab?.blockedCount}</span>}
+              </button>
+              {adBlockPopoverOpen && (
+                <>
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setAdBlockPopoverOpen(false)}
+                  />
                   <AdBlockerPopover
                     activeTab={activeTab}
                     currentDomain={currentDomain}
-                    onClose={() => setShieldOpen(false)}
+                    onClose={() => setAdBlockPopoverOpen(false)}
                   />
-                )}
-              </div>
-            )}
+                </>
+              )}
+            </div>
 
             {!isNewTab && (
               <>

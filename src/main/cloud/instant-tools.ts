@@ -260,13 +260,113 @@ function tryColorInspector(raw: string): InstantAnswerPayload | null {
   };
 }
 
+function tryTimestampTool(raw: string): InstantAnswerPayload | null {
+  if (/^\s*(?:unix\s+timestamp|current\s+(?:unix\s+)?(?:timestamp|epoch)|epoch\s+now)\s*$/i.test(raw)) {
+    const nowSec = Math.floor(Date.now() / 1000);
+    return {
+      kind: 'conversion',
+      title: String(nowSec),
+      subtitle: 'Unix Epoch Timestamp (seconds)',
+      summary: `${new Date(nowSec * 1000).toUTCString()}`,
+      url: `lavray://search?q=${encodeURIComponent(raw)}`,
+      source: 'LAVRAY Instant Converter',
+      facts: [
+        { label: 'UTC', value: new Date(nowSec * 1000).toISOString() },
+        { label: 'Milliseconds', value: String(nowSec * 1000) }
+      ]
+    };
+  }
+  const m = /^\s*(?:unix\s+timestamp|timestamp|epoch)?\s*(\d{10}|\d{13})\s*(?:to\s+(?:date|utc|iso))?\s*$/i.exec(raw);
+  if (!m) return null;
+  const num = Number(m[1]);
+  const ms = m[1].length === 13 ? num : num * 1000;
+  const d = new Date(ms);
+  if (Number.isNaN(d.getTime())) return null;
+  return {
+    kind: 'conversion',
+    title: d.toUTCString(),
+    subtitle: 'Unix Timestamp Converter',
+    summary: `ISO 8601: ${d.toISOString()}`,
+    url: `lavray://search?q=${encodeURIComponent(raw)}`,
+    source: 'LAVRAY Instant Converter',
+    facts: [
+      { label: 'ISO', value: d.toISOString() },
+      { label: 'Local', value: d.toLocaleString() }
+    ]
+  };
+}
+
+function tryNumberBaseTool(raw: string): InstantAnswerPayload | null {
+  const m = /^\s*(?:(0x[0-9a-f]+|0b[01]+|\d+))\s+(?:to|in|into)\s+(hex|hexadecimal|bin|binary|dec|decimal|oct|octal)\s*$/i.exec(
+    raw
+  );
+  if (!m) return null;
+  const input = m[1].toLowerCase();
+  const target = m[2].toLowerCase();
+  const value = input.startsWith('0x')
+    ? parseInt(input.slice(2), 16)
+    : input.startsWith('0b')
+    ? parseInt(input.slice(2), 2)
+    : parseInt(input, 10);
+  if (!Number.isSafeInteger(value) || value < 0) return null;
+  let formatted = '';
+  let label = '';
+  if (target.startsWith('hex')) {
+    formatted = `0x${value.toString(16).toUpperCase()}`;
+    label = 'Hexadecimal';
+  } else if (target.startsWith('bin')) {
+    formatted = `0b${value.toString(2)}`;
+    label = 'Binary';
+  } else if (target.startsWith('oct')) {
+    formatted = `0o${value.toString(8)}`;
+    label = 'Octal';
+  } else {
+    formatted = String(value);
+    label = 'Decimal';
+  }
+  return {
+    kind: 'conversion',
+    title: formatted,
+    subtitle: `Base Converter • ${label}`,
+    summary: `${m[1]} = ${formatted}`,
+    url: `lavray://search?q=${encodeURIComponent(raw)}`,
+    source: 'LAVRAY Base Converter',
+    facts: [
+      { label: 'Decimal', value: String(value) },
+      { label: 'Hex', value: `0x${value.toString(16).toUpperCase()}` },
+      { label: 'Binary', value: `0b${value.toString(2)}` }
+    ]
+  };
+}
+
 /**
- * Evaluates zero-latency instant search tools (Calculator, Unit Converter, Color, Percentage).
+ * Evaluates zero-latency instant search tools (Calculator, Unit Converter, Color, Percentage, Timestamp, Base).
  * Executes strictly locally in <1ms without network calls or eval().
  */
 export function evaluateInstantTool(query: string): InstantAnswerPayload | null {
   const trimmed = query.trim();
   if (!trimmed) return null;
+
+  // Percentage discount / markup: "15% off 2000" or "2000 - 15%"
+  const offMatch = /^\s*(\d+(?:\.\d+)?)\s*%\s+off\s+(\d+(?:\.\d+)?)\s*$/i.exec(trimmed);
+  if (offMatch) {
+    const pct = Number(offMatch[1]);
+    const base = Number(offMatch[2]);
+    const savings = Number(((pct / 100) * base).toPrecision(12));
+    const finalPrice = Number((base - savings).toPrecision(12));
+    return {
+      kind: 'calculator',
+      title: `${finalPrice}`,
+      subtitle: 'Calculator • Discount',
+      summary: `${pct}% off ${base} saves ${savings} → ${finalPrice}`,
+      url: `lavray://search?q=${encodeURIComponent(trimmed)}`,
+      source: 'LAVRAY Calculator',
+      facts: [
+        { label: 'Saved', value: String(savings) },
+        { label: 'Original', value: String(base) }
+      ]
+    };
+  }
 
   // Percentage shorthand: "15% of 240"
   const pctMatch = /^\s*(-?\d+(?:\.\d+)?)\s*%\s+of\s+(-?\d+(?:\.\d+)?)\s*$/i.exec(trimmed);
@@ -284,6 +384,12 @@ export function evaluateInstantTool(query: string): InstantAnswerPayload | null 
       facts: [{ label: 'Expression', value: `${pct}% of ${base}` }]
     };
   }
+
+  const ts = tryTimestampTool(trimmed);
+  if (ts) return ts;
+
+  const baseConv = tryNumberBaseTool(trimmed);
+  if (baseConv) return baseConv;
 
   const unit = tryUnitConversion(trimmed);
   if (unit) return unit;
